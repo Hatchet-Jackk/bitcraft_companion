@@ -176,9 +176,9 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
         self.claim_instance = claim_instance
         self.current_inventory_data = initial_display_data
         self.active_filters = {
+            "Tier": {'selected': None, 'min': None, 'max': None},
             "Name": {'selected': None, 'min': None, 'max': None},
             "Quantity": {'selected': None, 'min': None, 'max': None},
-            "Tier": {'selected': None, 'min': None, 'max': None},
             "Tag": {'selected': None, 'min': None, 'max': None}
         }
 
@@ -221,7 +221,7 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
         self.always_on_top_switch.select()
 
         # --- Treeview (main content area) ---
-        self.tree = ttk.Treeview(self, columns=("Name", "Quantity", "Tier", "Tag"), show="headings")
+        self.tree = ttk.Treeview(self, columns=("Tier", "Name", "Quantity", "Tag"), show="headings")
         self.tree.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
 
         # Initial header setup with sort indicators
@@ -272,8 +272,8 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
         arrow_up = " ↑"
         arrow_down = " ↓"
         filter_arrow = " ▼"
-        columns = ["Name", "Quantity", "Tier", "Tag"]
-        
+        columns = ["Tier", "Name", "Quantity", "Tag"]
+
         for col in columns:
             # Sort indicator
             sort_indicator = ""
@@ -291,9 +291,9 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
             self.tree.heading(col, text=header_text, 
                              command=lambda column=col: self._show_combined_menu(column))
 
+        self.tree.column("Tier", width=80, anchor="center")
         self.tree.column("Name", width=200, anchor="w")
         self.tree.column("Quantity", width=100, anchor="center")
-        self.tree.column("Tier", width=80, anchor="center")
         self.tree.column("Tag", width=300, anchor="w")
 
         style = ttk.Style(self)
@@ -401,7 +401,7 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
 
         sort_by = self.sort_column
 
-        if sort_by in ["Name", "Quantity", "Tier", "Tag"]:
+        if sort_by in ["Tier", "Name", "Quantity", "Tag"]:
             logging.info(f"Sorting data by '{sort_by}', direction: {'DESC' if self.sort_direction else 'ASC'}, data length: {len(filtered_data)}")
             if sort_by in ["Quantity", "Tier"]:
                 # For numeric columns, convert to numbers for proper sorting
@@ -574,7 +574,7 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
     def _save_as_csv(self, file_path: str):
         """Save inventory data as CSV file."""
         with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
-            fieldnames = ['Name', 'Quantity', 'Tier', 'Tag']
+            fieldnames = ['Tier', 'Name', 'Quantity', 'Tag']
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             
             # Write header
@@ -621,17 +621,17 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
             textfile.write(f"Total Items: {len(self.current_inventory_data)}\n\n")
             
             # Write table header
-            textfile.write(f"{'Name':<30} {'Quantity':<10} {'Tier':<6} {'Tag':<20}\n")
+            textfile.write(f"{'Tier':<6} {'Name':<30} {'Quantity':<10} {'Tag':<20}\n")
             textfile.write("-" * 66 + "\n")
             
             # Write data
             for item in self.current_inventory_data:
+                tier = str(item.get('Tier', 0))
                 name = str(item.get('Name', ''))[:29]  # Truncate if too long
                 quantity = str(item.get('Quantity', 0))
-                tier = str(item.get('Tier', 0))
                 tag = str(item.get('Tag', ''))[:19]  # Truncate if too long
-                
-                textfile.write(f"{name:<30} {quantity:<10} {tier:<6} {tag:<20}\n")
+
+                textfile.write(f"{tier:<6} {name:<30} {quantity:<10} {tag:<20}\n")
 
     def _is_filter_active(self, column_name: str) -> bool:
         """Check if a filter is currently active for the specified column."""
