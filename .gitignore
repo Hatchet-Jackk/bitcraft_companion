@@ -1,0 +1,27 @@
+__pycache__/
+.venv/
+.vscode/
+.idea/
+.git/
+.pytest_cache/
+.env
+dist/
+build/
+
+# PyInstaller spec files (user-specific build configuration)
+*.spec
+
+# Build scripts (user-specific)
+build_exe.bat
+generate_version.py
+
+*.xlsx
+*.txt
+
+server/
+results/
+files/
+backup/
+
+# Personal user data (should not be shared)
+player_data.json
