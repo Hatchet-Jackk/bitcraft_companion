@@ -70,6 +70,18 @@ class InventoryService:
                 building_states = self.bitcraft_client.fetch_claim_building_state(claim_id)
                 logging.debug(f"Fetched raw building_states: {building_states}")
 
+                # Fetch building nicknames from database
+                building_nicknames = self.bitcraft_client.fetch_building_nickname_state()
+                nickname_lookup = {}
+                if building_nicknames:
+                    # Create a lookup dictionary for fast nickname association
+                    nickname_lookup = {entry.get('entity_id'): entry.get('nickname') 
+                                     for entry in building_nicknames 
+                                     if entry.get('entity_id') is not None}
+                    logging.info(f"Loaded {len(nickname_lookup)} building nicknames for association")
+                else:
+                    logging.warning("No building nicknames found in database")
+
                 enriched_building_states = []
                 if building_states:
                     logging.info(f"Found {len(building_states)} buildings for claim {claim_id}. Fetching their inventories...")
@@ -84,6 +96,11 @@ class InventoryService:
                                 continue
 
                         if entity_id:
+                            # Associate nickname with building
+                            nickname = nickname_lookup.get(entity_id)
+                            building['nickname'] = nickname
+                            
+                            # Fetch inventory for this building
                             inventory_data = self.bitcraft_client.fetch_inventory_state(entity_id)
                             logging.debug(f"Fetched inventory for {entity_id}: {inventory_data}")
                             if inventory_data:
