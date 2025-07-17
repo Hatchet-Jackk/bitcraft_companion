@@ -391,7 +391,7 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
                 filtered_data = [item for item in filtered_data if str(item.get(col_name, '')) in selected_values]
 
             if (min_val is not None) or (max_val is not None):
-                if col_name in ["Quantity", "Tier"]:
+                if col_name in ["Tier", "Quantity"]:
                     filtered_data = [
                         item for item in filtered_data
                         if self._can_convert_to_float(item.get(col_name)) and \
@@ -403,7 +403,7 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
 
         if sort_by in ["Tier", "Name", "Quantity", "Tag"]:
             logging.info(f"Sorting data by '{sort_by}', direction: {'DESC' if self.sort_direction else 'ASC'}, data length: {len(filtered_data)}")
-            if sort_by in ["Quantity", "Tier"]:
+            if sort_by in ["Tier", "Quantity"]:
                 # For numeric columns, convert to numbers for proper sorting
                 def numeric_sort_key(x):
                     val = x.get(sort_by)
@@ -453,9 +453,9 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
         # Insert all items in the correct order
         for item_data in data:
             self.tree.insert("", "end", values=(
+                item_data["Tier"],
                 item_data["Name"],
                 item_data["Quantity"],
-                item_data["Tier"],
                 item_data["Tag"]
             ))
         
