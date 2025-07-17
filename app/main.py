@@ -5,21 +5,18 @@ import logging
 from datetime import datetime
 from enum import Enum
 
-# Import modular components
 from client import BitCraft
 from claim import Claim
 from base_window import BaseWindow
 from inventory_service import InventoryService
 from overlay import BitCraftOverlay as LoginOverlay
 
-# --- Configure Logging ---
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# --- Configure Customtkinter Theme ---
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
@@ -41,8 +38,8 @@ class BitCraftMainWindow(BaseWindow):
         self.toggles_frame = ctk.CTkFrame(self.content_frame)
         self.toggles_frame.pack(fill="both", expand=True)
         self.toggles_frame.grid_columnconfigure(0, weight=1)
-        self.toggles_frame.grid_rowconfigure(0, weight=0)  # Toggle row
-        self.toggles_frame.grid_rowconfigure(1, weight=1)  # Spacer row
+        self.toggles_frame.grid_rowconfigure(0, weight=0)  
+        self.toggles_frame.grid_rowconfigure(1, weight=1) 
 
         self.toggle_claim_inventory = ctk.CTkSwitch(
             self.toggles_frame, 
@@ -50,8 +47,6 @@ class BitCraftMainWindow(BaseWindow):
             command=self.toggle_claim_inventory_window
         )
         self.toggle_claim_inventory.grid(row=0, column=0, padx=20, pady=10, sticky="w")
-
-        # Add more toggles here as needed
 
         # Spacer to push any future elements to the bottom
         ctk.CTkFrame(self.toggles_frame, fg_color="transparent").grid(row=1, column=0, sticky="nsew", pady=(0,10))
@@ -109,6 +104,5 @@ class BitCraftMainWindow(BaseWindow):
         self.status_label.configure(text="BitCraft Companion ready", text_color="green")
 
 if __name__ == "__main__":
-    # For direct execution of main.py, start with login overlay
     app = LoginOverlay()
     app.mainloop()

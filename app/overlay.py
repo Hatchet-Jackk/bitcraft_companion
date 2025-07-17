@@ -1,5 +1,3 @@
-# overlay.py
-
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import messagebox
@@ -10,18 +8,15 @@ from enum import Enum
 from client import BitCraft
 from base_window import BaseWindow
 
-# --- Configure Logging ---
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# --- Configure Customtkinter Theme ---
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
-# --- UI States ---
 class OverlayState(Enum):
     LOGIN_EMAIL = 1
     ACCESS_CODE = 2
@@ -322,9 +317,6 @@ class BitCraftOverlay(BaseWindow):
                                                    command=self.toggle_claim_inventory_window)
         self.toggle_claim_inventory.grid(row=1, column=0, padx=20, pady=10, sticky="w")
 
-        # Add more toggles here as needed
-        # ctk.CTkSwitch(self.toggles_frame, text="Another Feature", command=lambda: logging.info("Another feature toggled")).grid(row=2, column=0, padx=20, pady=10, sticky="w")
-
         # Button frame for navigation
         button_frame = ctk.CTkFrame(self.toggles_frame, fg_color="transparent")
         button_frame.grid(row=2, column=0, padx=20, pady=(10, 20), sticky="ew")
@@ -384,12 +376,6 @@ class BitCraftOverlay(BaseWindow):
         """Toggle the claim inventory window on/off."""
         # Use the base class implementation
         super().toggle_claim_inventory_window()
-
-
-
-
-
-
 
     def _get_access_code_flow(self):
         """Handles getting the access code from the API."""
@@ -569,21 +555,3 @@ class BitCraftOverlay(BaseWindow):
             
             # Transition to email login
             self._transition_to_ui_state(OverlayState.LOGIN_EMAIL)
-
-
-
-def main():
-    """Main function to run the overlay."""
-    app = BitCraftOverlay()
-    app.mainloop()
-    
-    # Return connection data after the overlay closes
-    return app.get_connection_data()
-
-
-if __name__ == "__main__":
-    connection_data = main()
-    if connection_data['player_name']:
-        print(f"Connected as: {connection_data['player_name']}")
-    else:
-        print("Connection cancelled or failed")

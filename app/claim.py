@@ -1,4 +1,3 @@
-# claim.py
 import logging
 import os
 import json
@@ -11,7 +10,6 @@ logging.basicConfig(
 
 
 class Claim:
-    # Class-level attributes to cache reference data
     _resource_desc = None
     _item_desc = None
     _cargo_desc = None
@@ -101,7 +99,7 @@ class Claim:
         if self.building_type_desc_data:
             for type_desc in self.building_type_desc_data:
                 if type_desc.get('id') == type_id:
-                    return type_desc.get('name') # Assuming 'name' is the descriptive string
+                    return type_desc.get('name') 
         return None
 
     def set_value(self, key, value):

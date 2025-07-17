@@ -11,13 +11,12 @@ import re
 
 load_dotenv()
 
-# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class BitCraft:
-    SERVICE_NAME = "BitCraftAPI" # Service name for keyring
-    DEFAULT_SUBPROTOCOL = 'v1.json.spacetimedb' # Constant for the subprotocol
-    AUTH_API_BASE_URL = "https://api.bitcraftonline.com/authentication" # Constant for auth API base
+    SERVICE_NAME = "BitCraftAPI"
+    DEFAULT_SUBPROTOCOL = 'v1.json.spacetimedb'
+    AUTH_API_BASE_URL = "https://api.bitcraftonline.com/authentication"
 
     def _get_data_directory(self):
         """
@@ -34,7 +33,7 @@ class BitCraft:
     def __init__(self):
         self.host = os.getenv('BITCRAFT_SPACETIME_HOST', 'bitcraft-early-access.spacetimedb.com')
         self.uri = '{scheme}://{host}/v1/database/{module}/{endpoint}'
-        self.proto = Subprotocol(self.DEFAULT_SUBPROTOCOL) # Use constant
+        self.proto = Subprotocol(self.DEFAULT_SUBPROTOCOL) 
         self.ws_connection = None
         self.module = None
         self.endpoint = None
@@ -211,7 +210,7 @@ class BitCraft:
         uri = f"{self.AUTH_API_BASE_URL}/authenticate?email={encoded_email}&accessCode={access_code}"
         try:
             response = requests.post(uri)
-            response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+            response.raise_for_status() 
             
             authorization_token = response.json()
             # Store the token and email in keyring and update instance properties
@@ -373,7 +372,7 @@ class BitCraft:
                                     logging.error(f"Failed to decode JSON from WebSocket insert: {insert[:100]}...")
                                     continue # Skip malformed insert
                     break # Assuming one initial subscription response for these fetches
-                elif 'error' in data: # Basic error handling for WS messages
+                elif 'error' in data: 
                     logging.error(f"WebSocket error received for {query_name}: {data['error']}")
                     return
                 # You might want to handle other message types here, e.g., 'TableUpdate' for live changes
@@ -387,11 +386,7 @@ class BitCraft:
         if not self.ws_connection:
             raise RuntimeError("WebSocket connection is not established")
         
-        # --- SQL INJECTION MITIGATION - IMPORTANT! ---
-        # For production, 'username' should be carefully sanitized or
-        # SpacetimeDB needs to provide a parameterized query mechanism.
         sanitized_username = username.lower().replace("'", "''") 
-        # Better: use regex to allow only alphanumeric/specific chars
 
         query_strings = [f"SELECT * FROM player_lowercase_username_state WHERE username_lowercase = '{sanitized_username}';"]
         subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
@@ -427,7 +422,6 @@ class BitCraft:
         if not user_id:
             raise ValueError("User ID missing.")
         
-        # --- SQL INJECTION MITIGATION - IMPORTANT! ---
         sanitized_user_id = str(user_id).replace("'", "''") 
 
         query_strings = [f"SELECT * FROM claim_member_state WHERE player_entity_id = '{sanitized_user_id}';"]
@@ -451,7 +445,6 @@ class BitCraft:
         if not claim_id:
             raise ValueError("Claim ID is missing.")
         
-        # --- SQL INJECTION MITIGATION - IMPORTANT! ---
         sanitized_claim_id = str(claim_id).replace("'", "''")
 
         query_strings = [f"SELECT * FROM claim_state WHERE entity_id = '{sanitized_claim_id}';"]
@@ -479,7 +472,7 @@ class BitCraft:
         if not claim_id:
             raise ValueError("Claim ID is missing.")
         
-        # --- SQL INJECTION MITIGATION - IMPORTANT! ---
+        
         sanitized_claim_id = str(claim_id).replace("'", "''")
 
         query_strings = [f"SELECT * FROM claim_local_state WHERE entity_id = '{sanitized_claim_id}';"]
@@ -513,7 +506,6 @@ class BitCraft:
         if not claim_id:
             raise ValueError("Claim ID is missing.")
         
-        # --- SQL INJECTION MITIGATION - IMPORTANT! ---
         try:
             int_claim_id = int(claim_id)
         except ValueError:
@@ -605,7 +597,6 @@ class BitCraft:
         if not entity_id:
             raise ValueError("Entity ID is missing.")
         
-        # --- SQL INJECTION MITIGATION - IMPORTANT! ---
         sanitized_entity_id = str(entity_id).replace("'", "''")
 
         query_strings = [f"SELECT * FROM inventory_state WHERE owner_entity_id = '{sanitized_entity_id}';"]
@@ -627,7 +618,6 @@ class BitCraft:
         if not claim_id:
             raise ValueError("Claim ID is missing.")
         
-        # --- SQL INJECTION MITIGATION - IMPORTANT! ---
         sanitized_claim_id = claim_id.replace("'", "''")
         
         query_strings = [f"SELECT * FROM claim_local_state WHERE entity_id = '{sanitized_claim_id}';"]

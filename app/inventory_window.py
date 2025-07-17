@@ -1,5 +1,3 @@
-# inventory_window.py
-
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog

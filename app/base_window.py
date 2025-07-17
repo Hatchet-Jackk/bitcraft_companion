@@ -1,5 +1,3 @@
-# base_window.py
-
 import customtkinter as ctk
 import logging
 from abc import ABC, abstractmethod
