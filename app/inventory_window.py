@@ -163,10 +163,11 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=0)  # Scrollbar column
         self.grid_rowconfigure(0, weight=0)     # Controls frame
-        self.grid_rowconfigure(1, weight=1)     # Treeview - main content area
-        self.grid_rowconfigure(2, weight=0)     # Horizontal scrollbar
-        self.grid_rowconfigure(3, weight=0)     # Button frame
-        self.grid_rowconfigure(4, weight=0)     # Status bar
+        self.grid_rowconfigure(1, weight=0)     # Search frame
+        self.grid_rowconfigure(2, weight=1)     # Treeview - main content area
+        self.grid_rowconfigure(3, weight=0)     # Horizontal scrollbar
+        self.grid_rowconfigure(4, weight=0)     # Button frame
+        self.grid_rowconfigure(5, weight=0)     # Status bar
 
         self.transient(master)
         # Removed grab_set() to allow interaction with main window
@@ -225,38 +226,38 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
 
         # Search frame
         search_frame = ctk.CTkFrame(self)
-        search_frame.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="ew", columnspan=2)
+        search_frame.grid(row=1, column=0, padx=0, pady=0, sticky="ew", columnspan=2)
         search_frame.grid_columnconfigure(1, weight=1)
 
         # Search label
         search_label = ctk.CTkLabel(search_frame, text="Search:", font=ctk.CTkFont(size=12))
-        search_label.grid(row=0, column=0, padx=10, pady=5, sticky="w")
+        search_label.grid(row=0, column=0, padx=5, pady=1, sticky="w")
 
         # Search entry
         self.search_entry = ctk.CTkEntry(search_frame, placeholder_text="Type to search items...")
-        self.search_entry.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
+        self.search_entry.grid(row=0, column=1, padx=5, pady=1, sticky="ew")
         self.search_entry.bind('<KeyRelease>', self._on_search_change)
 
         # Clear search button
         self.clear_search_button = ctk.CTkButton(search_frame, text="Clear", width=60, 
                                                command=self._clear_search)
-        self.clear_search_button.grid(row=0, column=2, padx=10, pady=5, sticky="e")
+        self.clear_search_button.grid(row=0, column=2, padx=5, pady=1, sticky="e")
 
         # --- Treeview (main content area) ---
         self.tree = ttk.Treeview(self, columns=("Tier", "Name", "Quantity", "Tag"), show="headings")
-        self.tree.grid(row=2, column=0, padx=10, pady=(0, 10), sticky="nsew")
+        self.tree.grid(row=2, column=0, padx=0, pady=(0, 10), sticky="nsew")
 
         # Initial header setup with sort indicators
         self._update_treeview_headers()
 
         # Vertical scrollbar for treeview
         vsb = ctk.CTkScrollbar(self, command=self.tree.yview)
-        vsb.grid(row=2, column=1, sticky="ns", padx=(0,10), pady=(0, 10))
+        vsb.grid(row=2, column=1, sticky="ns", padx=(0,0), pady=(0, 10))
         self.tree.configure(yscrollcommand=vsb.set)
 
         # Horizontal scrollbar for treeview
         hsb = ctk.CTkScrollbar(self, orientation="horizontal", command=self.tree.xview)
-        hsb.grid(row=3, column=0, sticky="ew", padx=10, pady=(0, 10))
+        hsb.grid(row=3, column=0, sticky="ew", padx=0, pady=(0, 10))
         self.tree.configure(xscrollcommand=hsb.set)
 
         # Button frame above status bar
