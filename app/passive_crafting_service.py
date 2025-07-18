@@ -21,63 +21,45 @@ class PassiveCraftingService:
         self.last_crafting_fetch_time: Optional[datetime] = None
         self.crafting_cache_duration_minutes = 2  # Shorter cache for more real-time data
         
-        # Load reference data
-        self.building_types = self._load_building_types()
-        self.crafting_recipes = self._load_crafting_recipes()
-        self.item_descriptions = self._load_item_descriptions()
+        # Use reference data from the claim instance (already loaded)
+        self.building_types = self._get_building_types_dict()
+        self.crafting_recipes = self._get_crafting_recipes_dict()
+        self.item_descriptions = self._get_item_descriptions_dict()
         
-    def _load_building_types(self) -> Dict:
-        """Load building type descriptions from reference data."""
-        try:
-            # Try app/references first, then data/region
-            for path in ["app/references/building_type_desc.json", "data/region/building_type_desc.json"]:
-                try:
-                    with open(path, 'r', encoding='utf-8') as f:
-                        building_types_list = json.load(f)
-                        # Convert to dict for faster lookup
-                        logging.info(f"Loaded building types from {path}")
-                        return {bt['id']: bt for bt in building_types_list}
-                except FileNotFoundError:
-                    continue
-            logging.error("Could not find building_type_desc.json in any expected location")
-            return {}
-        except Exception as e:
-            logging.error(f"Error loading building types: {e}")
-            return {}
+    def _get_building_types_dict(self) -> Dict:
+        """Get building type descriptions from claim's reference data."""
+        if self.claim_instance.building_type_desc_data:
+            return {bt['id']: bt for bt in self.claim_instance.building_type_desc_data}
+        return {}
     
-    def _load_crafting_recipes(self) -> Dict:
-        """Load crafting recipe descriptions from reference data."""
+    def _get_crafting_recipes_dict(self) -> Dict:
+        """Get crafting recipes from claim's reference data."""
         try:
-            # Try app/references first, then data/region
-            for path in ["app/references/crafting_recipe_desc.json", "data/region/crafting_recipe_desc.json"]:
-                try:
-                    with open(path, 'r', encoding='utf-8') as f:
-                        recipes_list = json.load(f)
-                        # Convert to dict for faster lookup
-                        logging.info(f"Loaded crafting recipes from {path}")
-                        return {recipe['id']: recipe for recipe in recipes_list}
-                except FileNotFoundError:
-                    continue
-            logging.error("Could not find crafting_recipe_desc.json in any expected location")
+            # Load crafting recipes using the claim's existing method
+            recipes_list = self.claim_instance._load_reference_data('crafting_recipe_desc.json')
+            if recipes_list:
+                return {recipe['id']: recipe for recipe in recipes_list}
             return {}
         except Exception as e:
             logging.error(f"Error loading crafting recipes: {e}")
             return {}
     
-    def _load_item_descriptions(self) -> Dict:
-        """Load item descriptions from reference data."""
+    def _get_item_descriptions_dict(self) -> Dict:
+        """Get item descriptions from claim's reference data."""
         try:
-            # Try app/references first, then data/region
-            for path in ["app/references/item_desc.json", "data/region/item_desc.json"]:
-                try:
-                    with open(path, 'r', encoding='utf-8') as f:
-                        items_list = json.load(f)
-                        # Convert to dict for faster lookup
-                        logging.info(f"Loaded item descriptions from {path}")
-                        return {item['id']: item for item in items_list}
-                except FileNotFoundError:
-                    continue
-            logging.error("Could not find item_desc.json in any expected location")
+            # First try to use already loaded data
+            if self.claim_instance.item_desc:
+                logging.info(f"Using cached item descriptions, count: {len(self.claim_instance.item_desc)}")
+                return {item['id']: item for item in self.claim_instance.item_desc}
+            
+            # If not available, try to load it
+            logging.warning("item_desc not available in claim instance, trying to load directly")
+            items_list = self.claim_instance._load_reference_data('item_desc.json')
+            if items_list:
+                logging.info(f"Loaded item descriptions directly, count: {len(items_list)}")
+                return {item['id']: item for item in items_list}
+            
+            logging.error("Could not load item descriptions from any source")
             return {}
         except Exception as e:
             logging.error(f"Error loading item descriptions: {e}")
@@ -107,7 +89,8 @@ class PassiveCraftingService:
             'kiln',         # Kiln
             'smelter',      # Smelter
             'oven',         # Oven
-            'workbench'     # Workbenches can also do passive crafting
+            'workbench',    # Workbenches can also do passive crafting
+            'tanning tub',  # Tanning tub
         ]
         
         found_match = any(keyword in building_name_lower for keyword in target_keywords)
