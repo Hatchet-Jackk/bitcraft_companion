@@ -81,7 +81,7 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
 
         # Instructions label
         instructions_label = ctk.CTkLabel(controls_frame, 
-                                        text="Showing active passive crafting operations - Click filter arrows (▼) for sorting and filtering",
+                                        text="Click filter arrows (▼) for sorting and filtering",
                                         font=ctk.CTkFont(size=12))
         instructions_label.grid(row=0, column=0, padx=10, pady=5, sticky="w")
 
