@@ -8,6 +8,7 @@ import requests
 from dotenv import load_dotenv
 import keyring
 import re
+import threading
 
 load_dotenv()
 
@@ -39,6 +40,9 @@ class BitCraft:
         self.endpoint = None
         self.ws_uri = None
         self.headers = {}
+        
+        # Thread lock for WebSocket operations
+        self.ws_lock = threading.Lock()
 
         # Initialize cached reference data to None
         self._building_desc = None
@@ -314,45 +318,48 @@ class BitCraft:
         logging.info(f"WebSocket URI set: {self.ws_uri}")
 
     def connect_websocket(self):
-        if not self.ws_uri:
-            raise RuntimeError("WebSocket URI is not set. Call set_websocket_uri() first.")
-        if self.ws_connection:
-            logging.warning("WebSocket connection already exists. Closing existing connection.")
-            self.close_websocket()
+        with self.ws_lock:
+            if not self.ws_uri:
+                raise RuntimeError("WebSocket URI is not set. Call set_websocket_uri() first.")
+            if self.ws_connection:
+                logging.warning("WebSocket connection already exists. Closing existing connection.")
+                self.close_websocket()
 
-        try:
-            self.ws_connection = connect(
-                self.ws_uri,
-                additional_headers=self.headers,
-                subprotocols=[self.proto],
-                max_size=None,
-                max_queue=None
-            )
-            # Initial handshake or acknowledgment, if the server sends one immediately
-            first_msg = self.ws_connection.recv()
-            logging.debug(f"Initial WebSocket handshake message: {first_msg[:100]}...")
-            logging.info("WebSocket connection established")
-        except Exception as e:
-            logging.error(f"Failed to establish WebSocket connection: {e}")
-            self.ws_connection = None
-            raise # Re-raise to indicate connection failure
+            try:
+                self.ws_connection = connect(
+                    self.ws_uri,
+                    additional_headers=self.headers,
+                    subprotocols=[self.proto],
+                    max_size=None,
+                    max_queue=None
+                )
+                # Initial handshake or acknowledgment, if the server sends one immediately
+                first_msg = self.ws_connection.recv()
+                logging.debug(f"Initial WebSocket handshake message: {first_msg[:100]}...")
+                logging.info("WebSocket connection established")
+            except Exception as e:
+                logging.error(f"Failed to establish WebSocket connection: {e}")
+                self.ws_connection = None
+                raise # Re-raise to indicate connection failure
 
     def close_websocket(self):
-        if self.ws_connection:
-            try:
-                self.ws_connection.close()
-                logging.info("WebSocket connection closed")
-            except Exception as e:
-                logging.warning(f"Error closing WebSocket: {e}")
-            finally:
-                self.ws_connection = None
-        else:
-            logging.warning("No WebSocket connection to close")
+        with self.ws_lock:
+            if self.ws_connection:
+                try:
+                    self.ws_connection.close()
+                    logging.info("WebSocket connection closed")
+                except Exception as e:
+                    logging.warning(f"Error closing WebSocket: {e}")
+                finally:
+                    self.ws_connection = None
+            else:
+                logging.warning("No WebSocket connection to close")
 
     def _receive_websocket_subscription_data(self, query_name: str): # Removed expected_key as it wasn't used
         """
         Helper method to receive and parse data from a WebSocket subscription.
         Yields each 'insert' row from the 'InitialSubscription' message.
+        Note: This method should be called from within a locked context.
         """
         if not self.ws_connection:
             raise RuntimeError("WebSocket connection is not established")
@@ -383,24 +390,25 @@ class BitCraft:
         return
 
     def fetch_user_id(self, username: str) -> str | None:
-        if not self.ws_connection:
-            raise RuntimeError("WebSocket connection is not established")
-        
-        sanitized_username = username.lower().replace("'", "''") 
+        with self.ws_lock:
+            if not self.ws_connection:
+                raise RuntimeError("WebSocket connection is not established")
+            
+            sanitized_username = username.lower().replace("'", "''") 
 
-        query_strings = [f"SELECT * FROM player_lowercase_username_state WHERE username_lowercase = '{sanitized_username}';"]
-        subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
-        sub = json.dumps(subscribe)
-        self.ws_connection.send(sub)
+            query_strings = [f"SELECT * FROM player_lowercase_username_state WHERE username_lowercase = '{sanitized_username}';"]
+            subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+            sub = json.dumps(subscribe)
+            self.ws_connection.send(sub)
 
-        for row in self._receive_websocket_subscription_data("fetch_user_id"):
-            user_id = row.get("entity_id")
-            if user_id:
-                logging.info(f"User ID for {username} found: {user_id}")
-                return user_id
-        
-        logging.error(f"User ID for {username} not found")
-        return None
+            for row in self._receive_websocket_subscription_data("fetch_user_id"):
+                user_id = row.get("entity_id")
+                if user_id:
+                    logging.info(f"User ID for {username} found: {user_id}")
+                    return user_id
+            
+            logging.error(f"User ID for {username} not found")
+            return None
 
     def fetch_claim_membership_id_by_user_id(self, user_id: str) -> str | None:
         """
@@ -416,116 +424,120 @@ class BitCraft:
             RuntimeError: If the WebSocket connection is not established.
             ValueError: If the user_id is missing or empty.
         """
-        if not self.ws_connection:
-            raise RuntimeError("WebSocket connection is not established")
-        
-        if not user_id:
-            raise ValueError("User ID missing.")
-        
-        sanitized_user_id = str(user_id).replace("'", "''") 
+        with self.ws_lock:
+            if not self.ws_connection:
+                raise RuntimeError("WebSocket connection is not established")
+            
+            if not user_id:
+                raise ValueError("User ID missing.")
+            
+            sanitized_user_id = str(user_id).replace("'", "''") 
 
-        query_strings = [f"SELECT * FROM claim_member_state WHERE player_entity_id = '{sanitized_user_id}';"]
-        subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
-        sub = json.dumps(subscribe)
-        self.ws_connection.send(sub)
-        
-        for row in self._receive_websocket_subscription_data("fetch_claim_membership_id_by_user_id"):
-            claim_id = row.get("claim_entity_id")
-            if claim_id:
-                logging.info(f"Claim ID for user {user_id} found: {claim_id}")
-                return claim_id
-        
-        logging.error(f"Claim ID for user {user_id} not found")
-        return None
+            query_strings = [f"SELECT * FROM claim_member_state WHERE player_entity_id = '{sanitized_user_id}';"]
+            subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+            sub = json.dumps(subscribe)
+            self.ws_connection.send(sub)
+            
+            for row in self._receive_websocket_subscription_data("fetch_claim_membership_id_by_user_id"):
+                claim_id = row.get("claim_entity_id")
+                if claim_id:
+                    logging.info(f"Claim ID for user {user_id} found: {claim_id}")
+                    return claim_id
+            
+            logging.error(f"Claim ID for user {user_id} not found")
+            return None
 
     def fetch_claim_state(self, claim_id: str) -> dict | None:
-        if not self.ws_connection:
-            raise RuntimeError("WebSocket connection is not established")
-        
-        if not claim_id:
-            raise ValueError("Claim ID is missing.")
-        
-        sanitized_claim_id = str(claim_id).replace("'", "''")
+        with self.ws_lock:
+            if not self.ws_connection:
+                raise RuntimeError("WebSocket connection is not established")
+            
+            if not claim_id:
+                raise ValueError("Claim ID is missing.")
+            
+            sanitized_claim_id = str(claim_id).replace("'", "''")
 
-        query_strings = [f"SELECT * FROM claim_state WHERE entity_id = '{sanitized_claim_id}';"]
-        subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
-        sub = json.dumps(subscribe)
-        self.ws_connection.send(sub)
+            query_strings = [f"SELECT * FROM claim_state WHERE entity_id = '{sanitized_claim_id}';"]
+            subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+            sub = json.dumps(subscribe)
+            self.ws_connection.send(sub)
 
-        for row in self._receive_websocket_subscription_data("fetch_claim_state"):
-            claim_data = {
-                "claim_id": row.get("entity_id"),
-                "owner_id": row.get("owner_player_entity_id"),
-                "owner_building_id": row.get("owner_building_entity_id"),
-                "claim_name": row.get("name"),
-            }
-            logging.info(f"Claim state for claim ID {claim_id} found.")
-            return claim_data
-        
-        logging.error(f"Claim data for claim ID {claim_id} not found")
-        return None
+            for row in self._receive_websocket_subscription_data("fetch_claim_state"):
+                claim_data = {
+                    "claim_id": row.get("entity_id"),
+                    "owner_id": row.get("owner_player_entity_id"),
+                    "owner_building_id": row.get("owner_building_entity_id"),
+                    "claim_name": row.get("name"),
+                }
+                logging.info(f"Claim state for claim ID {claim_id} found.")
+                return claim_data
+            
+            logging.error(f"Claim data for claim ID {claim_id} not found")
+            return None
 
     def fetch_claim_local_state(self, claim_id: str) -> dict | None:
-        if not self.ws_connection:
-            raise RuntimeError("WebSocket connection is not established")
-        
-        if not claim_id:
-            raise ValueError("Claim ID is missing.")
-        
-        
-        sanitized_claim_id = str(claim_id).replace("'", "''")
+        with self.ws_lock:
+            if not self.ws_connection:
+                raise RuntimeError("WebSocket connection is not established")
+            
+            if not claim_id:
+                raise ValueError("Claim ID is missing.")
+            
+            
+            sanitized_claim_id = str(claim_id).replace("'", "''")
 
-        query_strings = [f"SELECT * FROM claim_local_state WHERE entity_id = '{sanitized_claim_id}';"]
-        subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
-        sub = json.dumps(subscribe)
-        self.ws_connection.send(sub)
-        
-        for row in self._receive_websocket_subscription_data("fetch_claim_local_state"):
-            collected_data = {
-                "claim_id": row.get("entity_id"),
-                "building_maintenance": row.get("building_maintenance"),
-                "num_tiles": row.get("num_tiles"),
-                "num_tile_neighbors": row.get("num_tile_neighbors"),
-                "treasury": row.get("treasury"),
-                "xp_gained_since_last_coin_minting": row.get("xp_gained_since_last_coin_minting"),
-                "supplies_purchase_threshold": row.get("supplies_purchase_threshold"),
-                "supplies_purchase_price": row.get("supplies_purchase_price"),
-                "building_description_id": row.get("building_description_id"),
-            }
-            logging.info(f"Claim local state for claim ID {claim_id} found.")
-            return collected_data
-        
-        logging.error(f"Claim local state for claim ID {claim_id} not found")
-        return None
+            query_strings = [f"SELECT * FROM claim_local_state WHERE entity_id = '{sanitized_claim_id}';"]
+            subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+            sub = json.dumps(subscribe)
+            self.ws_connection.send(sub)
+            
+            for row in self._receive_websocket_subscription_data("fetch_claim_local_state"):
+                collected_data = {
+                    "claim_id": row.get("entity_id"),
+                    "building_maintenance": row.get("building_maintenance"),
+                    "num_tiles": row.get("num_tiles"),
+                    "num_tile_neighbors": row.get("num_tile_neighbors"),
+                    "treasury": row.get("treasury"),
+                    "xp_gained_since_last_coin_minting": row.get("xp_gained_since_last_coin_minting"),
+                    "supplies_purchase_threshold": row.get("supplies_purchase_threshold"),
+                    "supplies_purchase_price": row.get("supplies_purchase_price"),
+                    "building_description_id": row.get("building_description_id"),
+                }
+                logging.info(f"Claim local state for claim ID {claim_id} found.")
+                return collected_data
+            
+            logging.error(f"Claim local state for claim ID {claim_id} not found")
+            return None
         
 
     def fetch_claim_building_state(self, claim_id: str) -> list[dict] | None:
-        if not self.ws_connection:
-            raise RuntimeError("WebSocket connection is not established")
-        
-        if not claim_id:
-            raise ValueError("Claim ID is missing.")
-        
-        try:
-            int_claim_id = int(claim_id)
-        except ValueError:
-            raise ValueError(f"Invalid claim ID format: {claim_id}. Expected an integer.")
+        with self.ws_lock:
+            if not self.ws_connection:
+                raise RuntimeError("WebSocket connection is not established")
+            
+            if not claim_id:
+                raise ValueError("Claim ID is missing.")
+            
+            try:
+                int_claim_id = int(claim_id)
+            except ValueError:
+                raise ValueError(f"Invalid claim ID format: {claim_id}. Expected an integer.")
 
-        query_strings = [f"select * from building_state where claim_entity_id = {int_claim_id};"]
-        subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
-        sub = json.dumps(subscribe)
-        self.ws_connection.send(sub)
-        
-        building_states = []
-        for row in self._receive_websocket_subscription_data("fetch_claim_building_state"):
-            building_states.append(row)
-        
-        if building_states:
-            logging.info(f"Building states found for claim ID {claim_id}.")
-            return building_states
-        else:
-            logging.error(f"No building states found for claim ID {claim_id}")
-            return []
+            query_strings = [f"select * from building_state where claim_entity_id = {int_claim_id};"]
+            subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+            sub = json.dumps(subscribe)
+            self.ws_connection.send(sub)
+            
+            building_states = []
+            for row in self._receive_websocket_subscription_data("fetch_claim_building_state"):
+                building_states.append(row)
+            
+            if building_states:
+                logging.info(f"Building states found for claim ID {claim_id}.")
+                return building_states
+            else:
+                logging.error(f"No building states found for claim ID {claim_id}")
+                return []
 
     def fetch_building_description(self, building_id: str | int) -> dict | None:
         if not self.ws_connection:
@@ -595,143 +607,148 @@ class BitCraft:
         Fetches claim member state for a given claim ID.
         Returns a list of claim members with their entity IDs and usernames.
         """
-        if not self.ws_connection:
-            raise RuntimeError("WebSocket connection is not established")
-        
-        if not claim_id:
-            raise ValueError("Claim ID is missing.")
-        
-        sanitized_claim_id = str(claim_id).replace("'", "''")
-        
-        query_strings = [f"SELECT * FROM claim_member_state WHERE claim_entity_id = '{sanitized_claim_id}';"]
-        subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
-        sub = json.dumps(subscribe)
-        self.ws_connection.send(sub)
-        
-        members = []
-        for row in self._receive_websocket_subscription_data("fetch_claim_member_state"):
-            member_data = {
-                "entity_id": row.get("entity_id"),
-                "claim_entity_id": row.get("claim_entity_id"),
-                "player_entity_id": row.get("player_entity_id"),
-                "user_name": row.get("user_name"),
-                "inventory_permission": row.get("inventory_permission"),
-                "build_permission": row.get("build_permission"),
-                "officer_permission": row.get("officer_permission"),
-                "co_owner_permission": row.get("co_owner_permission")
-            }
-            members.append(member_data)
-        
-        if members:
-            logging.info(f"Found {len(members)} claim members for claim ID {claim_id}")
-            return members
-        else:
-            logging.info(f"No claim members found for claim ID {claim_id}")
-            return []
+        with self.ws_lock:
+            if not self.ws_connection:
+                raise RuntimeError("WebSocket connection is not established")
+            
+            if not claim_id:
+                raise ValueError("Claim ID is missing.")
+            
+            sanitized_claim_id = str(claim_id).replace("'", "''")
+            
+            query_strings = [f"SELECT * FROM claim_member_state WHERE claim_entity_id = '{sanitized_claim_id}';"]
+            subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+            sub = json.dumps(subscribe)
+            self.ws_connection.send(sub)
+            
+            members = []
+            for row in self._receive_websocket_subscription_data("fetch_claim_member_state"):
+                member_data = {
+                    "entity_id": row.get("entity_id"),
+                    "claim_entity_id": row.get("claim_entity_id"),
+                    "player_entity_id": row.get("player_entity_id"),
+                    "user_name": row.get("user_name"),
+                    "inventory_permission": row.get("inventory_permission"),
+                    "build_permission": row.get("build_permission"),
+                    "officer_permission": row.get("officer_permission"),
+                    "co_owner_permission": row.get("co_owner_permission")
+                }
+                members.append(member_data)
+            
+            if members:
+                logging.info(f"Found {len(members)} claim members for claim ID {claim_id}")
+                return members
+            else:
+                logging.info(f"No claim members found for claim ID {claim_id}")
+                return []
 
     def fetch_user_by_player_entity_id(self, player_entity_id: str) -> dict | None:
         """
         Fetches user information for a given player entity ID.
         Returns user data with user_name if found.
         """
-        if not self.ws_connection:
-            raise RuntimeError("WebSocket connection is not established")
-        
-        if not player_entity_id:
-            raise ValueError("Player entity ID is missing.")
-        
-        sanitized_player_id = str(player_entity_id).replace("'", "''")
-        
-        query_strings = [f"SELECT * FROM claim_member_state WHERE player_entity_id = '{sanitized_player_id}';"]
-        subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
-        sub = json.dumps(subscribe)
-        self.ws_connection.send(sub)
-        
-        for row in self._receive_websocket_subscription_data("fetch_user_by_player_entity_id"):
-            user_data = {
-                "entity_id": row.get("entity_id"),
-                "player_entity_id": row.get("player_entity_id"),
-                "user_name": row.get("user_name"),
-                "claim_entity_id": row.get("claim_entity_id")
-            }
-            if user_data.get("user_name"):
-                logging.debug(f"Found user data for player {player_entity_id}: {user_data.get('user_name')}")
-                return user_data
-        
-        logging.debug(f"No user data found for player entity ID {player_entity_id}")
-        return None
+        with self.ws_lock:
+            if not self.ws_connection:
+                raise RuntimeError("WebSocket connection is not established")
+            
+            if not player_entity_id:
+                raise ValueError("Player entity ID is missing.")
+            
+            sanitized_player_id = str(player_entity_id).replace("'", "''")
+            
+            query_strings = [f"SELECT * FROM claim_member_state WHERE player_entity_id = '{sanitized_player_id}';"]
+            subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+            sub = json.dumps(subscribe)
+            self.ws_connection.send(sub)
+            
+            for row in self._receive_websocket_subscription_data("fetch_user_by_player_entity_id"):
+                user_data = {
+                    "entity_id": row.get("entity_id"),
+                    "player_entity_id": row.get("player_entity_id"),
+                    "user_name": row.get("user_name"),
+                    "claim_entity_id": row.get("claim_entity_id")
+                }
+                if user_data.get("user_name"):
+                    logging.debug(f"Found user data for player {player_entity_id}: {user_data.get('user_name')}")
+                    return user_data
+            
+            logging.debug(f"No user data found for player entity ID {player_entity_id}")
+            return None
 
     def fetch_inventory_state(self, entity_id: str) -> dict | None:
-        if not self.ws_connection:
-            raise RuntimeError("WebSocket connection is not established")
-        
-        if not entity_id:
-            raise ValueError("Entity ID is missing.")
-        
-        sanitized_entity_id = str(entity_id).replace("'", "''")
+        with self.ws_lock:
+            if not self.ws_connection:
+                raise RuntimeError("WebSocket connection is not established")
+            
+            if not entity_id:
+                raise ValueError("Entity ID is missing.")
+            
+            sanitized_entity_id = str(entity_id).replace("'", "''")
 
-        query_strings = [f"SELECT * FROM inventory_state WHERE owner_entity_id = '{sanitized_entity_id}';"]
-        subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
-        sub = json.dumps(subscribe)
-        self.ws_connection.send(sub)
-        
-        for row in self._receive_websocket_subscription_data("fetch_inventory_state"):
-            logging.info(f"Inventory state for entity ID {entity_id} found.")
-            return row
-        
-        logging.error(f"Inventory state for entity ID {entity_id} not found")
-        return None
+            query_strings = [f"SELECT * FROM inventory_state WHERE owner_entity_id = '{sanitized_entity_id}';"]
+            subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+            sub = json.dumps(subscribe)
+            self.ws_connection.send(sub)
+            
+            for row in self._receive_websocket_subscription_data("fetch_inventory_state"):
+                logging.info(f"Inventory state for entity ID {entity_id} found.")
+                return row
+            
+            logging.error(f"Inventory state for entity ID {entity_id} not found")
+            return None
 
     def fetch_claim_supplies(self, claim_id: str) -> dict | None:
-        if not self.ws_connection:
-            raise RuntimeError("WebSocket connection is not established")
-        
-        if not claim_id:
-            raise ValueError("Claim ID is missing.")
-        
-        sanitized_claim_id = claim_id.replace("'", "''")
-        
-        query_strings = [f"SELECT * FROM claim_local_state WHERE entity_id = '{sanitized_claim_id}';"]
-        subscribe = dict(Subscribe=dict(request_id=1,query_strings=query_strings))
-        sub = json.dumps(subscribe)
-        self.ws_connection.send(sub)
-        
-        for row in self._receive_websocket_subscription_data("fetch_claim_supplies"):
-            collected_data = {
-                "claim_id": row.get("entity_id"),
-                "supplies": row.get('supplies'),
-                "num_tiles": row.get('num_tiles'),
-                "treasury": row.get('treasury'),
-            }
-            logging.info(f"Claim supplies for claim ID {claim_id} found.")
-            return collected_data
-        
-        logging.error(f"Claim supplies for claim ID {claim_id} not found")
-        return None
+        with self.ws_lock:
+            if not self.ws_connection:
+                raise RuntimeError("WebSocket connection is not established")
+            
+            if not claim_id:
+                raise ValueError("Claim ID is missing.")
+            
+            sanitized_claim_id = claim_id.replace("'", "''")
+            
+            query_strings = [f"SELECT * FROM claim_local_state WHERE entity_id = '{sanitized_claim_id}';"]
+            subscribe = dict(Subscribe=dict(request_id=1,query_strings=query_strings))
+            sub = json.dumps(subscribe)
+            self.ws_connection.send(sub)
+            
+            for row in self._receive_websocket_subscription_data("fetch_claim_supplies"):
+                collected_data = {
+                    "claim_id": row.get("entity_id"),
+                    "supplies": row.get('supplies'),
+                    "num_tiles": row.get('num_tiles'),
+                    "treasury": row.get('treasury'),
+                }
+                logging.info(f"Claim supplies for claim ID {claim_id} found.")
+                return collected_data
+            
+            logging.error(f"Claim supplies for claim ID {claim_id} not found")
+            return None
     
     def fetch_building_nickname_state(self) -> list[dict] | None:
         """
         Fetches all rows from the building_nickname_state table via WebSocket.
         Returns a list of dictionaries, each representing a row.
         """
-        if not self.ws_connection:
-            raise RuntimeError("WebSocket connection is not established")
+        with self.ws_lock:
+            if not self.ws_connection:
+                raise RuntimeError("WebSocket connection is not established")
 
-        query_strings = ["SELECT * FROM building_nickname_state;"]
-        subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
-        sub = json.dumps(subscribe)
-        self.ws_connection.send(sub)
+            query_strings = ["SELECT * FROM building_nickname_state;"]
+            subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+            sub = json.dumps(subscribe)
+            self.ws_connection.send(sub)
 
-        results = []
-        for row in self._receive_websocket_subscription_data("fetch_building_nickname_state"):
-            results.append(row)
+            results = []
+            for row in self._receive_websocket_subscription_data("fetch_building_nickname_state"):
+                results.append(row)
 
-        if results:
-            logging.info(f"Fetched {len(results)} rows from building_nickname_state.")
-            return results
-        else:
-            logging.error("No rows found in building_nickname_state.")
-            return []
+            if results:
+                logging.info(f"Fetched {len(results)} rows from building_nickname_state.")
+                return results
+            else:
+                logging.error("No rows found in building_nickname_state.")
+                return []
 
     def fetch_passive_craft_state(self, entity_ids: list[str]) -> list[dict] | None:
         """
@@ -744,43 +761,39 @@ class BitCraft:
         Returns:
             List of dictionaries representing passive craft state rows, or empty list if none found.
         """
-        if not self.ws_connection:
-            raise RuntimeError("WebSocket connection is not established")
+        with self.ws_lock:
+            if not self.ws_connection:
+                raise RuntimeError("WebSocket connection is not established")
 
-        if not entity_ids:
-            logging.warning("No entity IDs provided for passive craft state query")
-            return []
+            if not entity_ids:
+                logging.warning("No entity IDs provided for passive craft state query")
+                return []
 
-        # Sanitize entity IDs
-        sanitized_ids = [str(int(entity_id)) for entity_id in entity_ids if str(entity_id).isdigit()]
-        
-        if not sanitized_ids:
-            logging.warning("No valid entity IDs provided for passive craft state query")
-            return []
-        
-        # "entity_id": 360287970239048400,
-        # "owner_entity_id": 504403158276519524,
-        # "recipe_id": 510017,
-        # "building_entity_id": 360287970215994274,
+            # Sanitize entity IDs
+            sanitized_ids = [str(int(entity_id)) for entity_id in entity_ids if str(entity_id).isdigit()]
+            
+            if not sanitized_ids:
+                logging.warning("No valid entity IDs provided for passive craft state query")
+                return []
+            
+            # Query each entity ID individually to avoid database constraints
+            query_strings = [f"SELECT * FROM passive_craft_state WHERE building_entity_id = '{entity_id}';" for entity_id in sanitized_ids]
+            
+            logging.info(f"Executing passive craft state queries for {len(sanitized_ids)} buildings")
+            logging.info(f"Sample queries: {query_strings[:3]}")
+            
+            subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+            sub = json.dumps(subscribe)
+            self.ws_connection.send(sub)
 
-        # Query each entity ID individually to avoid database constraints
-        query_strings = [f"SELECT * FROM passive_craft_state WHERE building_entity_id = '{entity_id}';" for entity_id in sanitized_ids]
-        
-        logging.info(f"Executing passive craft state queries for {len(sanitized_ids)} buildings")
-        logging.info(f"Sample queries: {query_strings[:3]}")
-        
-        subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
-        sub = json.dumps(subscribe)
-        self.ws_connection.send(sub)
+            results = []
+            for row in self._receive_websocket_subscription_data("fetch_passive_craft_state"):
+                results.append(row)
 
-        results = []
-        for row in self._receive_websocket_subscription_data("fetch_passive_craft_state"):
-            results.append(row)
-
-        logging.info(f"Fetched {len(results)} rows from passive_craft_state for {len(sanitized_ids)} entity IDs.")
-        if results:
-            logging.info(f"Sample result: {results[0]}")
-        return results
+            logging.info(f"Fetched {len(results)} rows from passive_craft_state for {len(sanitized_ids)} entity IDs.")
+            if results:
+                logging.info(f"Sample result: {results[0]}")
+            return results
 
     def logout(self):
         """
