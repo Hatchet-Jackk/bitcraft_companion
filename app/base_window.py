@@ -6,6 +6,7 @@ from typing import Optional
 from client import BitCraft
 from claim import Claim
 from inventory_service import InventoryService
+from passive_crafting_service import PassiveCraftingService
 
 
 class BaseWindow(ctk.CTk, ABC):
@@ -22,7 +23,9 @@ class BaseWindow(ctk.CTk, ABC):
         self.bitcraft_client: Optional[BitCraft] = None
         self.claim_instance: Optional[Claim] = None
         self.inventory_service: Optional[InventoryService] = None
+        self.passive_crafting_service: Optional[PassiveCraftingService] = None
         self.claim_inventory_window = None
+        self.passive_crafting_window = None
         
         # Setup basic grid
         self.grid_columnconfigure(0, weight=1)
@@ -48,6 +51,7 @@ class BaseWindow(ctk.CTk, ABC):
         self.bitcraft_client = authenticated_client
         self.claim_instance = Claim()
         self.inventory_service = InventoryService(self.bitcraft_client, self.claim_instance)
+        self.passive_crafting_service = PassiveCraftingService(self.bitcraft_client, self.claim_instance)
     
     def toggle_claim_inventory_window(self):
         """Toggle the claim inventory window on/off."""
@@ -161,6 +165,119 @@ class BaseWindow(ctk.CTk, ABC):
             self.inventory_service.clear_cache()
             self.status_label.configure(text="Refreshing claim inventory data...", text_color="yellow")
             self.inventory_service.fetch_inventory_async(self._on_inventory_data_ready)
+
+    def toggle_passive_crafting_window(self):
+        """Toggle the passive crafting window on/off."""
+        if not hasattr(self, 'toggle_passive_crafting'):
+            logging.error("toggle_passive_crafting switch not found")
+            return
+            
+        if self.toggle_passive_crafting.get():
+            # Opening the window
+            if self.bitcraft_client is None or not self.bitcraft_client.ws_connection:
+                self.status_label.configure(text="Not authenticated or WS not connected. Please log in.", text_color="red")
+                self.toggle_passive_crafting.deselect()
+                return
+
+            if self.passive_crafting_window and self.passive_crafting_window.winfo_exists():
+                self.passive_crafting_window.focus_set()
+                return
+
+            # Check if we have cached data that's still valid
+            cached_data = self.passive_crafting_service.get_cached_data()
+            if cached_data:
+                self.status_label.configure(text="Using cached passive crafting data...", text_color="yellow")
+                # Use cached data immediately
+                self.after(100, self._on_passive_crafting_data_ready, cached_data, True, "Cached passive crafting data loaded.", False)  # False = cached data
+            else:
+                # Temporarily disable toggle while loading
+                self.toggle_passive_crafting.configure(state="disabled")
+                self.status_label.configure(text="Loading passive crafting data...", text_color="yellow")
+                self.passive_crafting_service.fetch_passive_crafting_async(self._on_passive_crafting_data_ready)
+        else:
+            # Closing the window
+            if self.passive_crafting_window and self.passive_crafting_window.winfo_exists():
+                self.passive_crafting_window.destroy()
+                self.passive_crafting_window = None
+            self.status_label.configure(text="Passive crafting window closed.", text_color="green")
+
+    def _on_passive_crafting_data_ready(self, display_data: list, success: bool, message: str, is_fresh_data: bool = False):
+        """Callback when passive crafting data is ready."""
+        if hasattr(self, 'toggle_passive_crafting'):
+            self.toggle_passive_crafting.configure(state="normal")
+        self.status_label.configure(text=message, text_color="green" if success else "red")
+
+        if success:
+            # Import here to avoid circular imports
+            from passive_crafting_window import PassiveCraftingWindow
+            
+            print(f"DEBUG: About to check if passive crafting window exists. Current window: {self.passive_crafting_window}")
+            if self.passive_crafting_window and self.passive_crafting_window.winfo_exists():
+                print("DEBUG: Passive crafting window exists, updating existing window")
+                # Window already exists, just update its data
+                self.passive_crafting_window.current_crafting_data = display_data
+                
+                # Update timestamp if this is fresh data (from refresh button or auto-refresh)
+                if is_fresh_data:
+                    print(f"DEBUG: Updating timestamp on existing passive crafting window for fresh data")
+                    self.passive_crafting_window.update_last_updated_time(schedule_refresh=True)
+                else:
+                    print(f"DEBUG: Not updating timestamp - cached data")
+                
+                self.passive_crafting_window.apply_filters_and_sort()
+                self.passive_crafting_window.focus_set()
+            else:
+                print("DEBUG: Passive crafting window doesn't exist or not valid, will create new one")
+                print("DEBUG: Creating new PassiveCraftingWindow")
+                self.passive_crafting_window = PassiveCraftingWindow(
+                    self, 
+                    self.bitcraft_client, 
+                    self.claim_instance, 
+                    initial_display_data=display_data, 
+                    last_fetch_time=self.passive_crafting_service.last_crafting_fetch_time
+                )
+                print(f"DEBUG: Created passive crafting window instance: {id(self.passive_crafting_window)}")
+                self.passive_crafting_window.protocol("WM_DELETE_WINDOW", self.on_passive_crafting_window_close)
+                self.passive_crafting_window.focus_set()
+                
+                # Set timestamp immediately after creation, before any other operations
+                if is_fresh_data:
+                    # This is fresh data, update with current time and schedule refresh
+                    print(f"DEBUG: Setting fresh data timestamp on passive crafting window instance {id(self.passive_crafting_window)}")
+                    self.passive_crafting_window.update_last_updated_time(schedule_refresh=True)
+                else:
+                    # We have cached data, show the original fetch time
+                    print(f"DEBUG: Setting cached data timestamp on passive crafting window instance {id(self.passive_crafting_window)}: {self.passive_crafting_service.last_crafting_fetch_time}")
+                    if self.passive_crafting_service.last_crafting_fetch_time:
+                        self.passive_crafting_window._set_timestamp_from_fetch_time(self.passive_crafting_service.last_crafting_fetch_time)
+                
+                # Now that timestamp is set, apply filters and sort to display the data
+                print(f"DEBUG: Calling apply_filters_and_sort on passive crafting window instance {id(self.passive_crafting_window)}")
+                self.passive_crafting_window.apply_filters_and_sort()
+        else:
+            if hasattr(self, 'toggle_passive_crafting'):
+                self.toggle_passive_crafting.deselect()
+
+    def on_passive_crafting_window_close(self):
+        """Callback when the passive crafting window is closed by user."""
+        if hasattr(self, 'toggle_passive_crafting'):
+            self.toggle_passive_crafting.deselect()
+        if self.passive_crafting_window:
+            self.passive_crafting_window._cancel_auto_refresh()
+            self.passive_crafting_window.destroy()
+            self.passive_crafting_window = None
+
+    def force_passive_crafting_refresh(self):
+        """Force a fresh passive crafting refresh, bypassing any cache."""
+        if (hasattr(self, 'toggle_passive_crafting') and 
+            self.toggle_passive_crafting.get() and 
+            self.passive_crafting_window and 
+            self.passive_crafting_window.winfo_exists()):
+            
+            # Clear cache and refresh
+            self.passive_crafting_service.clear_cache()
+            self.status_label.configure(text="Refreshing passive crafting data...", text_color="yellow")
+            self.passive_crafting_service.fetch_passive_crafting_async(self._on_passive_crafting_data_ready)
 
     def _clear_content_frame(self):
         """Clears all widgets from the content frame."""

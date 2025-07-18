@@ -662,6 +662,55 @@ class BitCraft:
             logging.error("No rows found in building_nickname_state.")
             return []
 
+    def fetch_passive_craft_state(self, entity_ids: list[str]) -> list[dict] | None:
+        """
+        Fetches passive craft state for multiple entity IDs from the passive_craft_state table via WebSocket.
+        Uses individual queries for each entity ID to avoid database constraint issues.
+        
+        Args:
+            entity_ids: List of entity IDs to query passive craft state for
+            
+        Returns:
+            List of dictionaries representing passive craft state rows, or empty list if none found.
+        """
+        if not self.ws_connection:
+            raise RuntimeError("WebSocket connection is not established")
+
+        if not entity_ids:
+            logging.warning("No entity IDs provided for passive craft state query")
+            return []
+
+        # Sanitize entity IDs
+        sanitized_ids = [str(int(entity_id)) for entity_id in entity_ids if str(entity_id).isdigit()]
+        
+        if not sanitized_ids:
+            logging.warning("No valid entity IDs provided for passive craft state query")
+            return []
+        
+        # "entity_id": 360287970239048400,
+        # "owner_entity_id": 504403158276519524,
+        # "recipe_id": 510017,
+        # "building_entity_id": 360287970215994274,
+
+        # Query each entity ID individually to avoid database constraints
+        query_strings = [f"SELECT * FROM passive_craft_state WHERE building_entity_id = '{entity_id}';" for entity_id in sanitized_ids]
+        
+        logging.info(f"Executing passive craft state queries for {len(sanitized_ids)} buildings")
+        logging.info(f"Sample queries: {query_strings[:3]}")
+        
+        subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+        sub = json.dumps(subscribe)
+        self.ws_connection.send(sub)
+
+        results = []
+        for row in self._receive_websocket_subscription_data("fetch_passive_craft_state"):
+            results.append(row)
+
+        logging.info(f"Fetched {len(results)} rows from passive_craft_state for {len(sanitized_ids)} entity IDs.")
+        if results:
+            logging.info(f"Sample result: {results[0]}")
+        return results
+
     def logout(self):
         """
         Clears stored credentials from keyring and resets instance properties.
