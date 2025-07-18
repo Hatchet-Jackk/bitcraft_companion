@@ -37,10 +37,11 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=0)  # Scrollbar column
         self.grid_rowconfigure(0, weight=0)     # Controls frame
-        self.grid_rowconfigure(1, weight=1)     # Treeview - main content area
-        self.grid_rowconfigure(2, weight=0)     # Horizontal scrollbar
-        self.grid_rowconfigure(3, weight=0)     # Button frame
-        self.grid_rowconfigure(4, weight=0)     # Status bar
+        self.grid_rowconfigure(1, weight=0)     # Search frame
+        self.grid_rowconfigure(2, weight=1)     # Treeview - main content area
+        self.grid_rowconfigure(3, weight=0)     # Horizontal scrollbar
+        self.grid_rowconfigure(4, weight=0)     # Button frame
+        self.grid_rowconfigure(5, weight=0)     # Status bar
 
         self.transient(master)
         self.attributes('-topmost', True)
@@ -62,6 +63,9 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
 
         self.sort_column = "Name"
         self.sort_direction = False
+        
+        # Search functionality
+        self.search_term = ""
         
         # Flag to track if timestamp has been properly initialized
         self.timestamp_initialized = False
@@ -91,26 +95,45 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
         self.always_on_top_switch.grid(row=0, column=1, padx=10, pady=5, sticky="e")
         self.always_on_top_switch.select()
 
+        # Search frame
+        search_frame = ctk.CTkFrame(self)
+        search_frame.grid(row=1, column=0, padx=0, pady=0, sticky="ew", columnspan=2)
+        search_frame.grid_columnconfigure(1, weight=1)
+
+        # Search label
+        search_label = ctk.CTkLabel(search_frame, text="Search:", font=ctk.CTkFont(size=12))
+        search_label.grid(row=0, column=0, padx=5, pady=1, sticky="w")
+
+        # Search entry
+        self.search_entry = ctk.CTkEntry(search_frame, placeholder_text="Type to search items...")
+        self.search_entry.grid(row=0, column=1, padx=5, pady=1, sticky="ew")
+        self.search_entry.bind('<KeyRelease>', self._on_search_change)
+
+        # Clear search button
+        self.clear_search_button = ctk.CTkButton(search_frame, text="Clear", width=60, 
+                                               command=self._clear_search)
+        self.clear_search_button.grid(row=0, column=2, padx=5, pady=1, sticky="e")
+
         # --- Treeview (main content area) ---
         self.tree = ttk.Treeview(self, columns=("Tier", "Name", "Quantity", "Refinery", "Tag"), show="headings")
-        self.tree.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
+        self.tree.grid(row=2, column=0, padx=0, pady=(2, 10), sticky="nsew")
 
         # Initial header setup with sort indicators
         self._update_treeview_headers()
 
         # Vertical scrollbar for treeview
         vsb = ctk.CTkScrollbar(self, command=self.tree.yview)
-        vsb.grid(row=1, column=1, sticky="ns", padx=(0,10), pady=(0, 10))
+        vsb.grid(row=2, column=1, sticky="ns", padx=(0,0), pady=(0, 10))
         self.tree.configure(yscrollcommand=vsb.set)
 
         # Horizontal scrollbar for treeview
         hsb = ctk.CTkScrollbar(self, orientation="horizontal", command=self.tree.xview)
-        hsb.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 10))
+        hsb.grid(row=3, column=0, sticky="ew", padx=0, pady=(0, 10))
         self.tree.configure(xscrollcommand=hsb.set)
 
         # Button frame above status bar
         button_frame = ctk.CTkFrame(self, fg_color="transparent")
-        button_frame.grid(row=3, column=0, padx=10, pady=(0, 10), sticky="ew", columnspan=2)
+        button_frame.grid(row=4, column=0, padx=10, pady=(0, 10), sticky="ew", columnspan=2)
         button_frame.grid_columnconfigure(0, weight=1)
         button_frame.grid_columnconfigure(1, weight=1)
 
@@ -119,7 +142,7 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
 
         # Status bar frame at the bottom
         self.status_bar_frame = ctk.CTkFrame(self, height=30, fg_color=("gray86", "gray17"))
-        self.status_bar_frame.grid(row=4, column=0, padx=0, pady=0, sticky="ew", columnspan=2)
+        self.status_bar_frame.grid(row=5, column=0, padx=0, pady=0, sticky="ew", columnspan=2)
         self.status_bar_frame.grid_columnconfigure(0, weight=1)
         self.status_bar_frame.grid_columnconfigure(1, weight=0)
 
@@ -189,6 +212,19 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
         self.attributes('-topmost', new_state)
         logging.info(f"Always on Top set to: {new_state}")
 
+    def _on_search_change(self, event=None):
+        """Called when the search entry text changes."""
+        self.search_term = self.search_entry.get().lower().strip()
+        logging.info(f"Search term changed to: '{self.search_term}'")
+        self.apply_filters_and_sort()
+
+    def _clear_search(self):
+        """Clears the search entry and resets search filtering."""
+        self.search_entry.delete(0, 'end')
+        self.search_term = ""
+        logging.info("Search cleared")
+        self.apply_filters_and_sort()
+
     def _refresh_data(self):
         """Triggers a re-fetch and re-display of passive crafting data, bypassing cache."""
         if hasattr(self.master, 'status_label'):
@@ -204,6 +240,15 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
         """Applies filters and sorting to the passive crafting data and updates the treeview."""
         print(f"DEBUG: apply_filters_and_sort called - timestamp before: {self.last_updated_label.cget('text')}")
         filtered_data = list(self.current_crafting_data)
+
+        # Apply search filtering first
+        if self.search_term:
+            filtered_data = [
+                item for item in filtered_data
+                if self.search_term in str(item.get('Name', '')).lower() or
+                   self.search_term in str(item.get('Refinery', '')).lower() or
+                   self.search_term in str(item.get('Tag', '')).lower()
+            ]
 
         for col_name, filter_state in self.active_filters.items():
             selected_values = filter_state.get('selected')

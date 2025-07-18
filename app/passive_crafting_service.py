@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Callable
 
 from client import BitCraft
 from claim import Claim
+import re
 
 
 class PassiveCraftingService:
@@ -217,7 +218,9 @@ class PassiveCraftingService:
                     
                     # Get recipe information
                     recipe_info = self.crafting_recipes.get(recipe_id, {})
-                    recipe_name = recipe_info.get('name', f'Unknown Recipe {recipe_id}').replace('{0}', '')
+                    recipe_name = recipe_info.get('name', f'Unknown Recipe {recipe_id}')
+                    # Remove any {int} pattern from the recipe name
+                    recipe_name = re.sub(r'\{\d+\}', '', recipe_name)
                     
                     # Try to determine what item is being crafted
                     crafted_item_name = "Unknown Item"
