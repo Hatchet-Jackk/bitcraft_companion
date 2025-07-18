@@ -116,7 +116,7 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
 
         # --- Treeview (main content area) ---
         self.tree = ttk.Treeview(self, columns=("Tier", "Name", "Quantity", "Refinery", "Tag"), show="headings")
-        self.tree.grid(row=2, column=0, padx=0, pady=(0, 10), sticky="nsew")
+        self.tree.grid(row=2, column=0, padx=0, pady=(2, 10), sticky="nsew")
 
         # Initial header setup with sort indicators
         self._update_treeview_headers()
