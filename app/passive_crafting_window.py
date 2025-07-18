@@ -63,14 +63,6 @@ class PassiveCraftingWindow(BaseOverlay):
 
     def setup_content_ui(self):
         """Setup the main content area of the overlay."""
-        # Add instructions to the controls frame
-        instructions_label = ctk.CTkLabel(
-            self.controls_frame, 
-            text="Click column headers for sorting and filtering options",
-            font=ctk.CTkFont(size=12)
-        )
-        instructions_label.grid(row=1, column=0, padx=10, pady=5, sticky="w", columnspan=6)
-
         # Search frame - positioned at row 1 (after controls at row 0)
         search_frame = ctk.CTkFrame(self)
         search_frame.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="ew", columnspan=2)
