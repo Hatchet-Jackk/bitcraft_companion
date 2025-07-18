@@ -2,6 +2,7 @@ import logging
 import threading
 import json
 import os
+import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Callable
 
@@ -21,6 +22,7 @@ class PassiveCraftingService:
         self.cached_crafting_data: Optional[List[Dict]] = None
         self.last_crafting_fetch_time: Optional[datetime] = None
         self.crafting_cache_duration_minutes = 2  # Shorter cache for more real-time data
+        self.ready_items_cache = {}  # Cache for items that have reached READY state
         
         # Use reference data from the claim instance (already loaded)
         self.building_types = self._get_building_types_dict()
@@ -348,3 +350,332 @@ class PassiveCraftingService:
         # Run in background thread
         thread = threading.Thread(target=fetch_thread, daemon=True)
         thread.start()
+
+    def get_timer_data(self, callback):
+        """
+        Fetch current passive crafting data specifically for timer overlay.
+        Only returns crafting operations for the current user.
+        """
+        def fetch_thread():
+            try:
+                # Clean up old READY cache entries
+                self._cleanup_ready_cache()
+                
+                # Get current user's username
+                current_username = self.bitcraft_client.player_name
+                if not current_username:
+                    callback([], False, "No username available", False)
+                    return
+                
+                claim_id = self.claim_instance.get_claim_id()
+                if not claim_id:
+                    callback([], False, "Claim ID not available", False)
+                    return
+
+                # Get all buildings for the claim
+                building_states = self.bitcraft_client.fetch_claim_building_state(claim_id)
+                if not building_states:
+                    callback([], False, "No buildings found for claim", False)
+                    return
+
+                # Get claim members for user lookup
+                claim_members = self.bitcraft_client.fetch_claim_member_state(claim_id)
+                user_lookup = {}
+                current_user_entity_id = None
+                
+                if claim_members:
+                    user_lookup = {member.get('player_entity_id'): member.get('user_name') 
+                                 for member in claim_members 
+                                 if member.get('player_entity_id') and member.get('user_name')}
+                    
+                    # Find current user's entity ID
+                    for member in claim_members:
+                        if member.get('user_name') == current_username:
+                            current_user_entity_id = member.get('player_entity_id')
+                            break
+                
+                if not current_user_entity_id:
+                    callback([], False, f"Current user '{current_username}' not found in claim members", False)
+                    return
+
+                # Filter processing buildings
+                processing_buildings = []
+                building_nicknames = self.bitcraft_client.fetch_building_nickname_state()
+                nickname_lookup = {}
+                if building_nicknames:
+                    nickname_lookup = {entry.get('entity_id'): entry.get('nickname') 
+                                     for entry in building_nicknames 
+                                     if entry.get('entity_id') is not None}
+
+                for building in building_states:
+                    building_description_id = building.get('building_description_id')
+                    entity_id = building.get('entity_id')
+                    
+                    if building_description_id and entity_id:
+                        building_name = self.claim_instance._get_building_name_from_id(building_description_id)
+                        if not building_name:
+                            building_name = f'Unknown Building Desc {building_description_id}'
+                        
+                        if self._is_processing_building(building_description_id, building_name):
+                            building_info = {
+                                'entity_id': entity_id,
+                                'building_description_id': building_description_id,
+                                'building_name': building_name,
+                                'nickname': nickname_lookup.get(entity_id),
+                                'building_data': building
+                            }
+                            processing_buildings.append(building_info)
+
+                if not processing_buildings:
+                    callback([], False, "No processing buildings found", False)
+                    return
+
+                # Get passive craft states
+                entity_ids = [building['entity_id'] for building in processing_buildings]
+                passive_craft_states = self.bitcraft_client.fetch_passive_craft_state(entity_ids)
+                
+                if not passive_craft_states:
+                    callback([], False, "No active passive crafting found", False)
+                    return
+
+                # Filter for current user and group by item type
+                item_groups = {}
+                for craft_state in passive_craft_states:
+                    owner_entity_id = craft_state.get('owner_entity_id')
+                    
+                    # Only include crafting operations by the current user
+                    if owner_entity_id != current_user_entity_id:
+                        continue
+                        
+                    building_entity_id = craft_state.get('building_entity_id')
+                    recipe_id = craft_state.get('recipe_id')
+                    
+                    # Find building info
+                    building_info = next((b for b in processing_buildings if b['entity_id'] == building_entity_id), None)
+                    if not building_info:
+                        continue
+                    
+                    # Get recipe information
+                    recipe_info = self.crafting_recipes.get(recipe_id, {})
+                    recipe_name = recipe_info.get('name', f'Unknown Recipe {recipe_id}')
+                    recipe_name = re.sub(r'\{\d+\}', '', recipe_name)  # Remove {int} patterns
+                    
+                    # Get crafted item details
+                    crafted_item_name = "Unknown Item"
+                    crafted_item_tier = 0
+                    recipe_quantity = 1
+                    
+                    produced_items = recipe_info.get('crafted_item_stacks', [])
+                    if produced_items and len(produced_items) > 0:
+                        first_item = produced_items[0]
+                        if len(first_item) >= 2:
+                            item_id = first_item[0]
+                            recipe_quantity = first_item[1]
+                            
+                            item_info = self.item_descriptions.get(item_id, {})
+                            crafted_item_name = item_info.get('name', f'Item {item_id}')
+                            crafted_item_tier = item_info.get('tier', 0)
+                    
+                    # Build refinery name
+                    refinery_name = building_info['building_name']
+                    if building_info['nickname']:
+                        refinery_name = f"{building_info['nickname']} ({building_info['building_name']})"
+                    
+                    # Calculate remaining time
+                    remaining_time = self.calculate_remaining_time(craft_state)
+                    is_completed = remaining_time == "READY"
+                    
+                    # Create group key for same item type
+                    group_key = f"{crafted_item_name}|{crafted_item_tier}"
+                    
+                    if group_key not in item_groups:
+                        item_groups[group_key] = {
+                            'name': crafted_item_name,
+                            'tier': crafted_item_tier,
+                            'total_quantity': 0,
+                            'refineries': set(),
+                            'recipes': set(),
+                            'children': [],
+                            'completed_count': 0,
+                            'total_count': 0,
+                            'max_remaining_time': 0,
+                            'max_remaining_time_str': "0s"
+                        }
+                    
+                    group = item_groups[group_key]
+                    group['total_quantity'] += recipe_quantity
+                    group['refineries'].add(refinery_name)
+                    group['recipes'].add(recipe_name)
+                    group['total_count'] += 1
+                    
+                    if is_completed:
+                        group['completed_count'] += 1
+                    
+                    # Track the highest remaining time for the parent
+                    if remaining_time != "READY" and remaining_time != "Error" and remaining_time != "Unknown":
+                        remaining_seconds = self.parse_time_to_seconds(remaining_time)
+                        if remaining_seconds > group['max_remaining_time']:
+                            group['max_remaining_time'] = remaining_seconds
+                            group['max_remaining_time_str'] = remaining_time
+                    
+                    # Add child entry
+                    group['children'].append({
+                        'name': crafted_item_name,
+                        'tier': crafted_item_tier,
+                        'quantity': recipe_quantity,
+                        'refinery': refinery_name,
+                        'tag': f"Recipe: {recipe_name}",
+                        'remaining_time': remaining_time,
+                        'completed': "✓" if is_completed else "",
+                        'is_child': True
+                    })
+                
+                # Convert groups to hierarchical structure
+                user_crafting = []
+                for group_key, group in item_groups.items():
+                    # Build parent row
+                    refineries = list(group['refineries'])
+                    recipes = list(group['recipes'])
+                    
+                    refinery_display = refineries[0] if len(refineries) == 1 else f"{len(refineries)} refineries"
+                    recipe_display = f"Recipe: {recipes[0]}" if len(recipes) == 1 else f"{len(recipes)} recipes"
+                    
+                    parent_row = {
+                        'name': group['name'],
+                        'tier': group['tier'],
+                        'quantity': group['total_quantity'],
+                        'refinery': refinery_display,
+                        'tag': recipe_display,
+                        'remaining_time': group['max_remaining_time_str'] if group['max_remaining_time'] > 0 else "READY",
+                        'completed': f"{group['completed_count']}/{group['total_count']}",
+                        'is_parent': True,
+                        'children': group['children']
+                    }
+                    
+                    user_crafting.append(parent_row)
+                
+                callback(user_crafting, True, f"Found {len(user_crafting)} item groups with {sum(g['total_count'] for g in item_groups.values())} total operations.", True)
+                
+            except Exception as e:
+                logging.error(f"Error fetching timer data: {e}")
+                callback([], False, f"Error fetching timer data: {str(e)}", False)
+        
+        # Run in background thread
+        thread = threading.Thread(target=fetch_thread, daemon=True)
+        thread.start()
+
+    def _cleanup_ready_cache(self):
+        """Clean up old entries from the ready items cache."""
+        current_time = time.time()
+        # Remove entries older than 10 minutes
+        cutoff_time = current_time - 600  # 10 minutes in seconds
+        
+        keys_to_remove = []
+        for key, cached_time in self.ready_items_cache.items():
+            if cached_time < cutoff_time:
+                keys_to_remove.append(key)
+        
+        for key in keys_to_remove:
+            del self.ready_items_cache[key]
+
+    def calculate_remaining_time(self, crafting_entry):
+        """
+        Calculate remaining time for a crafting operation.
+        Returns formatted time string or "READY" if completed.
+        """
+        try:
+            # Check status field first - status [2, {}] means completed
+            status = crafting_entry.get('status')
+            if status and isinstance(status, list) and len(status) > 0:
+                status_code = status[0]
+                if status_code == 2:  # Status 2 means completed/ready
+                    return "READY"
+            
+            recipe_id = crafting_entry.get('recipe_id')
+            
+            if not recipe_id or recipe_id not in self.crafting_recipes:
+                return "Unknown"
+            
+            # Create a unique key for this crafting entry
+            timestamp_data = crafting_entry.get('timestamp')
+            if timestamp_data:
+                timestamp_micros = timestamp_data.get('__timestamp_micros_since_unix_epoch__')
+                entry_key = f"{recipe_id}_{timestamp_micros}"
+                
+                # Check if this entry was already marked as READY
+                if entry_key in self.ready_items_cache:
+                    return "READY"
+            
+            recipe = self.crafting_recipes[recipe_id]
+            duration_seconds = recipe.get('time_requirement', 0)
+            
+            # Get timestamp from the crafting entry
+            if not timestamp_data:
+                return f"~{self.format_time(duration_seconds)}"
+            
+            # Extract timestamp from the nested structure
+            timestamp_micros = timestamp_data.get('__timestamp_micros_since_unix_epoch__')
+            if not timestamp_micros:
+                return f"~{self.format_time(duration_seconds)}"
+            
+            # Convert timestamp from microseconds to seconds
+            start_time = timestamp_micros / 1_000_000
+            current_time = time.time()
+            
+            # Calculate elapsed and remaining time
+            elapsed_time = current_time - start_time
+            remaining_time = duration_seconds - elapsed_time
+            
+            # Add a small buffer to prevent timer flickering at completion
+            if remaining_time <= 1:  # 1 second buffer
+                # Cache this entry as READY to prevent restart
+                if entry_key:
+                    self.ready_items_cache[entry_key] = current_time
+                return "READY"
+            
+            return self.format_time(remaining_time)
+            
+        except Exception as e:
+            logging.error(f"Error calculating remaining time: {e}")
+            return "Error"
+
+    def format_time(self, seconds):
+        """
+        Format seconds into a human-readable time string.
+        """
+        if seconds <= 0:
+            return "READY"
+        
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        seconds = int(seconds % 60)
+        
+        if hours > 0:
+            return f"{hours}h {minutes}m {seconds}s"
+        elif minutes > 0:
+            return f"{minutes}m {seconds}s"
+        else:
+            return f"{seconds}s"
+    
+    def parse_time_to_seconds(self, time_str: str) -> int:
+        """Parse time string (e.g., '1h 30m 45s') to seconds for comparison."""
+        if not time_str or time_str == "READY" or time_str == "Error" or time_str == "Unknown":
+            return 0
+        
+        try:
+            total_seconds = 0
+            parts = time_str.split()
+            
+            for part in parts:
+                if part.startswith('~'):
+                    part = part[1:]  # Remove ~ prefix
+                if part.endswith('h'):
+                    total_seconds += int(part[:-1]) * 3600
+                elif part.endswith('m'):
+                    total_seconds += int(part[:-1]) * 60
+                elif part.endswith('s'):
+                    total_seconds += int(part[:-1])
+            
+            return total_seconds
+        except Exception:
+            return 0
