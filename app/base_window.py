@@ -151,7 +151,7 @@ class BaseWindow(ctk.CTk, ABC):
         if hasattr(self, 'toggle_claim_inventory'):
             self.toggle_claim_inventory.deselect()
         if self.claim_inventory_window:
-            self.claim_inventory_window._cancel_auto_refresh()
+            # BaseOverlay handles auto-refresh cancellation in its destroy method
             self.claim_inventory_window.destroy()
             self.claim_inventory_window = None
 
@@ -264,7 +264,7 @@ class BaseWindow(ctk.CTk, ABC):
         if hasattr(self, 'toggle_passive_crafting'):
             self.toggle_passive_crafting.deselect()
         if self.passive_crafting_window:
-            self.passive_crafting_window._cancel_auto_refresh()
+            # BaseOverlay handles auto-refresh cancellation in its destroy method
             self.passive_crafting_window.destroy()
             self.passive_crafting_window = None
 
@@ -320,11 +320,7 @@ class BaseWindow(ctk.CTk, ABC):
         if hasattr(self, 'toggle_timer_overlay'):
             self.toggle_timer_overlay.deselect()
         if self.passive_crafting_timer_overlay:
-            # Cancel auto-refresh and cleanup
-            self.passive_crafting_timer_overlay.auto_refresh_enabled = False
-            if hasattr(self.passive_crafting_timer_overlay, 'refresh_job') and self.passive_crafting_timer_overlay.refresh_job:
-                self.passive_crafting_timer_overlay.after_cancel(self.passive_crafting_timer_overlay.refresh_job)
-                self.passive_crafting_timer_overlay.refresh_job = None
+            # BaseOverlay handles auto-refresh cancellation in its destroy method
             self.passive_crafting_timer_overlay.destroy()
             self.passive_crafting_timer_overlay = None
         self.status_label.configure(text="Passive crafting timer overlay closed.", text_color="green")
