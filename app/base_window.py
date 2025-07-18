@@ -26,6 +26,7 @@ class BaseWindow(ctk.CTk, ABC):
         self.passive_crafting_service: Optional[PassiveCraftingService] = None
         self.claim_inventory_window = None
         self.passive_crafting_window = None
+        self.passive_crafting_timer_overlay = None
         
         # Setup basic grid
         self.grid_columnconfigure(0, weight=1)
@@ -150,7 +151,7 @@ class BaseWindow(ctk.CTk, ABC):
         if hasattr(self, 'toggle_claim_inventory'):
             self.toggle_claim_inventory.deselect()
         if self.claim_inventory_window:
-            self.claim_inventory_window._cancel_auto_refresh()
+            # BaseOverlay handles auto-refresh cancellation in its destroy method
             self.claim_inventory_window.destroy()
             self.claim_inventory_window = None
 
@@ -263,7 +264,7 @@ class BaseWindow(ctk.CTk, ABC):
         if hasattr(self, 'toggle_passive_crafting'):
             self.toggle_passive_crafting.deselect()
         if self.passive_crafting_window:
-            self.passive_crafting_window._cancel_auto_refresh()
+            # BaseOverlay handles auto-refresh cancellation in its destroy method
             self.passive_crafting_window.destroy()
             self.passive_crafting_window = None
 
@@ -278,6 +279,51 @@ class BaseWindow(ctk.CTk, ABC):
             self.passive_crafting_service.clear_cache()
             self.status_label.configure(text="Refreshing passive crafting data...", text_color="yellow")
             self.passive_crafting_service.fetch_passive_crafting_async(self._on_passive_crafting_data_ready)
+
+    def toggle_passive_crafting_timer_overlay(self):
+        """Toggle the passive crafting timer overlay on/off."""
+        if not hasattr(self, 'toggle_timer_overlay'):
+            logging.error("toggle_timer_overlay switch not found")
+            return
+            
+        if self.toggle_timer_overlay.get():
+            # Opening the overlay
+            if self.bitcraft_client is None or not self.bitcraft_client.ws_connection:
+                self.status_label.configure(text="Not authenticated or WS not connected. Please log in.", text_color="red")
+                self.toggle_timer_overlay.deselect()
+                return
+
+            if self.passive_crafting_timer_overlay and self.passive_crafting_timer_overlay.winfo_exists():
+                self.passive_crafting_timer_overlay.focus_set()
+                return
+
+            # Import here to avoid circular imports
+            from passive_crafting_timer_overlay import PassiveCraftingTimerOverlay
+            
+            self.passive_crafting_timer_overlay = PassiveCraftingTimerOverlay(
+                self, 
+                self.bitcraft_client, 
+                self.passive_crafting_service
+            )
+            self.passive_crafting_timer_overlay.protocol("WM_DELETE_WINDOW", self.on_passive_crafting_timer_overlay_close)
+            self.passive_crafting_timer_overlay.focus_set()
+            self.status_label.configure(text="Passive crafting timer overlay opened.", text_color="green")
+        else:
+            # Closing the overlay
+            if self.passive_crafting_timer_overlay and self.passive_crafting_timer_overlay.winfo_exists():
+                self.passive_crafting_timer_overlay.destroy()
+                self.passive_crafting_timer_overlay = None
+            self.status_label.configure(text="Passive crafting timer overlay closed.", text_color="green")
+
+    def on_passive_crafting_timer_overlay_close(self):
+        """Callback when the passive crafting timer overlay is closed by user."""
+        if hasattr(self, 'toggle_timer_overlay'):
+            self.toggle_timer_overlay.deselect()
+        if self.passive_crafting_timer_overlay:
+            # BaseOverlay handles auto-refresh cancellation in its destroy method
+            self.passive_crafting_timer_overlay.destroy()
+            self.passive_crafting_timer_overlay = None
+        self.status_label.configure(text="Passive crafting timer overlay closed.", text_color="green")
 
     def _clear_content_frame(self):
         """Clears all widgets from the content frame."""

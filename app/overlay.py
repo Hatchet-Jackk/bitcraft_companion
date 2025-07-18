@@ -1,5 +1,4 @@
 import customtkinter as ctk
-import tkinter as tk
 from tkinter import messagebox
 import threading
 import logging
@@ -322,6 +321,10 @@ class BitCraftOverlay(BaseWindow):
         self.toggle_passive_crafting = ctk.CTkSwitch(self.toggles_frame, text="Passive Crafting Status", 
                                                     command=self.toggle_passive_crafting_window)
         self.toggle_passive_crafting.grid(row=2, column=0, padx=20, pady=10, sticky="w")
+
+        self.toggle_timer_overlay = ctk.CTkSwitch(self.toggles_frame, text="Passive Crafting Timer Overlay", 
+                                                 command=self.toggle_passive_crafting_timer_overlay)
+        self.toggle_timer_overlay.grid(row=3, column=0, padx=20, pady=10, sticky="w")
 
         # Button frame for navigation
         button_frame = ctk.CTkFrame(self.toggles_frame, fg_color="transparent")

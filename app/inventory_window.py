@@ -10,6 +10,7 @@ from datetime import datetime
 
 from client import BitCraft
 from claim import Claim
+from base_overlay import BaseOverlay
 
 
 class FilterDialog(ctk.CTkToplevel):
@@ -138,42 +139,12 @@ class FilterDialog(ctk.CTkToplevel):
         self.destroy()
 
 
-class ClaimInventoryWindow(ctk.CTkToplevel):
+class ClaimInventoryWindow(BaseOverlay):
     def __init__(self, master, bitcraft_client: BitCraft, claim_instance: Claim, initial_display_data: list, last_fetch_time=None):
         print("DEBUG: ClaimInventoryWindow constructor called")
         print(f"DEBUG: Constructor - last_fetch_time parameter: {last_fetch_time}")
-        super().__init__(master)
-        self.title("Claim Inventory Report")
-
-        # Make window resizable with better initial size
-        min_width = 720
-        min_height = 500
-        initial_width = 800
-        initial_height = 600
-
-        self.update_idletasks()
-
-        x = master.winfo_x() + master.winfo_width() + 20
-        y = master.winfo_y()
-        self.geometry(f"{initial_width}x{initial_height}+{x}+{y}")
-        self.minsize(min_width, min_height)
-
-        self.resizable(True, True)
-
-        # Configure window grid to make treeview area expandable
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=0)  # Scrollbar column
-        self.grid_rowconfigure(0, weight=0)     # Controls frame
-        self.grid_rowconfigure(1, weight=0)     # Search frame
-        self.grid_rowconfigure(2, weight=1)     # Treeview - main content area
-        self.grid_rowconfigure(3, weight=0)     # Horizontal scrollbar
-        self.grid_rowconfigure(4, weight=0)     # Button frame
-        self.grid_rowconfigure(5, weight=0)     # Status bar
-
-        self.transient(master)
-        # Removed grab_set() to allow interaction with main window
-        self.attributes('-topmost', True)
-
+        
+        # Initialize attributes that are needed in setup_content_ui BEFORE calling super().__init__
         self.bitcraft_client = bitcraft_client
         self.claim_instance = claim_instance
         self.current_inventory_data = initial_display_data
@@ -184,74 +155,61 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
             "Containers": {'selected': None, 'min': None, 'max': None},
             "Tag": {'selected': None, 'min': None, 'max': None}
         }
-
-        self.auto_refresh_job = None
-        self.auto_refresh_interval_minutes = 5
-        self.last_fetch_time = last_fetch_time  # Store the original fetch time
-
+        self.last_fetch_time = last_fetch_time
         self.sort_column = "Name"
         self.sort_direction = False
-        
-        # Search functionality
         self.search_term = ""
-        
-        # Flag to track if timestamp has been properly initialized
         self.timestamp_initialized = False
-        
-        # Expandable rows functionality
         self.expanded_rows = set()  # Track which rows are expanded
         self.row_data_map = {}  # Map tree item IDs to data
         
-        self.create_widgets()
+        # Enable save button for this overlay
+        self.enable_save_button = True
         
-        # Don't call apply_filters_and_sort here - let the parent handle initial data display
-        # This prevents timestamp from being reset to "Loading..." before parent sets proper timestamp
+        # Initialize with BaseOverlay - this will call setup_content_ui()
+        super().__init__(master, "Claim Inventory Report", min_width=720, min_height=500, 
+                        initial_width=800, initial_height=600)
+        
+        # Set custom title text
+        self.set_title_text("Claim Inventory")
+        
+        # Override auto-refresh settings for inventory
+        self.refresh_interval = 300  # 5 minutes for inventory
+        
         print(f"DEBUG: ClaimInventoryWindow constructor finished - instance id: {id(self)}")
         print(f"DEBUG: Constructor - timestamp_initialized: {self.timestamp_initialized}")
         print(f"DEBUG: Constructor - current timestamp text: {getattr(self, 'last_updated_label', None) and self.last_updated_label.cget('text')}")
 
-    def create_widgets(self):
-        # Controls frame at the top (simplified - just the always on top toggle)
-        controls_frame = ctk.CTkFrame(self)
-        controls_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew", columnspan=2)
-
-        controls_frame.grid_columnconfigure(0, weight=1)
-        controls_frame.grid_columnconfigure(1, weight=0)
-
-        # Instructions label
-        instructions_label = ctk.CTkLabel(controls_frame, 
-                                        text="Click filter arrows (▼) in headers for sorting and filtering options",
-                                        font=ctk.CTkFont(size=12))
-        instructions_label.grid(row=0, column=0, padx=10, pady=5, sticky="w")
-
-        # Always on Top toggle
-        self.always_on_top_switch = ctk.CTkSwitch(controls_frame, text="Always on Top", 
-                                                command=self._toggle_always_on_top)
-        self.always_on_top_switch.grid(row=0, column=1, padx=10, pady=5, sticky="e")
-        self.always_on_top_switch.select()
-
-        # Search frame
+    def setup_content_ui(self):
+        """Setup the main content area of the overlay."""
+        # Search frame - positioned at row 1 (after controls at row 0)
         search_frame = ctk.CTkFrame(self)
-        search_frame.grid(row=1, column=0, padx=0, pady=0, sticky="ew", columnspan=2)
+        search_frame.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="ew", columnspan=2)
         search_frame.grid_columnconfigure(1, weight=1)
 
         # Search label
         search_label = ctk.CTkLabel(search_frame, text="Search:", font=ctk.CTkFont(size=12))
-        search_label.grid(row=0, column=0, padx=5, pady=1, sticky="w")
+        search_label.grid(row=0, column=0, padx=10, pady=5, sticky="w")
 
         # Search entry
         self.search_entry = ctk.CTkEntry(search_frame, placeholder_text="Type to search items...")
-        self.search_entry.grid(row=0, column=1, padx=5, pady=1, sticky="ew")
+        self.search_entry.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
         self.search_entry.bind('<KeyRelease>', self._on_search_change)
 
         # Clear search button
         self.clear_search_button = ctk.CTkButton(search_frame, text="Clear", width=60, 
                                                command=self._clear_search)
-        self.clear_search_button.grid(row=0, column=2, padx=5, pady=1, sticky="e")
+        self.clear_search_button.grid(row=0, column=2, padx=10, pady=5, sticky="e")
 
-        # --- Treeview (main content area) ---
-        self.tree = ttk.Treeview(self, columns=("Tier", "Name", "Quantity", "Containers", "Tag"), show="tree headings")
-        self.tree.grid(row=2, column=0, padx=0, pady=(2, 10), sticky="nsew")
+        # Create treeview frame using base class method (at row 2)
+        self.tree_frame = self.create_treeview_frame(row=2)
+        
+        # Setup treeview styling
+        self.setup_treeview_styling()
+
+        # Create treeview
+        self.tree = ttk.Treeview(self.tree_frame, columns=("Tier", "Name", "Quantity", "Containers", "Tag"), show="tree headings")
+        self.tree.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
 
         # Configure the tree column (column #0) - this shows the tree structure
         self.tree.heading("#0", text="Item", anchor="w")
@@ -274,51 +232,37 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
         self.tooltip_window = None
         self.tooltip_item = None
 
-        # Vertical scrollbar for treeview
-        vsb = ctk.CTkScrollbar(self, command=self.tree.yview)
-        vsb.grid(row=2, column=1, sticky="ns", padx=(0,0), pady=(0, 10))
-        self.tree.configure(yscrollcommand=vsb.set)
+        # Add vertical scrollbar using base class method
+        self.add_vertical_scrollbar(self.tree_frame, self.tree)
 
         # Horizontal scrollbar for treeview
-        hsb = ctk.CTkScrollbar(self, orientation="horizontal", command=self.tree.xview)
-        hsb.grid(row=3, column=0, sticky="ew", padx=0, pady=(0, 10))
+        hsb = ctk.CTkScrollbar(self.tree_frame, orientation="horizontal", command=self.tree.xview)
+        hsb.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
         self.tree.configure(xscrollcommand=hsb.set)
 
-        # Button frame above status bar
-        button_frame = ctk.CTkFrame(self, fg_color="transparent")
-        button_frame.grid(row=4, column=0, padx=10, pady=(0, 10), sticky="ew", columnspan=2)
-        button_frame.grid_columnconfigure(0, weight=1)
-        button_frame.grid_columnconfigure(1, weight=1)
+    def _on_save_clicked(self):
+        """Handle save button click - delegates to existing save functionality."""
+        self._save_to_file()
 
-        ctk.CTkButton(button_frame, text="Refresh Data", command=self._refresh_data).grid(row=0, column=0, padx=5, pady=5, sticky="ew")
-        ctk.CTkButton(button_frame, text="Save to File", command=self._save_to_file).grid(row=0, column=1, padx=5, pady=5, sticky="ew")
-
-        # Status bar frame at the bottom
-        self.status_bar_frame = ctk.CTkFrame(self, height=30, fg_color=("gray86", "gray17"))
-        self.status_bar_frame.grid(row=5, column=0, padx=0, pady=0, sticky="ew", columnspan=2)
-        self.status_bar_frame.grid_columnconfigure(0, weight=1)
-        self.status_bar_frame.grid_columnconfigure(1, weight=0)
-
-        # Status bar content - preserve timestamp if already initialized
-        initial_timestamp_text = "Last update: Loading..."
-        if hasattr(self, 'timestamp_initialized') and self.timestamp_initialized and hasattr(self, 'last_updated_label'):
-            # Preserve existing timestamp text if already initialized
-            initial_timestamp_text = self.last_updated_label.cget('text')
-            print(f"DEBUG: Preserving existing timestamp: {initial_timestamp_text}")
-        
-        self.last_updated_label = ctk.CTkLabel(self.status_bar_frame, text=initial_timestamp_text, 
-                                               font=ctk.CTkFont(size=11))
-        self.last_updated_label.grid(row=0, column=0, padx=10, pady=2, sticky="w")
-
-        self.item_count_label = ctk.CTkLabel(self.status_bar_frame, text="Items: 0", 
+    def setup_status_bar_content(self):
+        """Setup additional content in the status bar."""
+        # Add item count label to status bar
+        self.item_count_label = ctk.CTkLabel(self.status_frame, text="Items: 0", 
                                              font=ctk.CTkFont(size=11))
-        self.item_count_label.grid(row=0, column=1, padx=10, pady=2, sticky="e")
+        self.item_count_label.grid(row=0, column=2, padx=10, pady=5, sticky="e")
+
+    def refresh_data(self):
+        """Refresh the data displayed in the overlay."""
+        self._refresh_data()
+
+    def create_widgets(self):
+        # This method is now replaced by setup_content_ui
+        pass
 
     def _update_treeview_headers(self):
         """Updates the treeview column headers with sort direction indicators and filter dropdowns."""
         arrow_up = " ↑"
         arrow_down = " ↓"
-        filter_arrow = " ▼"
         columns = ["Tier", "Name", "Quantity", "Containers", "Tag"]
 
         # Update tree column header for Name sorting
@@ -326,7 +270,7 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
         if self.sort_column == "Name":
             tree_sort_indicator = arrow_down if not self.sort_direction else arrow_up
         tree_filter_indicator = " [F]" if self._is_filter_active("Name") else ""
-        tree_header_text = "Item" + tree_sort_indicator + tree_filter_indicator + filter_arrow
+        tree_header_text = "Item" + tree_sort_indicator + tree_filter_indicator
         self.tree.heading("#0", text=tree_header_text, anchor="w", 
                          command=lambda: self._show_combined_menu("Name"))
 
@@ -345,7 +289,7 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
             if col == "Name":
                 header_text = ""
             else:
-                header_text = col + sort_indicator + filter_indicator + filter_arrow
+                header_text = col + sort_indicator + filter_indicator
             
             # Bind combined sort/filter menu (clicking anywhere on header)
             self.tree.heading(col, text=header_text, 
@@ -403,13 +347,6 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
         logging.info(f"Filter for {column_name} updated: {new_filter_state}")
         self.apply_filters_and_sort()
 
-    def _toggle_always_on_top(self):
-        """Toggles the 'always on top' attribute of the window."""
-        current_state = self.attributes('-topmost')
-        new_state = not current_state
-        self.attributes('-topmost', new_state)
-        logging.info(f"Always on Top set to: {new_state}")
-
     def _on_search_change(self, event=None):
         """Called when the search entry text changes."""
         self.search_term = self.search_entry.get().lower().strip()
@@ -422,33 +359,6 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
         self.search_term = ""
         logging.info("Search cleared")
         self.apply_filters_and_sort()
-
-    def _schedule_auto_refresh(self):
-        """Schedules the automatic refresh of inventory data."""
-        # Cancel any existing refresh job to prevent multiple schedules
-        if self.auto_refresh_job:
-            self.after_cancel(self.auto_refresh_job)
-            self.auto_refresh_job = None
-
-        refresh_interval_ms = self.auto_refresh_interval_minutes * 60 * 1000
-        self.auto_refresh_job = self.after(refresh_interval_ms, self._auto_refresh_data)
-        logging.info(f"Next auto-refresh scheduled in {self.auto_refresh_interval_minutes} minutes.")
-
-    def _cancel_auto_refresh(self):
-        """Cancels the currently scheduled automatic refresh."""
-        if self.auto_refresh_job:
-            self.after_cancel(self.auto_refresh_job)
-            self.auto_refresh_job = None
-            logging.info("Auto-refresh cancelled.")
-
-    def _auto_refresh_data(self):
-        """Called by the auto-refresh scheduler to refresh data."""
-        logging.info("Auto-refreshing inventory data...")
-        # Call the master's force refresh method
-        if hasattr(self.master, 'force_inventory_refresh'):
-            self.master.force_inventory_refresh()
-        elif hasattr(self.master, '_force_inventory_refresh'):
-            self.master._force_inventory_refresh()
 
     def _refresh_data(self):
         """Triggers a re-fetch and re-display of inventory data, bypassing cache."""
@@ -648,9 +558,7 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
         # Update item count as well when timestamp is updated
         self._update_item_count()
 
-        # Only schedule refresh when explicitly requested (e.g., after new data fetch)
-        if schedule_refresh:
-            self._schedule_auto_refresh()
+        # Note: BaseOverlay handles auto-refresh scheduling
             
     def _set_timestamp_from_fetch_time(self, fetch_time):
         """Set timestamp display from a cached fetch time."""
@@ -681,13 +589,14 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
         print(f"DEBUG: After sort - timestamp label text: {self.last_updated_label.cget('text')}")
 
     def on_closing(self):
-        """Handles window closing event, cancels auto-refresh."""
-        self._cancel_auto_refresh()
+        """Handles window closing event."""
+        # Handle the specific cleanup for this window
         if hasattr(self.master, 'toggle_claim_inventory'):
             self.master.toggle_claim_inventory.deselect()  # Deselect toggle in main window
         if hasattr(self.master, 'grab_release'):
             self.master.grab_release()
-        self.destroy()
+        # Call parent's on_closing for base cleanup (refresh job cancellation)
+        super().on_closing()
 
     def _save_to_file(self):
         """Save the current inventory data to a file."""

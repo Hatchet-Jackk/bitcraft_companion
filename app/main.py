@@ -1,14 +1,8 @@
 import customtkinter as ctk
-import tkinter as tk
 import threading
 import logging
-from datetime import datetime
-from enum import Enum
 
-from client import BitCraft
-from claim import Claim
 from base_window import BaseWindow
-from inventory_service import InventoryService
 from overlay import BitCraftOverlay as LoginOverlay
 
 logging.basicConfig(
@@ -23,7 +17,7 @@ ctk.set_default_color_theme("blue")
 
 class BitCraftMainWindow(BaseWindow):
     def __init__(self, authenticated_client=None):
-        super().__init__("BitCraft Companion", "400x350")
+        super().__init__("BitCraft Companion", "400x400")
 
         # Initialize services with authenticated client
         if authenticated_client:
@@ -39,7 +33,8 @@ class BitCraftMainWindow(BaseWindow):
         self.toggles_frame.pack(fill="both", expand=True)
         self.toggles_frame.grid_columnconfigure(0, weight=1)
         self.toggles_frame.grid_rowconfigure(0, weight=0)  
-        self.toggles_frame.grid_rowconfigure(1, weight=1) 
+        self.toggles_frame.grid_rowconfigure(1, weight=0)
+        self.toggles_frame.grid_rowconfigure(2, weight=1) 
 
         self.toggle_claim_inventory = ctk.CTkSwitch(
             self.toggles_frame, 
@@ -48,8 +43,15 @@ class BitCraftMainWindow(BaseWindow):
         )
         self.toggle_claim_inventory.grid(row=0, column=0, padx=20, pady=10, sticky="w")
 
+        self.toggle_timer_overlay = ctk.CTkSwitch(
+            self.toggles_frame, 
+            text="Passive Crafting Timer Overlay", 
+            command=self.toggle_passive_crafting_timer_overlay
+        )
+        self.toggle_timer_overlay.grid(row=1, column=0, padx=20, pady=10, sticky="w")
+
         # Spacer to push any future elements to the bottom
-        ctk.CTkFrame(self.toggles_frame, fg_color="transparent").grid(row=1, column=0, sticky="nsew", pady=(0,10))
+        ctk.CTkFrame(self.toggles_frame, fg_color="transparent").grid(row=2, column=0, sticky="nsew", pady=(0,10))
 
         self.status_label.configure(text="BitCraft Companion ready", text_color="green")
 

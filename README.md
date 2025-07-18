@@ -26,6 +26,12 @@ BitCraft Companion connects to the BitCraft game servers via WebSocket to provid
 - **Search & Filter**: Find specific crafting operations quickly
 - **Real-time Updates**: Monitor crafting progress as it happens
 
+#### ⏰ **Passive Crafting Timer Overlay**
+- **Always-on-Top Timer**: Compact overlay showing your active crafting timers
+- **Countdowns**: See exactly how much time remains for each crafting operation
+- **Completion Alerts**: Visual indicators when crafting operations are ready
+- **Grouped Display**: Items are grouped by type with total quantities and completion counts
+
 #### 🔐 **Secure Authentication**
 - **Email-based Login**: Uses your BitCraft account email for authentication. Nothing is shared externally.
 - **Token Management**: Securely stores authentication tokens using Windows Credential Manager
@@ -100,6 +106,14 @@ The application uses reference data files to interpret game data:
 4. **Monitor Progress** - track completion status and remaining time
 5. **Always on Top** - keep the window visible while playing
 
+### Using the Passive Crafting Timer Overlay
+
+1. **Toggle "Passive Crafting Timer Overlay"** - opens a compact always-on-top timer
+2. **Countdown** - see exactly how much time remains for each operation
+3. **Grouped Display** - items are grouped by type with total quantities shown
+4. **Completion Status** - shows "READY" when crafting operations are complete
+6. **Auto-refresh** - timer updates automatically as operations progress
+
 ### Advanced Features
 
 #### Search Functionality
@@ -120,6 +134,8 @@ The application uses reference data files to interpret game data:
 - **Tiers**: Items are organized by their tier level (T1, T2, T3, etc.)
 - **Tags**: Categories and metadata for items (e.g., "Building Material", "Tool")
 - **Timestamps**: Last update times for data freshness indicators
+- **Remaining Time**: For passive crafting timers, shows exact time remaining until completion
+- **Completion Status**: "READY" indicates when crafting operations are finished
 
 ## ⚙️ Configuration
 
