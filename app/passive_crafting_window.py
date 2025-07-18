@@ -72,6 +72,10 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
         # Flag to track if timestamp has been properly initialized
         self.timestamp_initialized = False
         
+        # Expandable rows functionality
+        self.expanded_rows = set()  # Track which rows are expanded
+        self.row_data_map = {}  # Map tree item IDs to data
+        
         self.create_widgets()
         
         print(f"DEBUG: PassiveCraftingWindow constructor finished - instance id: {id(self)}")
@@ -117,8 +121,12 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
         self.clear_search_button.grid(row=0, column=2, padx=5, pady=1, sticky="e")
 
         # --- Treeview (main content area) ---
-        self.tree = ttk.Treeview(self, columns=("Tier", "Name", "Quantity", "Refinery", "Crafters", "Tag"), show="headings")
+        self.tree = ttk.Treeview(self, columns=("Tier", "Name", "Quantity", "Refinery", "Crafters", "Tag"), show="tree headings")
         self.tree.grid(row=2, column=0, padx=0, pady=(2, 10), sticky="nsew")
+
+        # Configure the tree column (column #0) - this shows the tree structure
+        self.tree.heading("#0", text="Item", anchor="w")
+        self.tree.column("#0", width=200, minwidth=100)
 
         # Initial header setup with sort indicators
         self._update_treeview_headers()
@@ -129,6 +137,9 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
         # Bind hover for tooltips
         self.tree.bind("<Motion>", self._on_hover)
         self.tree.bind("<Leave>", self._on_leave)
+        
+        # Bind double-click for expandable rows
+        self.tree.bind("<Double-1>", self._on_double_click)
         
         # Tooltip variables
         self.tooltip_window = None
@@ -181,6 +192,15 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
         filter_arrow = " ▼"
         columns = ["Tier", "Name", "Quantity", "Refinery", "Crafters", "Tag"]
 
+        # Update tree column header for Name sorting
+        tree_sort_indicator = ""
+        if self.sort_column == "Name":
+            tree_sort_indicator = arrow_down if not self.sort_direction else arrow_up
+        tree_filter_indicator = " [F]" if self._is_filter_active("Name") else ""
+        tree_header_text = "Item" + tree_sort_indicator + tree_filter_indicator + filter_arrow
+        self.tree.heading("#0", text=tree_header_text, anchor="w", 
+                         command=lambda: self._show_combined_menu("Name"))
+
         for col in columns:
             # Sort indicator
             sort_indicator = ""
@@ -192,14 +212,18 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
             if self._is_filter_active(col):
                 filter_indicator = " [F]"
                 
-            header_text = col + sort_indicator + filter_indicator + filter_arrow
+            # Hide the Name column header since we're using the tree column
+            if col == "Name":
+                header_text = ""
+            else:
+                header_text = col + sort_indicator + filter_indicator + filter_arrow
             
             # Bind combined sort/filter menu (clicking anywhere on header)
             self.tree.heading(col, text=header_text, 
                              command=lambda column=col: self._show_combined_menu(column))
 
         self.tree.column("Tier", width=80, anchor="center")
-        self.tree.column("Name", width=200, anchor="w")
+        self.tree.column("Name", width=0, minwidth=0, stretch=False)  # Hide name column since it's now in tree column
         self.tree.column("Quantity", width=100, anchor="center")
         self.tree.column("Refinery", width=200, anchor="w")
         self.tree.column("Crafters", width=80, anchor="center")
@@ -218,6 +242,9 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
                         background="#3a3a3a",
                         foreground="white",
                         font=('TkDefaultFont', 10, 'bold'))
+        
+        # Configure tag for child rows with lighter background
+        self.tree.tag_configure("child", background="#3a3a3a")
 
     def _toggle_always_on_top(self):
         """Toggles the 'always on top' attribute of the window."""
@@ -325,31 +352,106 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
 
     def update_treeview(self, data):
         """Updates the Treeview with new data."""
+        # Remember which rows were expanded
+        expanded_items = set()
+        for item_id in self.tree.get_children():
+            item_values = self.tree.item(item_id)["values"]
+            if len(item_values) > 1:
+                item_name = item_values[1]  # Name is at index 1
+                refinery = item_values[3]   # Refinery is at index 3
+                item_key = f"{item_name}|{refinery}"
+                if item_key in self.expanded_rows:
+                    expanded_items.add(item_key)
+        
         # Clear all existing items to ensure proper ordering
         for item in self.tree.get_children():
             self.tree.delete(item)
         
+        # Clear the data map
+        self.row_data_map.clear()
+        
         # Insert all items in the correct order
         for item_data in data:
-            # Format crafter count with emoji
+            # Format crafter display - show name if single crafter, count if multiple
             crafter_count = item_data.get("Crafters", 0)
-            crafter_display = f"{crafter_count}×👤" if crafter_count > 0 else "0×👤"
+            crafter_details = item_data.get("CrafterDetails", [])
             
-            self.tree.insert("", "end", values=(
+            if crafter_count == 1 and crafter_details:
+                crafter_display = crafter_details[0]  # Show single crafter name
+            else:
+                crafter_display = f"{crafter_count}×👤" if crafter_count > 0 else "0×👤"
+            
+            # Create main row - use tree column for item name
+            item_id = self.tree.insert("", "end", text=item_data["Name"], values=(
                 item_data["Tier"],
-                item_data["Name"],
+                "",  # Name column now empty since it's in the tree column
                 item_data["Quantity"],
                 item_data["Refinery"],
                 crafter_display,
                 item_data["Tag"]
             ))
+            
+            # Check if item should be expandable (multiple crafters or multiple refineries)
+            has_multiple_crafters = crafter_count > 1
+            has_multiple_refineries = len(item_data.get("refineries", [])) > 1
+            
+            # If item has multiple crafters or refineries, make it expandable by adding child rows immediately
+            if has_multiple_crafters or has_multiple_refineries:
+                # Add child rows immediately so they're visible
+                if has_multiple_crafters:
+                    # Show breakdown by crafter
+                    for crafter in crafter_details:
+                        detail_id = self.tree.insert(item_id, "end", text="", values=(
+                            "",  # Empty tier for detail rows
+                            "",  # Empty name column since it's in the tree column
+                            "",  # Quantity (we'd need to calculate per crafter)
+                            "",  # Empty refinery for detail rows
+                            crafter,  # Crafter name
+                            ""  # Empty tag for detail rows
+                        ), tags=("child",))
+                        # Store reference to indicate this is a detail row
+                        self.row_data_map[detail_id] = {"is_detail": True, "parent_data": item_data}
+                elif has_multiple_refineries:
+                    # Show breakdown by refinery
+                    refineries = list(item_data.get("refineries", []))
+                    refinery_quantities = item_data.get("refinery_quantities", {})
+                    for refinery in refineries:
+                        refinery_quantity = refinery_quantities.get(refinery, 0)
+                        detail_id = self.tree.insert(item_id, "end", text="", values=(
+                            "",  # Empty tier for detail rows
+                            "",  # Empty name column since it's in the tree column
+                            refinery_quantity,  # Quantity for this refinery
+                            refinery,  # Refinery name
+                            crafter_display,  # Show the crafter
+                            ""  # Empty tag for detail rows
+                        ), tags=("child",))
+                        # Store reference to indicate this is a detail row
+                        self.row_data_map[detail_id] = {"is_detail": True, "parent_data": item_data}
+                
+                # Store the data for this row
+                self.row_data_map[item_id] = item_data.copy()
+            else:
+                # Store the data for this row
+                self.row_data_map[item_id] = item_data
+            
+            # If this row was expanded before, expand it again
+            item_name = item_data["Name"]
+            refinery = item_data["Refinery"]
+            item_key = f"{item_name}|{refinery}"
+            if item_key in expanded_items:
+                self.expanded_rows.add(item_key)
+                self._expand_row(item_id, item_data)
         
         logging.debug(f"Updated Treeview with {len(data)} items in sorted order.")
 
     def _update_item_count(self):
         """Updates only the item count in the status bar without changing the timestamp."""
-        # Update item count based on currently visible items in treeview
-        visible_items = len(self.tree.get_children())
+        # Count only parent rows (not detail rows that are children)
+        visible_items = 0
+        for item_id in self.tree.get_children():
+            if not self.tree.parent(item_id):  # Only count top-level items
+                visible_items += 1
+        
         total_items = len(self.current_crafting_data)
         
         if visible_items == total_items:
@@ -895,6 +997,66 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
         close_button = ctk.CTkButton(detail_window, text="Close", 
                                    command=detail_window.destroy)
         close_button.grid(row=2, column=0, padx=20, pady=(0, 20))
+
+    def _on_double_click(self, event):
+        """Handle double-click on treeview items to expand/collapse rows."""
+        item_id = self.tree.selection()[0] if self.tree.selection() else None
+        if not item_id:
+            return
+            
+        # Check if this is already a detail row (child row)
+        parent = self.tree.parent(item_id)
+        if parent:
+            # This is a detail row, don't expand it
+            return
+            
+        # Get the item data
+        item_data = self.row_data_map.get(item_id)
+        if not item_data:
+            return
+            
+        item_name = item_data["Name"]
+        refinery = item_data["Refinery"]
+        crafter_details = item_data.get("CrafterDetails", [])
+        
+        # Check if item should be expandable (multiple crafters or multiple refineries)
+        has_multiple_crafters = len(crafter_details) > 1
+        has_multiple_refineries = len(item_data.get("refineries", set())) > 1
+        
+        # Only expand if there are multiple crafters or refineries
+        if not (has_multiple_crafters or has_multiple_refineries):
+            return
+            
+        # Use combination of name and refinery as key
+        item_key = f"{item_name}|{refinery}"
+        
+        # Toggle expansion state
+        if item_key in self.expanded_rows:
+            self._collapse_row(item_id, item_key)
+        else:
+            self._expand_row(item_id, item_data)
+
+    def _expand_row(self, item_id, item_data):
+        """Expand a row to show crafter/refinery details."""
+        item_name = item_data["Name"]
+        refinery = item_data["Refinery"]
+        
+        # Create key for this specific item/refinery combination
+        item_key = f"{item_name}|{refinery}"
+        
+        # Add to expanded set
+        self.expanded_rows.add(item_key)
+        
+        # Expand the tree item to show children (children are already populated)
+        self.tree.item(item_id, open=True)
+
+    def _collapse_row(self, item_id, item_key):
+        """Collapse a row to hide crafter/refinery details."""
+        # Remove from expanded set
+        self.expanded_rows.discard(item_key)
+        
+        # Simply collapse the tree item (children remain but are hidden)
+        self.tree.item(item_id, open=False)
 
     def on_closing(self):
         """Handles window closing event, cancels auto-refresh."""

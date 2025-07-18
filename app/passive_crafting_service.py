@@ -279,7 +279,8 @@ class PassiveCraftingService:
                             'Tag': f"Recipe: {recipe_name}",  # First recipe found
                             'refineries': set([refinery_name]),  # Track all refineries
                             'recipes': set([recipe_name]),  # Track all recipes
-                            'crafters': set([crafter_name])  # Track all crafters
+                            'crafters': set([crafter_name]),  # Track all crafters
+                            'refinery_quantities': {refinery_name: 0}  # Track quantities per refinery
                         }
                     else:
                         # Add this refinery to the set
@@ -289,9 +290,13 @@ class PassiveCraftingService:
                         item_groups[group_key]['refineries'].add(refinery_name)
                         item_groups[group_key]['recipes'].add(recipe_name)
                         item_groups[group_key]['crafters'].add(crafter_name)
+                        # Initialize refinery quantity if not exists
+                        if refinery_name not in item_groups[group_key]['refinery_quantities']:
+                            item_groups[group_key]['refinery_quantities'][refinery_name] = 0
                     
-                    # Add the quantity for this craft operation
+                    # Add the quantity for this craft operation to both total and refinery-specific
                     item_groups[group_key]['Quantity'] += recipe_quantity
+                    item_groups[group_key]['refinery_quantities'][refinery_name] += recipe_quantity
                 
                 # Convert grouped data to display format
                 for group_key, group_data in item_groups.items():
@@ -320,7 +325,9 @@ class PassiveCraftingService:
                         'Refinery': refinery_display,
                         'Tag': recipe_display,
                         'Crafters': crafter_count,
-                        'CrafterDetails': crafters  # For tooltip/context menu
+                        'CrafterDetails': crafters,  # For tooltip/context menu
+                        'refineries': refineries,  # Include refineries list for expandable logic
+                        'refinery_quantities': group_data['refinery_quantities']  # Include per-refinery quantities
                     }
                     
                     display_data.append(display_row)
