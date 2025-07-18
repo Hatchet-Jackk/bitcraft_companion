@@ -1,7 +1,5 @@
 import customtkinter as ctk
-import tkinter as tk
 from tkinter import ttk
-from typing import Optional
 from datetime import datetime
 from abc import ABC, abstractmethod
 

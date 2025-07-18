@@ -1,10 +1,6 @@
 import customtkinter as ctk
-import tkinter as tk
 from tkinter import ttk
-import logging
-import time
-import threading
-from typing import Optional, List, Dict, Any
+from typing import List, Dict, Any
 from datetime import datetime
 
 from client import BitCraft

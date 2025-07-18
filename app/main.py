@@ -1,14 +1,8 @@
 import customtkinter as ctk
-import tkinter as tk
 import threading
 import logging
-from datetime import datetime
-from enum import Enum
 
-from client import BitCraft
-from claim import Claim
 from base_window import BaseWindow
-from inventory_service import InventoryService
 from overlay import BitCraftOverlay as LoginOverlay
 
 logging.basicConfig(
