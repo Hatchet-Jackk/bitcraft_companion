@@ -303,9 +303,11 @@ class BitCraftOverlay(BaseWindow):
         self.toggles_frame = ctk.CTkFrame(self.content_frame)
         self.toggles_frame.pack(fill="both", expand=True)
         self.toggles_frame.grid_columnconfigure(0, weight=1)
-        self.toggles_frame.grid_rowconfigure(0, weight=0) # Toggle row
-        self.toggles_frame.grid_rowconfigure(1, weight=1) # Spacer row
-        self.toggles_frame.grid_rowconfigure(2, weight=0) # Button row
+        self.toggles_frame.grid_rowconfigure(0, weight=0) # Title row
+        self.toggles_frame.grid_rowconfigure(1, weight=0) # Toggle row 1
+        self.toggles_frame.grid_rowconfigure(2, weight=0) # Toggle row 2
+        self.toggles_frame.grid_rowconfigure(3, weight=1) # Spacer row
+        self.toggles_frame.grid_rowconfigure(4, weight=0) # Button row
 
         # Title
         title_label = ctk.CTkLabel(self.toggles_frame, text="BitCraft Companion", 
@@ -317,9 +319,13 @@ class BitCraftOverlay(BaseWindow):
                                                    command=self.toggle_claim_inventory_window)
         self.toggle_claim_inventory.grid(row=1, column=0, padx=20, pady=10, sticky="w")
 
+        self.toggle_passive_crafting = ctk.CTkSwitch(self.toggles_frame, text="Passive Crafting Status", 
+                                                    command=self.toggle_passive_crafting_window)
+        self.toggle_passive_crafting.grid(row=2, column=0, padx=20, pady=10, sticky="w")
+
         # Button frame for navigation
         button_frame = ctk.CTkFrame(self.toggles_frame, fg_color="transparent")
-        button_frame.grid(row=2, column=0, padx=20, pady=(10, 20), sticky="ew")
+        button_frame.grid(row=4, column=0, padx=20, pady=(10, 20), sticky="ew")
         button_frame.grid_columnconfigure((0, 1), weight=1)
 
         # Back button
@@ -349,9 +355,16 @@ class BitCraftOverlay(BaseWindow):
             self.claim_inventory_window.destroy()
             self.claim_inventory_window = None
         
-        # Reset toggle state
+        # Close any open passive crafting window
+        if self.passive_crafting_window and self.passive_crafting_window.winfo_exists():
+            self.passive_crafting_window.destroy()
+            self.passive_crafting_window = None
+        
+        # Reset toggle states
         if hasattr(self, 'toggle_claim_inventory'):
             self.toggle_claim_inventory.deselect()
+        if hasattr(self, 'toggle_passive_crafting'):
+            self.toggle_passive_crafting.deselect()
         
         # Transition back to player name screen (or login email if logged out)
         if self.bitcraft_client.auth and self.bitcraft_client.email:
