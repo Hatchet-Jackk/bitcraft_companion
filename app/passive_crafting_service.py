@@ -154,6 +154,17 @@ class PassiveCraftingService:
                     callback(display_data, True, message, True)
                     return
 
+                # Get claim members for user name lookup
+                claim_members = self.bitcraft_client.fetch_claim_member_state(claim_id)
+                user_lookup = {}
+                if claim_members:
+                    user_lookup = {member.get('player_entity_id'): member.get('user_name') 
+                                 for member in claim_members 
+                                 if member.get('player_entity_id') and member.get('user_name')}
+                    logging.info(f"Loaded {len(user_lookup)} claim members for user name lookup")
+                else:
+                    logging.warning("No claim members found for user name lookup")
+
                 # Filter buildings to only processing-capable ones
                 processing_buildings = []
                 building_nicknames = self.bitcraft_client.fetch_building_nickname_state()
@@ -209,12 +220,21 @@ class PassiveCraftingService:
                     craft_entity_id = craft_state.get('entity_id')  # This is the craft operation ID
                     building_entity_id = craft_state.get('building_entity_id')  # This is the building ID
                     recipe_id = craft_state.get('recipe_id')
+                    owner_entity_id = craft_state.get('owner_entity_id')  # The user who started the craft
+                    
+                    # Skip crafting operations by non-claim members
+                    if owner_entity_id not in user_lookup:
+                        logging.debug(f"Skipping passive craft operation by non-claim member: {owner_entity_id}")
+                        continue
                     
                     # Find the building info using building_entity_id
                     building_info = next((b for b in processing_buildings if b['entity_id'] == building_entity_id), None)
                     if not building_info:
                         logging.debug(f"Could not find building info for building_entity_id: {building_entity_id}")
                         continue
+                    
+                    # Get user name from owner_entity_id (we know they're a claim member now)
+                    crafter_name = user_lookup.get(owner_entity_id, f"User {owner_entity_id}")
                     
                     # Get recipe information
                     recipe_info = self.crafting_recipes.get(recipe_id, {})
@@ -258,7 +278,9 @@ class PassiveCraftingService:
                             'Refinery': refinery_name,  # First refinery found
                             'Tag': f"Recipe: {recipe_name}",  # First recipe found
                             'refineries': set([refinery_name]),  # Track all refineries
-                            'recipes': set([recipe_name])  # Track all recipes
+                            'recipes': set([recipe_name]),  # Track all recipes
+                            'crafters': set([crafter_name]),  # Track all crafters
+                            'refinery_quantities': {refinery_name: 0}  # Track quantities per refinery
                         }
                     else:
                         # Add this refinery to the set
@@ -267,9 +289,14 @@ class PassiveCraftingService:
                             refinery_name = f"{building_info['nickname']} ({building_info['building_name']})"
                         item_groups[group_key]['refineries'].add(refinery_name)
                         item_groups[group_key]['recipes'].add(recipe_name)
+                        item_groups[group_key]['crafters'].add(crafter_name)
+                        # Initialize refinery quantity if not exists
+                        if refinery_name not in item_groups[group_key]['refinery_quantities']:
+                            item_groups[group_key]['refinery_quantities'][refinery_name] = 0
                     
-                    # Add the quantity for this craft operation
+                    # Add the quantity for this craft operation to both total and refinery-specific
                     item_groups[group_key]['Quantity'] += recipe_quantity
+                    item_groups[group_key]['refinery_quantities'][refinery_name] += recipe_quantity
                 
                 # Convert grouped data to display format
                 for group_key, group_data in item_groups.items():
@@ -287,12 +314,20 @@ class PassiveCraftingService:
                     else:
                         recipe_display = f"{len(recipes)} recipes ({recipes[0]}...)"
                     
+                    # Format crafter information
+                    crafters = list(group_data['crafters'])
+                    crafter_count = len(crafters)
+                    
                     display_row = {
                         'Tier': group_data['Tier'],
                         'Name': group_data['Name'],
                         'Quantity': group_data['Quantity'],
                         'Refinery': refinery_display,
-                        'Tag': recipe_display
+                        'Tag': recipe_display,
+                        'Crafters': crafter_count,
+                        'CrafterDetails': crafters,  # For tooltip/context menu
+                        'refineries': refineries,  # Include refineries list for expandable logic
+                        'refinery_quantities': group_data['refinery_quantities']  # Include per-refinery quantities
                     }
                     
                     display_data.append(display_row)

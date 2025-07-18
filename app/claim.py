@@ -259,6 +259,22 @@ class Claim:
 
         # Iterate only through 'Storage' type buildings
         for building in self.buildings.get("Storage", []) + self.buildings.get("Cargo Stockpile", []):
+            # Get building name and nickname for display
+            building_name = building.get("building_name", "Unknown Building")
+            building_nickname = building.get("nickname")
+            
+            # Create display name for container
+            if building_nickname:
+                if building_name and building_name != "Unknown Building":
+                    container_name = f"{building_nickname} ({building_name})"
+                else:
+                    container_name = building_nickname
+            else:
+                if building_name and building_name != "Unknown Building":
+                    container_name = building_name
+                else:
+                    container_name = "Storage Container"
+            
             for slot in building.get("inventory", {}).get("pockets", []):
                 try:
                     inv_data = slot[1][1]
@@ -291,8 +307,17 @@ class Claim:
                             item_details["tag"] = tags_from_data if isinstance(tags_from_data, str) else ""
 
                             item_details["quantity"] = 0
+                            item_details["containers"] = {}  # Track containers and quantities
                             collection[inv_id] = item_details
+                        
+                        # Add to overall quantity
                         collection[inv_id]["quantity"] += inv_num
+                        
+                        # Track container-specific quantities
+                        if container_name not in collection[inv_id]["containers"]:
+                            collection[inv_id]["containers"][container_name] = 0
+                        collection[inv_id]["containers"][container_name] += inv_num
+                        
                     else:
                         logging.debug(f"Inventory item ID {inv_id} not found in reference data.")
 

@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6]
+
+### Added
+- **Expandable Rows (Phase 2: Advanced Features)**
+  - Immediate dropdown arrows for expandable items
+  - Tree structure support with proper hierarchical display
+  
+- **Inventory Window Enhancements**
+  - Items with multiple containers now expand to show individual container quantities
+  - Container names properly aligned in the Containers column
+  - Single container items display actual container name instead of "1×📦"
+  
+- **Passive Crafting Window Enhancements**
+  - Items with multiple refineries expand to show individual refinery quantities
+  - Per-refinery quantity tracking (child row quantities add up to parent total)
+  - Support for multiple crafters when applicable
+  - Enhanced data structure for accurate refinery-specific information
+
+- **Visual Design Improvements**
+  - Lighter background (#3a3a3a) for child rows to distinguish from parent rows
+  - Clean appearance with no bullet points in expanded rows
+  - Left-aligned container names for better readability
+  - Consistent tag-based styling across both windows
+
+### Technical Improvements
+- **Immediate Child Population**: Child rows are populated immediately when tree is created
+- **Efficient Data Structure**: Per-refinery quantity tracking in the service layer
+- **Robust Expand/Collapse**: Simple show/hide logic without complex dummy child management
+- **Enhanced Service Layer**: Modified `passive_crafting_service.py` to include detailed refinery information
+
 ## [0.1.5]
 
 - **Wiki Integration**
