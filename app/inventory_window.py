@@ -181,6 +181,7 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
             "Tier": {'selected': None, 'min': None, 'max': None},
             "Name": {'selected': None, 'min': None, 'max': None},
             "Quantity": {'selected': None, 'min': None, 'max': None},
+            "Containers": {'selected': None, 'min': None, 'max': None},
             "Tag": {'selected': None, 'min': None, 'max': None}
         }
 
@@ -245,7 +246,7 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
         self.clear_search_button.grid(row=0, column=2, padx=5, pady=1, sticky="e")
 
         # --- Treeview (main content area) ---
-        self.tree = ttk.Treeview(self, columns=("Tier", "Name", "Quantity", "Tag"), show="headings")
+        self.tree = ttk.Treeview(self, columns=("Tier", "Name", "Quantity", "Containers", "Tag"), show="headings")
         self.tree.grid(row=2, column=0, padx=0, pady=(2, 10), sticky="nsew")
 
         # Initial header setup with sort indicators
@@ -253,6 +254,14 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
 
         # Bind right-click context menu
         self.tree.bind("<Button-3>", self._show_context_menu)
+
+        # Bind hover for tooltips
+        self.tree.bind("<Motion>", self._on_hover)
+        self.tree.bind("<Leave>", self._on_leave)
+
+        # Tooltip variables
+        self.tooltip_window = None
+        self.tooltip_item = None
 
         # Vertical scrollbar for treeview
         vsb = ctk.CTkScrollbar(self, command=self.tree.yview)
@@ -299,7 +308,7 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
         arrow_up = " ↑"
         arrow_down = " ↓"
         filter_arrow = " ▼"
-        columns = ["Tier", "Name", "Quantity", "Tag"]
+        columns = ["Tier", "Name", "Quantity", "Containers", "Tag"]
 
         for col in columns:
             # Sort indicator
@@ -321,6 +330,7 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
         self.tree.column("Tier", width=80, anchor="center")
         self.tree.column("Name", width=200, anchor="w")
         self.tree.column("Quantity", width=100, anchor="center")
+        self.tree.column("Containers", width=120, anchor="center")
         self.tree.column("Tag", width=300, anchor="w")
 
         style = ttk.Style(self)
@@ -346,6 +356,13 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
                 if tag:
                     all_tags.add(tag)
             unique_values = sorted(list(all_tags))
+        elif column_name == "Containers":
+            # For containers, show the number of containers as unique values
+            container_counts = set()
+            for item in self.current_inventory_data:
+                containers = item.get("containers", {})
+                container_counts.add(str(len(containers)))
+            unique_values = sorted(list(container_counts), key=int)
         else:
             unique_values = sorted(list(set(str(item.get(column_name)) for item in self.current_inventory_data if column_name in item and item.get(column_name) is not None)))
 
@@ -436,7 +453,14 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
             max_val = filter_state.get('max')
 
             if selected_values is not None:
-                filtered_data = [item for item in filtered_data if str(item.get(col_name, '')) in selected_values]
+                if col_name == "Containers":
+                    # For containers, filter by number of containers
+                    filtered_data = [
+                        item for item in filtered_data 
+                        if str(len(item.get("containers", {}))) in selected_values
+                    ]
+                else:
+                    filtered_data = [item for item in filtered_data if str(item.get(col_name, '')) in selected_values]
 
             if (min_val is not None) or (max_val is not None):
                 if col_name in ["Tier", "Quantity"]:
@@ -446,10 +470,17 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
                            (min_val is None or float(item.get(col_name)) >= min_val) and \
                            (max_val is None or float(item.get(col_name)) <= max_val)
                     ]
+                elif col_name == "Containers":
+                    # For containers, filter by number of containers
+                    filtered_data = [
+                        item for item in filtered_data
+                        if (min_val is None or len(item.get("containers", {})) >= min_val) and \
+                           (max_val is None or len(item.get("containers", {})) <= max_val)
+                    ]
 
         sort_by = self.sort_column
 
-        if sort_by in ["Tier", "Name", "Quantity", "Tag"]:
+        if sort_by in ["Tier", "Name", "Quantity", "Containers", "Tag"]:
             logging.info(f"Sorting data by '{sort_by}', direction: {'DESC' if self.sort_direction else 'ASC'}, data length: {len(filtered_data)}")
             if sort_by in ["Tier", "Quantity"]:
                 # For numeric columns, convert to numbers for proper sorting
@@ -462,6 +493,12 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
                     except (ValueError, TypeError):
                         return -float('inf')
                 filtered_data.sort(key=numeric_sort_key, reverse=self.sort_direction)
+            elif sort_by == "Containers":
+                # Sort by number of containers
+                def containers_sort_key(x):
+                    containers = x.get("containers", {})
+                    return len(containers) if containers else 0
+                filtered_data.sort(key=containers_sort_key, reverse=self.sort_direction)
             elif sort_by == "Tag":
                 filtered_data.sort(key=lambda x: x.get("Tag", "").lower(), reverse=self.sort_direction)
             else:
@@ -500,10 +537,16 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
         
         # Insert all items in the correct order
         for item_data in data:
+            # Format containers for display similar to passive crafting
+            containers_data = item_data.get("containers", {})
+            container_count = len(containers_data)
+            container_display = f"{container_count}×📦" if container_count > 0 else "0×📦"
+            
             self.tree.insert("", "end", values=(
                 item_data["Tier"],
                 item_data["Name"],
                 item_data["Quantity"],
+                container_display,
                 item_data["Tag"]
             ))
         
@@ -873,6 +916,10 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
             label="Go to Wiki",
             command=lambda: self._open_wiki_page(item_name)
         )
+        context_menu.add_command(
+            label="View Containers",
+            command=lambda: self._show_container_details(item_name)
+        )
         
         # Show menu at click position
         try:
@@ -896,3 +943,127 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
     def _on_header_click(self, event):
         """Handle clicks on treeview headers - no longer needed with new approach."""
         pass
+
+    def _on_hover(self, event):
+        """Handle hover events for tooltips."""
+        item = self.tree.identify_row(event.y)
+        column = self.tree.identify_column(event.x)
+        
+        if item and column == "#4":  # Containers column (4th column, 0-indexed)
+            if self.tooltip_item != item:
+                self._hide_tooltip()
+                self._show_tooltip(event, item)
+                self.tooltip_item = item
+        else:
+            self._hide_tooltip()
+            self.tooltip_item = None
+
+    def _on_leave(self, event):
+        """Handle leave events for tooltips."""
+        self._hide_tooltip()
+        self.tooltip_item = None
+
+    def _show_tooltip(self, event, item):
+        """Show tooltip with container information."""
+        # Get the item data
+        item_values = self.tree.item(item, "values")
+        if not item_values or len(item_values) < 5:
+            return
+        
+        item_name = item_values[1]  # Name column
+        
+        # Find the corresponding data item
+        data_item = None
+        for data in self.current_inventory_data:
+            if data.get("name") == item_name:
+                data_item = data
+                break
+        
+        if not data_item:
+            return
+        
+        # Get container details
+        containers_data = data_item.get("containers", {})
+        if not containers_data:
+            return
+        
+        # Create tooltip content
+        tooltip_text = f"Containers for {item_name}:\n"
+        for container_name, quantity in containers_data.items():
+            tooltip_text += f"• {container_name}: {quantity}\n"
+        
+        # Create tooltip window
+        self.tooltip_window = tk.Toplevel(self)
+        self.tooltip_window.wm_overrideredirect(True)
+        self.tooltip_window.configure(bg="lightyellow")
+        
+        # Position tooltip
+        x = event.x_root + 10
+        y = event.y_root + 10
+        self.tooltip_window.geometry(f"+{x}+{y}")
+        
+        # Add tooltip text
+        label = tk.Label(self.tooltip_window, text=tooltip_text, 
+                        justify="left", bg="lightyellow", fg="black",
+                        font=("Arial", 9), padx=5, pady=3)
+        label.pack()
+
+    def _hide_tooltip(self):
+        """Hide the tooltip window."""
+        if self.tooltip_window:
+            self.tooltip_window.destroy()
+            self.tooltip_window = None
+
+    def _show_container_details(self, item_name):
+        """Show detailed container information in a popup window."""
+        # Find the corresponding data item
+        data_item = None
+        for data in self.current_inventory_data:
+            if data.get("name") == item_name:
+                data_item = data
+                break
+        
+        if not data_item:
+            messagebox.showwarning("No Data", f"No container data found for {item_name}")
+            return
+        
+        # Get container details
+        containers_data = data_item.get("containers", {})
+        if not containers_data:
+            messagebox.showinfo("No Containers", f"No containers found for {item_name}")
+            return
+        
+        # Create detail window
+        detail_window = ctk.CTkToplevel(self)
+        detail_window.title(f"Container Details - {item_name}")
+        detail_window.geometry("400x300")
+        detail_window.transient(self)
+        detail_window.grab_set()
+        
+        # Configure grid
+        detail_window.grid_columnconfigure(0, weight=1)
+        detail_window.grid_rowconfigure(1, weight=1)
+        
+        # Title label
+        title_label = ctk.CTkLabel(detail_window, text=f"Containers for {item_name}", 
+                                  font=ctk.CTkFont(size=16, weight="bold"))
+        title_label.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
+        
+        # Create text widget for container list
+        text_widget = ctk.CTkTextbox(detail_window)
+        text_widget.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
+        
+        # Add container information
+        total_quantity = sum(containers_data.values())
+        text_widget.insert("0.0", f"Total Quantity: {total_quantity}\n")
+        text_widget.insert("end", f"Found in {len(containers_data)} container(s):\n\n")
+        
+        for container_name, quantity in containers_data.items():
+            text_widget.insert("end", f"• {container_name}: {quantity}\n")
+        
+        text_widget.configure(state="disabled")
+        
+        # Close button
+        close_button = ctk.CTkButton(detail_window, text="Close", 
+                                   command=detail_window.destroy)
+        close_button.grid(row=2, column=0, padx=10, pady=10)

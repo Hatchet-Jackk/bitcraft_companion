@@ -55,6 +55,7 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
             "Name": {'selected': None, 'min': None, 'max': None},
             "Quantity": {'selected': None, 'min': None, 'max': None},
             "Refinery": {'selected': None, 'min': None, 'max': None},
+            "Crafters": {'selected': None, 'min': None, 'max': None},
             "Tag": {'selected': None, 'min': None, 'max': None}
         }
 
@@ -116,7 +117,7 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
         self.clear_search_button.grid(row=0, column=2, padx=5, pady=1, sticky="e")
 
         # --- Treeview (main content area) ---
-        self.tree = ttk.Treeview(self, columns=("Tier", "Name", "Quantity", "Refinery", "Tag"), show="headings")
+        self.tree = ttk.Treeview(self, columns=("Tier", "Name", "Quantity", "Refinery", "Crafters", "Tag"), show="headings")
         self.tree.grid(row=2, column=0, padx=0, pady=(2, 10), sticky="nsew")
 
         # Initial header setup with sort indicators
@@ -124,6 +125,14 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
 
         # Bind right-click context menu
         self.tree.bind("<Button-3>", self._show_context_menu)
+        
+        # Bind hover for tooltips
+        self.tree.bind("<Motion>", self._on_hover)
+        self.tree.bind("<Leave>", self._on_leave)
+        
+        # Tooltip variables
+        self.tooltip_window = None
+        self.tooltip_item = None
 
         # Vertical scrollbar for treeview
         vsb = ctk.CTkScrollbar(self, command=self.tree.yview)
@@ -170,7 +179,7 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
         arrow_up = " ↑"
         arrow_down = " ↓"
         filter_arrow = " ▼"
-        columns = ["Tier", "Name", "Quantity", "Refinery", "Tag"]
+        columns = ["Tier", "Name", "Quantity", "Refinery", "Crafters", "Tag"]
 
         for col in columns:
             # Sort indicator
@@ -192,7 +201,8 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
         self.tree.column("Tier", width=80, anchor="center")
         self.tree.column("Name", width=200, anchor="w")
         self.tree.column("Quantity", width=100, anchor="center")
-        self.tree.column("Refinery", width=250, anchor="w")
+        self.tree.column("Refinery", width=200, anchor="w")
+        self.tree.column("Crafters", width=80, anchor="center")
         self.tree.column("Tag", width=200, anchor="w")
 
         style = ttk.Style(self)
@@ -321,11 +331,16 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
         
         # Insert all items in the correct order
         for item_data in data:
+            # Format crafter count with emoji
+            crafter_count = item_data.get("Crafters", 0)
+            crafter_display = f"{crafter_count}×👤" if crafter_count > 0 else "0×👤"
+            
             self.tree.insert("", "end", values=(
                 item_data["Tier"],
                 item_data["Name"],
                 item_data["Quantity"],
                 item_data["Refinery"],
+                crafter_display,
                 item_data["Tag"]
             ))
         
@@ -708,6 +723,76 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
 
                 textfile.write(f"{tier:<6} {name:<25} {quantity:<5} {refinery:<30} {tag:<20}\n")
 
+    def _on_hover(self, event):
+        """Handle hover events for tooltips."""
+        item = self.tree.identify_row(event.y)
+        column = self.tree.identify_column(event.x)
+        
+        if item and column == "#5":  # Crafters column (5th column, 0-indexed)
+            if self.tooltip_item != item:
+                self._hide_tooltip()
+                self._show_tooltip(event, item)
+                self.tooltip_item = item
+        else:
+            self._hide_tooltip()
+            self.tooltip_item = None
+
+    def _on_leave(self, event):
+        """Handle leave events for tooltips."""
+        self._hide_tooltip()
+        self.tooltip_item = None
+
+    def _show_tooltip(self, event, item):
+        """Show tooltip with crafter information."""
+        # Get the item data
+        item_values = self.tree.item(item, "values")
+        if not item_values or len(item_values) < 6:
+            return
+        
+        item_name = item_values[1]  # Name column
+        
+        # Find the corresponding data item
+        data_item = None
+        for data in self.current_crafting_data:
+            if data.get("Name") == item_name:
+                data_item = data
+                break
+        
+        if not data_item:
+            return
+        
+        # Get crafter details
+        crafter_details = data_item.get("CrafterDetails", [])
+        if not crafter_details:
+            return
+        
+        # Create tooltip content
+        tooltip_text = f"Crafters for {item_name}:\n"
+        for crafter in crafter_details:
+            tooltip_text += f"• {crafter}\n"
+        
+        # Create tooltip window
+        self.tooltip_window = tk.Toplevel(self)
+        self.tooltip_window.wm_overrideredirect(True)
+        self.tooltip_window.configure(bg="lightyellow")
+        
+        # Position tooltip
+        x = event.x_root + 10
+        y = event.y_root + 10
+        self.tooltip_window.geometry(f"+{x}+{y}")
+        
+        # Add tooltip text
+        label = tk.Label(self.tooltip_window, text=tooltip_text, 
+                        justify="left", bg="lightyellow", fg="black",
+                        font=("Arial", 9), padx=5, pady=3)
+        label.pack()
+
+    def _hide_tooltip(self):
+        """Hide the tooltip window."""
+        if self.tooltip_window:
+            self.tooltip_window.destroy()
+            self.tooltip_window = None
+
     def _show_context_menu(self, event):
         """Show right-click context menu for item wiki links."""
         # Get the item that was clicked
@@ -726,6 +811,10 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
         
         # Create context menu
         context_menu = tk.Menu(self, tearoff=0)
+        context_menu.add_command(
+            label="View Crafters",
+            command=lambda: self._show_crafters_detail(item_name)
+        )
         context_menu.add_command(
             label="Go to Wiki",
             command=lambda: self._open_wiki_page(item_name)
@@ -749,6 +838,63 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
         except Exception as e:
             logging.error(f"Failed to open wiki page for {item_name}: {e}")
             messagebox.showerror("Error", f"Failed to open wiki page for {item_name}")
+
+    def _show_crafters_detail(self, item_name):
+        """Show detailed crafter information in a popup window."""
+        # Find the corresponding data item
+        data_item = None
+        for data in self.current_crafting_data:
+            if data.get("Name") == item_name:
+                data_item = data
+                break
+        
+        if not data_item:
+            messagebox.showwarning("No Data", f"No crafter data found for {item_name}")
+            return
+        
+        # Get crafter details
+        crafter_details = data_item.get("CrafterDetails", [])
+        if not crafter_details:
+            messagebox.showinfo("No Crafters", f"No crafters found for {item_name}")
+            return
+        
+        # Create detail window
+        detail_window = ctk.CTkToplevel(self)
+        detail_window.title(f"Crafters for {item_name}")
+        detail_window.geometry("400x300")
+        detail_window.transient(self)
+        detail_window.grab_set()
+        detail_window.attributes('-topmost', True)
+        
+        # Position relative to main window
+        x = self.winfo_x() + 50
+        y = self.winfo_y() + 50
+        detail_window.geometry(f"400x300+{x}+{y}")
+        
+        # Configure grid
+        detail_window.grid_columnconfigure(0, weight=1)
+        detail_window.grid_rowconfigure(1, weight=1)
+        
+        # Title
+        title_label = ctk.CTkLabel(detail_window, text=f"Crafters for {item_name}", 
+                                  font=ctk.CTkFont(size=16, weight="bold"))
+        title_label.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="w")
+        
+        # Scrollable frame for crafters
+        scroll_frame = ctk.CTkScrollableFrame(detail_window)
+        scroll_frame.grid(row=1, column=0, padx=20, pady=(0, 10), sticky="nsew")
+        scroll_frame.grid_columnconfigure(0, weight=1)
+        
+        # Add crafter information
+        for i, crafter in enumerate(crafter_details):
+            crafter_label = ctk.CTkLabel(scroll_frame, text=f"👤 {crafter}", 
+                                       font=ctk.CTkFont(size=12))
+            crafter_label.grid(row=i, column=0, padx=10, pady=5, sticky="w")
+        
+        # Close button
+        close_button = ctk.CTkButton(detail_window, text="Close", 
+                                   command=detail_window.destroy)
+        close_button.grid(row=2, column=0, padx=20, pady=(0, 20))
 
     def on_closing(self):
         """Handles window closing event, cancels auto-refresh."""

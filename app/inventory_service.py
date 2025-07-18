@@ -125,7 +125,15 @@ class InventoryService:
                     quantity = details.get("quantity", 0)
                     tier = details.get("tier", 0)
                     tag = details.get("tag", "")
-                    display_data.append({"id": item_id, "Name": name, "Quantity": quantity, "Tier": tier, "Tag": tag})
+                    containers = details.get("containers", {})
+                    display_data.append({
+                        "id": item_id, 
+                        "Name": name, 
+                        "Quantity": quantity, 
+                        "Tier": tier, 
+                        "Tag": tag,
+                        "containers": containers
+                    })
 
                 logging.debug(f"Prepared display_data: {display_data}")
 
