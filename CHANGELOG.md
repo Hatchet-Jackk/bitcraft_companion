@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5]
+
+- **Wiki Integration**
+  - Right-click context menu on inventory and passive crafting items
+  - "Go to Wiki" option that opens the BitCraft wiki (https://bitcraft.wiki.gg) page for the selected item
+  - Automatic URL formatting for wiki links (e.g., "Rough Tree Bark" → "Rough_Tree_Bark")
+
 ## [0.1.4]
 
 ### Added
@@ -13,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Real-time filtering across item names and tags as you type
   - Clear search button for easy reset functionality
   - Search persists across data refreshes while maintaining user context
+
 
 - **Passive Crafting Monitor**
   - Complete passive crafting status window with real-time updates

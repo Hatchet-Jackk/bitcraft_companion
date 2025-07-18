@@ -5,6 +5,7 @@ import logging
 import json
 import os
 import csv
+import webbrowser
 from datetime import datetime
 
 from client import BitCraft
@@ -120,6 +121,9 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
 
         # Initial header setup with sort indicators
         self._update_treeview_headers()
+
+        # Bind right-click context menu
+        self.tree.bind("<Button-3>", self._show_context_menu)
 
         # Vertical scrollbar for treeview
         vsb = ctk.CTkScrollbar(self, command=self.tree.yview)
@@ -703,6 +707,48 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
                 tag = str(item.get('Tag', ''))[:19]  # Truncate if too long
 
                 textfile.write(f"{tier:<6} {name:<25} {quantity:<5} {refinery:<30} {tag:<20}\n")
+
+    def _show_context_menu(self, event):
+        """Show right-click context menu for item wiki links."""
+        # Get the item that was clicked
+        item = self.tree.identify_row(event.y)
+        if not item:
+            return
+        
+        # Get the item data
+        item_values = self.tree.item(item, "values")
+        if not item_values or len(item_values) < 2:
+            return
+        
+        item_name = item_values[1]  
+        if not item_name:
+            return
+        
+        # Create context menu
+        context_menu = tk.Menu(self, tearoff=0)
+        context_menu.add_command(
+            label="Go to Wiki",
+            command=lambda: self._open_wiki_page(item_name)
+        )
+        
+        # Show menu at click position
+        try:
+            context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            context_menu.grab_release()
+
+    def _open_wiki_page(self, item_name):
+        """Open the BitCraft wiki page for the specified item."""
+        # Replace spaces with underscores for wiki URL format
+        wiki_name = item_name.replace(" ", "_")
+        wiki_url = f"https://bitcraft.wiki.gg/wiki/{wiki_name}"
+        
+        try:
+            webbrowser.open(wiki_url)
+            logging.info(f"Opened wiki page for item: {item_name}")
+        except Exception as e:
+            logging.error(f"Failed to open wiki page for {item_name}: {e}")
+            messagebox.showerror("Error", f"Failed to open wiki page for {item_name}")
 
     def on_closing(self):
         """Handles window closing event, cancels auto-refresh."""
