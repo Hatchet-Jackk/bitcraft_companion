@@ -265,9 +265,15 @@ class Claim:
             
             # Create display name for container
             if building_nickname:
-                container_name = f"{building_nickname} ({building_name})"
+                if building_name and building_name != "Unknown Building":
+                    container_name = f"{building_nickname} ({building_name})"
+                else:
+                    container_name = building_nickname
             else:
-                container_name = building_name
+                if building_name and building_name != "Unknown Building":
+                    container_name = building_name
+                else:
+                    container_name = "Storage Container"
             
             for slot in building.get("inventory", {}).get("pockets", []):
                 try:

@@ -222,13 +222,18 @@ class PassiveCraftingService:
                     recipe_id = craft_state.get('recipe_id')
                     owner_entity_id = craft_state.get('owner_entity_id')  # The user who started the craft
                     
+                    # Skip crafting operations by non-claim members
+                    if owner_entity_id not in user_lookup:
+                        logging.debug(f"Skipping passive craft operation by non-claim member: {owner_entity_id}")
+                        continue
+                    
                     # Find the building info using building_entity_id
                     building_info = next((b for b in processing_buildings if b['entity_id'] == building_entity_id), None)
                     if not building_info:
                         logging.debug(f"Could not find building info for building_entity_id: {building_entity_id}")
                         continue
                     
-                    # Get user name from owner_entity_id
+                    # Get user name from owner_entity_id (we know they're a claim member now)
                     crafter_name = user_lookup.get(owner_entity_id, f"User {owner_entity_id}")
                     
                     # Get recipe information

@@ -629,6 +629,38 @@ class BitCraft:
             logging.info(f"No claim members found for claim ID {claim_id}")
             return []
 
+    def fetch_user_by_player_entity_id(self, player_entity_id: str) -> dict | None:
+        """
+        Fetches user information for a given player entity ID.
+        Returns user data with user_name if found.
+        """
+        if not self.ws_connection:
+            raise RuntimeError("WebSocket connection is not established")
+        
+        if not player_entity_id:
+            raise ValueError("Player entity ID is missing.")
+        
+        sanitized_player_id = str(player_entity_id).replace("'", "''")
+        
+        query_strings = [f"SELECT * FROM claim_member_state WHERE player_entity_id = '{sanitized_player_id}';"]
+        subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+        sub = json.dumps(subscribe)
+        self.ws_connection.send(sub)
+        
+        for row in self._receive_websocket_subscription_data("fetch_user_by_player_entity_id"):
+            user_data = {
+                "entity_id": row.get("entity_id"),
+                "player_entity_id": row.get("player_entity_id"),
+                "user_name": row.get("user_name"),
+                "claim_entity_id": row.get("claim_entity_id")
+            }
+            if user_data.get("user_name"):
+                logging.debug(f"Found user data for player {player_entity_id}: {user_data.get('user_name')}")
+                return user_data
+        
+        logging.debug(f"No user data found for player entity ID {player_entity_id}")
+        return None
+
     def fetch_inventory_state(self, entity_id: str) -> dict | None:
         if not self.ws_connection:
             raise RuntimeError("WebSocket connection is not established")

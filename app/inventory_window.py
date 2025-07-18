@@ -913,12 +913,12 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
         # Create context menu
         context_menu = tk.Menu(self, tearoff=0)
         context_menu.add_command(
-            label="Go to Wiki",
-            command=lambda: self._open_wiki_page(item_name)
-        )
-        context_menu.add_command(
             label="View Containers",
             command=lambda: self._show_container_details(item_name)
+        )
+        context_menu.add_command(
+            label="Go to Wiki",
+            command=lambda: self._open_wiki_page(item_name)
         )
         
         # Show menu at click position
@@ -975,7 +975,7 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
         # Find the corresponding data item
         data_item = None
         for data in self.current_inventory_data:
-            if data.get("name") == item_name:
+            if data.get("Name") == item_name:
                 data_item = data
                 break
         
@@ -1019,7 +1019,7 @@ class ClaimInventoryWindow(ctk.CTkToplevel):
         # Find the corresponding data item
         data_item = None
         for data in self.current_inventory_data:
-            if data.get("name") == item_name:
+            if data.get("Name") == item_name:
                 data_item = data
                 break
         

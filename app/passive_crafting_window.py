@@ -344,7 +344,7 @@ class PassiveCraftingWindow(ctk.CTkToplevel):
                 item_data["Tag"]
             ))
         
-        logging.debug(f"Updated Treeview with {len(data)} passive crafting operations in sorted order.")
+        logging.debug(f"Updated Treeview with {len(data)} items in sorted order.")
 
     def _update_item_count(self):
         """Updates only the item count in the status bar without changing the timestamp."""
