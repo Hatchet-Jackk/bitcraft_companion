@@ -1087,7 +1087,7 @@ class BitCraft:
                 logging.info(f"Inventory state for entity ID {entity_id} found.")
                 return row
 
-            logging.error(f"Inventory state for entity ID {entity_id} not found")
+            logging.warning(f"Inventory state for entity ID {entity_id} not found")
             return None
 
     def fetch_claim_supplies(self, claim_id: str) -> dict | None:

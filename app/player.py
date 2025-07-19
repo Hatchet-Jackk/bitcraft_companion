@@ -18,10 +18,9 @@ class Player:
         self.claim_id = None
         self.inventory = {}
 
-    def username(self):
+    def get_username(self):
         """
         Get the player's username.
-
         Returns:
             str: The player's username.
         """
