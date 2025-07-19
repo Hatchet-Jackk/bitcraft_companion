@@ -29,9 +29,7 @@ class PassiveCraftingService:
         # Caching variables
         self.cached_crafting_data: Optional[List[Dict]] = None
         self.last_crafting_fetch_time: Optional[datetime] = None
-        self.crafting_cache_duration_minutes = (
-            2  # Shorter cache for more real-time data
-        )
+        self.crafting_cache_duration_minutes = 2  # Shorter cache for more real-time data
         self.ready_items_cache = {}  # Cache for items that have reached READY state
 
         # Use reference data from the claim instance (already loaded)
@@ -57,9 +55,7 @@ class PassiveCraftingService:
         """
         try:
             # Load crafting recipes using the claim's existing method
-            recipes_list = self.claim_instance._load_reference_data(
-                "crafting_recipe_desc.json"
-            )
+            recipes_list = self.claim_instance._load_reference_data("crafting_recipe_desc.json")
             if recipes_list:
                 return {recipe["id"]: recipe for recipe in recipes_list}
             return {}
@@ -76,20 +72,14 @@ class PassiveCraftingService:
         try:
             # First try to use already loaded data
             if self.claim_instance.item_desc:
-                logging.info(
-                    f"Using cached item descriptions, count: {len(self.claim_instance.item_desc)}"
-                )
+                logging.info(f"Using cached item descriptions, count: {len(self.claim_instance.item_desc)}")
                 return {item["id"]: item for item in self.claim_instance.item_desc}
 
             # If not available, try to load it
-            logging.warning(
-                "item_desc not available in claim instance, trying to load directly"
-            )
+            logging.warning("item_desc not available in claim instance, trying to load directly")
             items_list = self.claim_instance._load_reference_data("item_desc.json")
             if items_list:
-                logging.info(
-                    f"Loaded item descriptions directly, count: {len(items_list)}"
-                )
+                logging.info(f"Loaded item descriptions directly, count: {len(items_list)}")
                 return {item["id"]: item for item in items_list}
 
             logging.error("Could not load item descriptions from any source")
@@ -98,9 +88,7 @@ class PassiveCraftingService:
             logging.error(f"Error loading item descriptions: {e}")
             return {}
 
-    def _is_processing_building(
-        self, building_description_id: int, building_name: str
-    ) -> bool:
+    def _is_processing_building(self, building_description_id: int, building_name: str) -> bool:
         """Check if a building type is one that can do passive crafting.
 
         Targets: stations, loom, farming field, kiln, smelter, oven.
@@ -154,13 +142,9 @@ class PassiveCraftingService:
         is_valid = time_since_last_fetch < cache_duration
         if is_valid:
             remaining_time = cache_duration - time_since_last_fetch
-            logging.info(
-                f"Using cached passive crafting data (expires in {remaining_time.total_seconds():.0f} seconds)"
-            )
+            logging.info(f"Using cached passive crafting data (expires in {remaining_time.total_seconds():.0f} seconds)")
         else:
-            logging.info(
-                f"Cached passive crafting data expired ({time_since_last_fetch.total_seconds():.0f} seconds old)"
-            )
+            logging.info(f"Cached passive crafting data expired ({time_since_last_fetch.total_seconds():.0f} seconds old)")
 
         return is_valid
 
@@ -180,14 +164,10 @@ class PassiveCraftingService:
             Optional[List[Dict]]: Copy of cached crafting data if valid, else None
         """
         if self.is_cache_valid():
-            return (
-                self.cached_crafting_data.copy() if self.cached_crafting_data else None
-            )
+            return self.cached_crafting_data.copy() if self.cached_crafting_data else None
         return None
 
-    def fetch_passive_crafting_async(
-        self, callback: Callable[[List[Dict], bool, str, bool], None]
-    ):
+    def fetch_passive_crafting_async(self, callback: Callable[[List[Dict], bool, str, bool], None]):
         """Fetch passive crafting data asynchronously.
 
         Args:
@@ -204,17 +184,13 @@ class PassiveCraftingService:
             try:
                 claim_id = self.claim_instance.get_claim_id()
                 if not claim_id:
-                    logging.error(
-                        "Claim ID not set for passive crafting fetch. Cannot fetch data."
-                    )
+                    logging.error("Claim ID not set for passive crafting fetch. Cannot fetch data.")
                     message = "Claim ID missing for passive crafting."
                     callback(display_data, False, message, False)
                     return
 
                 # First, get all buildings for the claim
-                building_states = self.bitcraft_client.fetch_claim_building_state(
-                    claim_id
-                )
+                building_states = self.bitcraft_client.fetch_claim_building_state(claim_id)
                 if not building_states:
                     logging.info("No buildings found for claim")
                     message = "No buildings found for claim."
@@ -230,17 +206,13 @@ class PassiveCraftingService:
                         for member in claim_members
                         if member.get("player_entity_id") and member.get("user_name")
                     }
-                    logging.info(
-                        f"Loaded {len(user_lookup)} claim members for user name lookup"
-                    )
+                    logging.info(f"Loaded {len(user_lookup)} claim members for user name lookup")
                 else:
                     logging.warning("No claim members found for user name lookup")
 
                 # Filter buildings to only processing-capable ones
                 processing_buildings = []
-                building_nicknames = (
-                    self.bitcraft_client.fetch_building_nickname_state()
-                )
+                building_nicknames = self.bitcraft_client.fetch_building_nickname_state()
                 nickname_lookup = {}
                 if building_nicknames:
                     nickname_lookup = {
@@ -255,17 +227,11 @@ class PassiveCraftingService:
 
                     if building_description_id and entity_id:
                         # Use the claim's method to get the proper building name
-                        building_name = self.claim_instance._get_building_name_from_id(
-                            building_description_id
-                        )
+                        building_name = self.claim_instance._get_building_name_from_id(building_description_id)
                         if not building_name:
-                            building_name = (
-                                f"Unknown Building Desc {building_description_id}"
-                            )
+                            building_name = f"Unknown Building Desc {building_description_id}"
 
-                        if self._is_processing_building(
-                            building_description_id, building_name
-                        ):
+                        if self._is_processing_building(building_description_id, building_name):
                             # Add building info to processing buildings list
                             building_info = {
                                 "entity_id": entity_id,
@@ -281,22 +247,16 @@ class PassiveCraftingService:
                 )
 
                 if not processing_buildings:
-                    message = (
-                        "No processing buildings found (stations, looms, kilns, etc.)."
-                    )
+                    message = "No processing buildings found (stations, looms, kilns, etc.)."
                     callback(display_data, True, message, True)
                     return
 
                 # Get passive craft states for all processing buildings
-                entity_ids = [
-                    building["entity_id"] for building in processing_buildings
-                ]
+                entity_ids = [building["entity_id"] for building in processing_buildings]
                 logging.debug(
                     f"Querying passive craft state for entity IDs: {entity_ids[:5]}{'...' if len(entity_ids) > 5 else ''}"
                 )
-                passive_craft_states = self.bitcraft_client.fetch_passive_craft_state(
-                    entity_ids
-                )
+                passive_craft_states = self.bitcraft_client.fetch_passive_craft_state(entity_ids)
 
                 if not passive_craft_states:
                     message = f"No active passive crafting found in {len(processing_buildings)} processing buildings."
@@ -308,43 +268,27 @@ class PassiveCraftingService:
                 item_groups = {}
 
                 for craft_state in passive_craft_states:
-                    craft_entity_id = craft_state.get(
-                        "entity_id"
-                    )  # This is the craft operation ID
-                    building_entity_id = craft_state.get(
-                        "building_entity_id"
-                    )  # This is the building ID
+                    craft_entity_id = craft_state.get("entity_id")  # This is the craft operation ID
+                    building_entity_id = craft_state.get("building_entity_id")  # This is the building ID
                     recipe_id = craft_state.get("recipe_id")
-                    owner_entity_id = craft_state.get(
-                        "owner_entity_id"
-                    )  # The user who started the craft
+                    owner_entity_id = craft_state.get("owner_entity_id")  # The user who started the craft
 
                     # Skip crafting operations by non-claim members
                     if owner_entity_id not in user_lookup:
-                        logging.debug(
-                            f"Skipping passive craft operation by non-claim member: {owner_entity_id}"
-                        )
+                        logging.debug(f"Skipping passive craft operation by non-claim member: {owner_entity_id}")
                         continue
 
                     # Find the building info using building_entity_id
                     building_info = next(
-                        (
-                            b
-                            for b in processing_buildings
-                            if b["entity_id"] == building_entity_id
-                        ),
+                        (b for b in processing_buildings if b["entity_id"] == building_entity_id),
                         None,
                     )
                     if not building_info:
-                        logging.debug(
-                            f"Could not find building info for building_entity_id: {building_entity_id}"
-                        )
+                        logging.debug(f"Could not find building info for building_entity_id: {building_entity_id}")
                         continue
 
                     # Get user name from owner_entity_id (we know they're a claim member now)
-                    crafter_name = user_lookup.get(
-                        owner_entity_id, f"User {owner_entity_id}"
-                    )
+                    crafter_name = user_lookup.get(owner_entity_id, f"User {owner_entity_id}")
 
                     # Get recipe information
                     recipe_info = self.crafting_recipes.get(recipe_id, {})
@@ -366,9 +310,7 @@ class PassiveCraftingService:
 
                         if len(first_item) >= 2:
                             item_id = first_item[0]
-                            recipe_quantity = first_item[
-                                1
-                            ]  # How many this recipe produces
+                            recipe_quantity = first_item[1]  # How many this recipe produces
 
                             item_info = self.item_descriptions.get(item_id, {})
                             crafted_item_name = item_info.get("name", f"Item {item_id}")
@@ -392,9 +334,7 @@ class PassiveCraftingService:
                             "refineries": set([refinery_name]),  # Track all refineries
                             "recipes": set([recipe_name]),  # Track all recipes
                             "crafters": set([crafter_name]),  # Track all crafters
-                            "refinery_quantities": {
-                                refinery_name: 0
-                            },  # Track quantities per refinery
+                            "refinery_quantities": {refinery_name: 0},  # Track quantities per refinery
                         }
                     else:
                         # Add this refinery to the set
@@ -405,19 +345,12 @@ class PassiveCraftingService:
                         item_groups[group_key]["recipes"].add(recipe_name)
                         item_groups[group_key]["crafters"].add(crafter_name)
                         # Initialize refinery quantity if not exists
-                        if (
-                            refinery_name
-                            not in item_groups[group_key]["refinery_quantities"]
-                        ):
-                            item_groups[group_key]["refinery_quantities"][
-                                refinery_name
-                            ] = 0
+                        if refinery_name not in item_groups[group_key]["refinery_quantities"]:
+                            item_groups[group_key]["refinery_quantities"][refinery_name] = 0
 
                     # Add the quantity for this craft operation to both total and refinery-specific
                     item_groups[group_key]["Quantity"] += recipe_quantity
-                    item_groups[group_key]["refinery_quantities"][
-                        refinery_name
-                    ] += recipe_quantity
+                    item_groups[group_key]["refinery_quantities"][refinery_name] += recipe_quantity
 
                 # Convert grouped data to display format
                 for group_key, group_data in item_groups.items():
@@ -426,9 +359,7 @@ class PassiveCraftingService:
                     if len(refineries) == 1:
                         refinery_display = refineries[0]
                     else:
-                        refinery_display = (
-                            f"{len(refineries)} refineries ({refineries[0]}...)"
-                        )
+                        refinery_display = f"{len(refineries)} refineries ({refineries[0]}...)"
 
                     # Update recipe field to show count if multiple
                     recipes = list(group_data["recipes"])
@@ -450,9 +381,7 @@ class PassiveCraftingService:
                         "Crafters": crafter_count,
                         "CrafterDetails": crafters,  # For tooltip/context menu
                         "refineries": refineries,  # Include refineries list for expandable logic
-                        "refinery_quantities": group_data[
-                            "refinery_quantities"
-                        ],  # Include per-refinery quantities
+                        "refinery_quantities": group_data["refinery_quantities"],  # Include per-refinery quantities
                     }
 
                     display_data.append(display_row)
@@ -461,9 +390,7 @@ class PassiveCraftingService:
                 self.cached_crafting_data = display_data.copy()
                 self.last_crafting_fetch_time = datetime.now()
 
-                logging.info(
-                    f"Successfully processed {len(display_data)} active passive crafting operations"
-                )
+                logging.info(f"Successfully processed {len(display_data)} active passive crafting operations")
                 message = f"Found {len(display_data)} active crafting operations."
                 callback(display_data, True, message, True)
 
@@ -501,9 +428,7 @@ class PassiveCraftingService:
                     return
 
                 # Get all buildings for the claim
-                building_states = self.bitcraft_client.fetch_claim_building_state(
-                    claim_id
-                )
+                building_states = self.bitcraft_client.fetch_claim_building_state(claim_id)
                 if not building_states:
                     callback([], False, "No buildings found for claim", False)
                     return
@@ -537,9 +462,7 @@ class PassiveCraftingService:
 
                 # Filter processing buildings
                 processing_buildings = []
-                building_nicknames = (
-                    self.bitcraft_client.fetch_building_nickname_state()
-                )
+                building_nicknames = self.bitcraft_client.fetch_building_nickname_state()
                 nickname_lookup = {}
                 if building_nicknames:
                     nickname_lookup = {
@@ -553,17 +476,11 @@ class PassiveCraftingService:
                     entity_id = building.get("entity_id")
 
                     if building_description_id and entity_id:
-                        building_name = self.claim_instance._get_building_name_from_id(
-                            building_description_id
-                        )
+                        building_name = self.claim_instance._get_building_name_from_id(building_description_id)
                         if not building_name:
-                            building_name = (
-                                f"Unknown Building Desc {building_description_id}"
-                            )
+                            building_name = f"Unknown Building Desc {building_description_id}"
 
-                        if self._is_processing_building(
-                            building_description_id, building_name
-                        ):
+                        if self._is_processing_building(building_description_id, building_name):
                             building_info = {
                                 "entity_id": entity_id,
                                 "building_description_id": building_description_id,
@@ -578,12 +495,8 @@ class PassiveCraftingService:
                     return
 
                 # Get passive craft states
-                entity_ids = [
-                    building["entity_id"] for building in processing_buildings
-                ]
-                passive_craft_states = self.bitcraft_client.fetch_passive_craft_state(
-                    entity_ids
-                )
+                entity_ids = [building["entity_id"] for building in processing_buildings]
+                passive_craft_states = self.bitcraft_client.fetch_passive_craft_state(entity_ids)
 
                 if not passive_craft_states:
                     callback([], False, "No active passive crafting found", False)
@@ -603,11 +516,7 @@ class PassiveCraftingService:
 
                     # Find building info
                     building_info = next(
-                        (
-                            b
-                            for b in processing_buildings
-                            if b["entity_id"] == building_entity_id
-                        ),
+                        (b for b in processing_buildings if b["entity_id"] == building_entity_id),
                         None,
                     )
                     if not building_info:
@@ -616,9 +525,7 @@ class PassiveCraftingService:
                     # Get recipe information
                     recipe_info = self.crafting_recipes.get(recipe_id, {})
                     recipe_name = recipe_info.get("name", f"Unknown Recipe {recipe_id}")
-                    recipe_name = re.sub(
-                        r"\{\d+\}", "", recipe_name
-                    )  # Remove {int} patterns
+                    recipe_name = re.sub(r"\{\d+\}", "", recipe_name)  # Remove {int} patterns
 
                     # Get crafted item details
                     crafted_item_name = "Unknown Item"
@@ -672,11 +579,7 @@ class PassiveCraftingService:
                         group["completed_count"] += 1
 
                     # Track the highest remaining time for the parent
-                    if (
-                        remaining_time != "READY"
-                        and remaining_time != "Error"
-                        and remaining_time != "Unknown"
-                    ):
+                    if remaining_time != "READY" and remaining_time != "Error" and remaining_time != "Unknown":
                         remaining_seconds = self.parse_time_to_seconds(remaining_time)
                         if remaining_seconds > group["max_remaining_time"]:
                             group["max_remaining_time"] = remaining_seconds
@@ -703,16 +606,8 @@ class PassiveCraftingService:
                     refineries = list(group["refineries"])
                     recipes = list(group["recipes"])
 
-                    refinery_display = (
-                        refineries[0]
-                        if len(refineries) == 1
-                        else f"{len(refineries)} refineries"
-                    )
-                    recipe_display = (
-                        f"Recipe: {recipes[0]}"
-                        if len(recipes) == 1
-                        else f"{len(recipes)} recipes"
-                    )
+                    refinery_display = refineries[0] if len(refineries) == 1 else f"{len(refineries)} refineries"
+                    recipe_display = f"Recipe: {recipes[0]}" if len(recipes) == 1 else f"{len(recipes)} recipes"
 
                     parent_row = {
                         "name": group["name"],
@@ -720,11 +615,7 @@ class PassiveCraftingService:
                         "quantity": group["total_quantity"],
                         "refinery": refinery_display,
                         "tag": recipe_display,
-                        "remaining_time": (
-                            group["max_remaining_time_str"]
-                            if group["max_remaining_time"] > 0
-                            else "READY"
-                        ),
+                        "remaining_time": (group["max_remaining_time_str"] if group["max_remaining_time"] > 0 else "READY"),
                         "completed": f"{group['completed_count']}/{group['total_count']}",
                         "is_parent": True,
                         "children": group["children"],
@@ -785,9 +676,7 @@ class PassiveCraftingService:
             # Create a unique key for this crafting entry
             timestamp_data = crafting_entry.get("timestamp")
             if timestamp_data:
-                timestamp_micros = timestamp_data.get(
-                    "__timestamp_micros_since_unix_epoch__"
-                )
+                timestamp_micros = timestamp_data.get("__timestamp_micros_since_unix_epoch__")
                 entry_key = f"{recipe_id}_{timestamp_micros}"
 
                 # Check if this entry was already marked as READY
@@ -802,9 +691,7 @@ class PassiveCraftingService:
                 return f"~{self.format_time(duration_seconds)}"
 
             # Extract timestamp from the nested structure
-            timestamp_micros = timestamp_data.get(
-                "__timestamp_micros_since_unix_epoch__"
-            )
+            timestamp_micros = timestamp_data.get("__timestamp_micros_since_unix_epoch__")
             if not timestamp_micros:
                 return f"~{self.format_time(duration_seconds)}"
 
@@ -859,12 +746,7 @@ class PassiveCraftingService:
         Returns:
             int: Number of seconds represented by the time string
         """
-        if (
-            not time_str
-            or time_str == "READY"
-            or time_str == "Error"
-            or time_str == "Unknown"
-        ):
+        if not time_str or time_str == "READY" or time_str == "Error" or time_str == "Unknown":
             return 0
 
         try:

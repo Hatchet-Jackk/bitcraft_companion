@@ -99,9 +99,7 @@ class PassiveCraftingTimerOverlay(ctk.CTkToplevel):
         """Setup the user interface for the timer overlay window."""
         # Controls frame at the top
         controls_frame = ctk.CTkFrame(self)
-        controls_frame.grid(
-            row=0, column=0, padx=10, pady=10, sticky="ew", columnspan=2
-        )
+        controls_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew", columnspan=2)
         controls_frame.grid_columnconfigure(0, weight=1)
         controls_frame.grid_columnconfigure(1, weight=0)
         controls_frame.grid_columnconfigure(2, weight=0)
@@ -116,58 +114,40 @@ class PassiveCraftingTimerOverlay(ctk.CTkToplevel):
         title_label.grid(row=0, column=0, padx=10, pady=5, sticky="w")
 
         # Always on Top toggle (moved to top row)
-        self.always_on_top_switch = ctk.CTkSwitch(
-            controls_frame, text="Always on Top", command=self._toggle_always_on_top
-        )
+        self.always_on_top_switch = ctk.CTkSwitch(controls_frame, text="Always on Top", command=self._toggle_always_on_top)
         self.always_on_top_switch.grid(row=0, column=1, padx=10, pady=5, sticky="e")
         self.always_on_top_switch.select()  # Start enabled
 
         # Auto-refresh toggle
-        self.toggle_auto_refresh_switch = ctk.CTkSwitch(
-            controls_frame, text="Auto-refresh", command=self.toggle_auto_refresh
-        )
-        self.toggle_auto_refresh_switch.grid(
-            row=0, column=2, padx=10, pady=5, sticky="e"
-        )
+        self.toggle_auto_refresh_switch = ctk.CTkSwitch(controls_frame, text="Auto-refresh", command=self.toggle_auto_refresh)
+        self.toggle_auto_refresh_switch.grid(row=0, column=2, padx=10, pady=5, sticky="e")
         self.toggle_auto_refresh_switch.select()  # Start enabled
 
         # Manual refresh button
-        self.refresh_button = ctk.CTkButton(
-            controls_frame, text="Refresh", command=self.refresh_data, width=80
-        )
+        self.refresh_button = ctk.CTkButton(controls_frame, text="Refresh", command=self.refresh_data, width=80)
         self.refresh_button.grid(row=0, column=3, padx=10, pady=5, sticky="e")
 
         # Search frame
         search_frame = ctk.CTkFrame(self)
-        search_frame.grid(
-            row=1, column=0, padx=10, pady=(0, 10), sticky="ew", columnspan=2
-        )
+        search_frame.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="ew", columnspan=2)
         search_frame.grid_columnconfigure(1, weight=1)
 
         # Search label
-        search_label = ctk.CTkLabel(
-            search_frame, text="Search:", font=ctk.CTkFont(size=12)
-        )
+        search_label = ctk.CTkLabel(search_frame, text="Search:", font=ctk.CTkFont(size=12))
         search_label.grid(row=0, column=0, padx=10, pady=5, sticky="w")
 
         # Search entry
-        self.search_entry = ctk.CTkEntry(
-            search_frame, placeholder_text="Type to search items..."
-        )
+        self.search_entry = ctk.CTkEntry(search_frame, placeholder_text="Type to search items...")
         self.search_entry.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
         self.search_entry.bind("<KeyRelease>", self._on_search_change)
 
         # Clear search button
-        self.clear_search_button = ctk.CTkButton(
-            search_frame, text="Clear", width=60, command=self._clear_search
-        )
+        self.clear_search_button = ctk.CTkButton(search_frame, text="Clear", width=60, command=self._clear_search)
         self.clear_search_button.grid(row=0, column=2, padx=10, pady=5, sticky="e")
 
         # Create a frame for the treeview to control its styling
         tree_frame = ctk.CTkFrame(self)
-        tree_frame.grid(
-            row=2, column=0, padx=10, pady=(0, 10), sticky="nsew", columnspan=2
-        )
+        tree_frame.grid(row=2, column=0, padx=10, pady=(0, 10), sticky="nsew", columnspan=2)
         tree_frame.grid_columnconfigure(0, weight=1)
         tree_frame.grid_rowconfigure(0, weight=1)
 
@@ -232,9 +212,7 @@ class PassiveCraftingTimerOverlay(ctk.CTkToplevel):
 
         for col in column_widths.keys():
             self.tree.heading(col, text=col, anchor="center")
-            self.tree.column(
-                col, width=column_widths[col], minwidth=50, anchor="center"
-            )
+            self.tree.column(col, width=column_widths[col], minwidth=50, anchor="center")
 
         # Update headers with filtering capability
         self._update_treeview_headers()
@@ -249,22 +227,16 @@ class PassiveCraftingTimerOverlay(ctk.CTkToplevel):
 
         # Status bar frame
         status_frame = ctk.CTkFrame(self)
-        status_frame.grid(
-            row=3, column=0, padx=10, pady=(0, 10), sticky="ew", columnspan=2
-        )
+        status_frame.grid(row=3, column=0, padx=10, pady=(0, 10), sticky="ew", columnspan=2)
         status_frame.grid_columnconfigure(0, weight=1)
         status_frame.grid_columnconfigure(1, weight=0)
 
         # Status label
-        self.status_label = ctk.CTkLabel(
-            status_frame, text="", font=ctk.CTkFont(size=11)
-        )
+        self.status_label = ctk.CTkLabel(status_frame, text="", font=ctk.CTkFont(size=11))
         self.status_label.grid(row=0, column=0, padx=10, pady=5, sticky="w")
 
         # Last updated label
-        self.last_updated_label = ctk.CTkLabel(
-            status_frame, text="", font=ctk.CTkFont(size=11), text_color="gray"
-        )
+        self.last_updated_label = ctk.CTkLabel(status_frame, text="", font=ctk.CTkFont(size=11), text_color="gray")
         self.last_updated_label.grid(row=0, column=1, padx=10, pady=5, sticky="e")
 
     def _toggle_always_on_top(self):
@@ -279,9 +251,7 @@ class PassiveCraftingTimerOverlay(ctk.CTkToplevel):
         self.status_label.configure(text="Refreshing...", text_color="yellow")
         self.passive_crafting_service.get_timer_data(self.on_data_received)
 
-    def on_data_received(
-        self, data: List[Dict[str, Any]], success: bool, message: str, has_data: bool
-    ):
+    def on_data_received(self, data: List[Dict[str, Any]], success: bool, message: str, has_data: bool):
         """Handle received timer data and update the UI.
 
         Args:
@@ -295,9 +265,7 @@ class PassiveCraftingTimerOverlay(ctk.CTkToplevel):
             self.populate_tree(data)
             self.status_label.configure(text=message, text_color="green")
             self.last_update_time = datetime.now()
-            self.last_updated_label.configure(
-                text=f"Last updated: {self.last_update_time.strftime('%H:%M:%S')}"
-            )
+            self.last_updated_label.configure(text=f"Last updated: {self.last_update_time.strftime('%H:%M:%S')}")
         else:
             self.status_label.configure(text=message, text_color="red")
 
@@ -379,41 +347,17 @@ class PassiveCraftingTimerOverlay(ctk.CTkToplevel):
 
             if selected_values is not None:
                 if col_name == "Tier":
-                    filtered_data = [
-                        item
-                        for item in filtered_data
-                        if str(item.get("tier", "")) in selected_values
-                    ]
+                    filtered_data = [item for item in filtered_data if str(item.get("tier", "")) in selected_values]
                 elif col_name == "Name":
-                    filtered_data = [
-                        item
-                        for item in filtered_data
-                        if str(item.get("name", "")) in selected_values
-                    ]
+                    filtered_data = [item for item in filtered_data if str(item.get("name", "")) in selected_values]
                 elif col_name == "Quantity":
-                    filtered_data = [
-                        item
-                        for item in filtered_data
-                        if str(item.get("quantity", "")) in selected_values
-                    ]
+                    filtered_data = [item for item in filtered_data if str(item.get("quantity", "")) in selected_values]
                 elif col_name == "Refinery":
-                    filtered_data = [
-                        item
-                        for item in filtered_data
-                        if str(item.get("refinery", "")) in selected_values
-                    ]
+                    filtered_data = [item for item in filtered_data if str(item.get("refinery", "")) in selected_values]
                 elif col_name == "Tag":
-                    filtered_data = [
-                        item
-                        for item in filtered_data
-                        if str(item.get("tag", "")) in selected_values
-                    ]
+                    filtered_data = [item for item in filtered_data if str(item.get("tag", "")) in selected_values]
                 elif col_name == "Remaining Time":
-                    filtered_data = [
-                        item
-                        for item in filtered_data
-                        if str(item.get("remaining_time", "")) in selected_values
-                    ]
+                    filtered_data = [item for item in filtered_data if str(item.get("remaining_time", "")) in selected_values]
 
             if (min_val is not None) or (max_val is not None):
                 if col_name in ["Tier", "Quantity"]:
@@ -421,14 +365,8 @@ class PassiveCraftingTimerOverlay(ctk.CTkToplevel):
                         item
                         for item in filtered_data
                         if self._can_convert_to_float(item.get(col_name.lower()))
-                        and (
-                            min_val is None
-                            or float(item.get(col_name.lower())) >= min_val
-                        )
-                        and (
-                            max_val is None
-                            or float(item.get(col_name.lower())) <= max_val
-                        )
+                        and (min_val is None or float(item.get(col_name.lower())) >= min_val)
+                        and (max_val is None or float(item.get(col_name.lower())) <= max_val)
                     ]
 
         # Sort data
@@ -469,9 +407,7 @@ class PassiveCraftingTimerOverlay(ctk.CTkToplevel):
             )
 
             # Insert parent with text in the tree column
-            parent_id = self.tree.insert(
-                "", "end", text="", values=parent_values, open=False
-            )
+            parent_id = self.tree.insert("", "end", text="", values=parent_values, open=False)
 
             # Insert child rows as children of the parent
             children = parent_item.get("children", [])
@@ -486,9 +422,7 @@ class PassiveCraftingTimerOverlay(ctk.CTkToplevel):
                     child_item.get("completed", ""),
                 )
 
-                child_id = self.tree.insert(
-                    parent_id, "end", text="", values=child_values
-                )
+                child_id = self.tree.insert(parent_id, "end", text="", values=child_values)
 
         # Restore expansion state after populating
         self.restore_expansion_state()
@@ -563,9 +497,7 @@ class PassiveCraftingTimerOverlay(ctk.CTkToplevel):
         """
         filter_state = self.active_filters.get(column_name, {})
         return (
-            filter_state.get("selected") is not None
-            or filter_state.get("min") is not None
-            or filter_state.get("max") is not None
+            filter_state.get("selected") is not None or filter_state.get("min") is not None or filter_state.get("max") is not None
         )
 
     def _show_combined_menu(self, column):
@@ -575,12 +507,8 @@ class PassiveCraftingTimerOverlay(ctk.CTkToplevel):
         menu = Menu(self, tearoff=0)
 
         # Sort options
-        menu.add_command(
-            label=f"Sort {column} A-Z", command=lambda: self._sort_column_asc(column)
-        )
-        menu.add_command(
-            label=f"Sort {column} Z-A", command=lambda: self._sort_column_desc(column)
-        )
+        menu.add_command(label=f"Sort {column} A-Z", command=lambda: self._sort_column_asc(column))
+        menu.add_command(label=f"Sort {column} Z-A", command=lambda: self._sort_column_desc(column))
         menu.add_separator()
 
         # Filter options
@@ -625,17 +553,13 @@ class PassiveCraftingTimerOverlay(ctk.CTkToplevel):
                 unique_values.add(str(value))
 
         unique_values = sorted(list(unique_values))
-        current_filter_state = self.active_filters.get(
-            column_name, {"selected": None, "min": None, "max": None}
-        )
+        current_filter_state = self.active_filters.get(column_name, {"selected": None, "min": None, "max": None})
 
         # Import FilterDialog from inventory_window
         from inventory_window import FilterDialog
 
         is_numeric = column_name in ["Tier", "Quantity"]
-        dialog = FilterDialog(
-            self, column_name, unique_values, current_filter_state, is_numeric
-        )
+        dialog = FilterDialog(self, column_name, unique_values, current_filter_state, is_numeric)
 
     def update_filter(self, column_name: str, new_filter_state: dict):
         """Callback from FilterDialog to update filter settings for a column."""
@@ -692,18 +616,14 @@ class PassiveCraftingTimerOverlay(ctk.CTkToplevel):
     def start_auto_refresh(self):
         """Start the auto-refresh timer for periodic data refresh."""
         if self.auto_refresh_enabled:
-            self.refresh_job = self.after(
-                self.refresh_interval * 1000, self.auto_refresh_callback
-            )
+            self.refresh_job = self.after(self.refresh_interval * 1000, self.auto_refresh_callback)
 
     def auto_refresh_callback(self):
         """Callback for auto-refresh timer to trigger data refresh."""
         if self.auto_refresh_enabled:
             self.refresh_data()
             # Schedule next refresh
-            self.refresh_job = self.after(
-                self.refresh_interval * 1000, self.auto_refresh_callback
-            )
+            self.refresh_job = self.after(self.refresh_interval * 1000, self.auto_refresh_callback)
 
     def toggle_auto_refresh(self):
         """Toggle auto-refresh on or off for the timer overlay."""

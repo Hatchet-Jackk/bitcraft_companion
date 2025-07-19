@@ -49,13 +49,9 @@ class InventoryService:
         is_valid = time_since_last_fetch < cache_duration
         if is_valid:
             remaining_time = cache_duration - time_since_last_fetch
-            logging.debug(
-                f"Using cached inventory data (expires in {remaining_time.total_seconds():.0f} seconds)"
-            )
+            logging.debug(f"Using cached inventory data (expires in {remaining_time.total_seconds():.0f} seconds)")
         else:
-            logging.debug(
-                f"Cached inventory data expired ({time_since_last_fetch.total_seconds():.0f} seconds old)"
-            )
+            logging.debug(f"Cached inventory data expired ({time_since_last_fetch.total_seconds():.0f} seconds old)")
         return is_valid
 
     def clear_cache(self):
@@ -74,16 +70,10 @@ class InventoryService:
             Optional[List[Dict]]: Copy of cached inventory data if valid, else None
         """
         if self.is_cache_valid():
-            return (
-                self.cached_inventory_data.copy()
-                if self.cached_inventory_data
-                else None
-            )
+            return self.cached_inventory_data.copy() if self.cached_inventory_data else None
         return None
 
-    def fetch_inventory_async(
-        self, callback: Callable[[List[Dict], bool, str, bool], None]
-    ):
+    def fetch_inventory_async(self, callback: Callable[[List[Dict], bool, str, bool], None]):
         """Fetch inventory data asynchronously.
 
         Args:
@@ -100,22 +90,16 @@ class InventoryService:
             try:
                 claim_id = self.claim_instance.get_claim_id()
                 if not claim_id:
-                    logging.error(
-                        "Claim ID not set for inventory fetch. Cannot fetch inventory."
-                    )
+                    logging.error("Claim ID not set for inventory fetch. Cannot fetch inventory.")
                     message = "Claim ID missing for inventory."
                     callback(display_data, False, message, False)
                     return
 
-                building_states = self.bitcraft_client.fetch_claim_building_state(
-                    claim_id
-                )
+                building_states = self.bitcraft_client.fetch_claim_building_state(claim_id)
                 logging.debug(f"Fetched raw building_states: {building_states}")
 
                 # Fetch building nicknames from database
-                building_nicknames = (
-                    self.bitcraft_client.fetch_building_nickname_state()
-                )
+                building_nicknames = self.bitcraft_client.fetch_building_nickname_state()
                 nickname_lookup = {}
                 if building_nicknames:
                     # Create a lookup dictionary for fast nickname association
@@ -124,17 +108,13 @@ class InventoryService:
                         for entry in building_nicknames
                         if entry.get("entity_id") is not None
                     }
-                    logging.debug(
-                        f"Loaded {len(nickname_lookup)} building nicknames for association"
-                    )
+                    logging.debug(f"Loaded {len(nickname_lookup)} building nicknames for association")
                 else:
                     logging.warning("No building nicknames found in database")
 
                 enriched_building_states = []
                 if building_states:
-                    logging.debug(
-                        f"Found {len(building_states)} buildings for claim {claim_id}. Fetching their inventories..."
-                    )
+                    logging.debug(f"Found {len(building_states)} buildings for claim {claim_id}. Fetching their inventories...")
                     for building in building_states:
                         entity_id = building.get("entity_id")
                         if not entity_id:
@@ -155,34 +135,22 @@ class InventoryService:
                             building["nickname"] = nickname
 
                             # Fetch inventory for this building
-                            inventory_data = self.bitcraft_client.fetch_inventory_state(
-                                entity_id
-                            )
-                            logging.debug(
-                                f"Fetched inventory for {entity_id}: {inventory_data}"
-                            )
+                            inventory_data = self.bitcraft_client.fetch_inventory_state(entity_id)
+                            logging.debug(f"Fetched inventory for {entity_id}: {inventory_data}")
                             if inventory_data:
                                 building["inventory"] = inventory_data
-                                logging.debug(
-                                    f"Attached inventory to building {entity_id}"
-                                )
+                                logging.debug(f"Attached inventory to building {entity_id}")
                             else:
-                                logging.debug(
-                                    f"No inventory found for building {entity_id}"
-                                )
+                                logging.debug(f"No inventory found for building {entity_id}")
                         enriched_building_states.append(building)
 
                     self.claim_instance.set_buildings(enriched_building_states)
                     logging.info(
                         f"Loaded {len(enriched_building_states)} buildings (some enriched with inventory) for claim {claim_id}"
                     )
-                    logging.debug(
-                        f"Buildings processed by Claim instance: {self.claim_instance.get_buildings()}"
-                    )
+                    logging.debug(f"Buildings processed by Claim instance: {self.claim_instance.get_buildings()}")
                 else:
-                    logging.warning(
-                        f"No buildings found for claim {claim_id} or could not fetch building states."
-                    )
+                    logging.warning(f"No buildings found for claim {claim_id} or could not fetch building states.")
                     self.claim_instance.set_buildings([])
 
                 inventory = self.claim_instance.get_inventory()
@@ -210,9 +178,7 @@ class InventoryService:
                 # Cache the data and timestamp
                 self.cached_inventory_data = display_data.copy()
                 self.last_inventory_fetch_time = datetime.now()
-                logging.info(
-                    f"Cached {len(display_data)} inventory items for {self.inventory_cache_duration_minutes} minutes"
-                )
+                logging.info(f"Cached {len(display_data)} inventory items for {self.inventory_cache_duration_minutes} minutes")
 
                 message = "Claim inventory loaded."
                 callback(display_data, True, message, True)  # True = fresh data
@@ -225,9 +191,7 @@ class InventoryService:
         # Start the fetch in a background thread
         threading.Thread(target=fetch_thread, daemon=True).start()
 
-    def initialize_claim_data_async(
-        self, user_id: str, callback: Optional[Callable[[], None]] = None
-    ):
+    def initialize_claim_data_async(self, user_id: str, callback: Optional[Callable[[], None]] = None):
         """Initialize claim data asynchronously.
 
         Args:
@@ -241,31 +205,19 @@ class InventoryService:
                 self.claim_instance.set_owner_id(user_id)
 
                 # Get claim data
-                claim_id = self.bitcraft_client.fetch_claim_membership_id_by_user_id(
-                    user_id
-                )
+                claim_id = self.bitcraft_client.fetch_claim_membership_id_by_user_id(user_id)
                 if claim_id:
                     self.claim_instance.set_claim_id(claim_id)
                     claim_state = self.bitcraft_client.fetch_claim_state(claim_id)
                     if claim_state:
-                        self.claim_instance.set_claim_name(
-                            claim_state.get("claim_name")
-                        )
-                        self.claim_instance.set_owner_building_id(
-                            claim_state.get("owner_building_id")
-                        )
+                        self.claim_instance.set_claim_name(claim_state.get("claim_name"))
+                        self.claim_instance.set_owner_building_id(claim_state.get("owner_building_id"))
 
-                    claim_local_state = self.bitcraft_client.fetch_claim_local_state(
-                        claim_id
-                    )
+                    claim_local_state = self.bitcraft_client.fetch_claim_local_state(claim_id)
                     if claim_local_state:
-                        self.claim_instance.set_supplies(
-                            claim_local_state.get("supplies")
-                        )
+                        self.claim_instance.set_supplies(claim_local_state.get("supplies"))
                         self.claim_instance.set_size(claim_local_state.get("num_tiles"))
-                        self.claim_instance.set_treasury(
-                            claim_local_state.get("treasury")
-                        )
+                        self.claim_instance.set_treasury(claim_local_state.get("treasury"))
                     logging.info("Initial claim data loaded.")
                 else:
                     logging.warning(f"No claim ID found for user {user_id}.")

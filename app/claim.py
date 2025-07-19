@@ -69,14 +69,10 @@ class Claim:
             Claim._building_function_type_mapping_desc_data = self._load_reference_data(
                 "building_function_type_mapping_desc.json"
             )
-        self.building_function_type_mapping_desc_data = (
-            Claim._building_function_type_mapping_desc_data
-        )
+        self.building_function_type_mapping_desc_data = Claim._building_function_type_mapping_desc_data
 
         if Claim._building_type_desc_data is None:
-            Claim._building_type_desc_data = self._load_reference_data(
-                "building_type_desc.json"
-            )
+            Claim._building_type_desc_data = self._load_reference_data("building_type_desc.json")
         self.building_type_desc_data = Claim._building_type_desc_data
 
     def _load_reference_data(self, filename: str) -> dict | list | None:
@@ -119,9 +115,7 @@ class Claim:
                     return b_desc.get("name")
         return None
 
-    def _get_building_type_id_from_desc_id(
-        self, building_description_id: int
-    ) -> int | None:
+    def _get_building_type_id_from_desc_id(self, building_description_id: int) -> int | None:
         """Get building type ID from its description ID.
 
         Args:
@@ -162,9 +156,7 @@ class Claim:
             setattr(self, key, value)
             logging.debug(f"Claim {key} set to: {value}")
         else:
-            logging.warning(
-                f"Attempted to set unknown attribute: {key}. Consider adding it to __init__."
-            )
+            logging.warning(f"Attempted to set unknown attribute: {key}. Consider adding it to __init__.")
 
     def set_claim_name(self, claim_name: str):
         self.claim_name = claim_name
@@ -221,29 +213,19 @@ class Claim:
         self.buildings = {}
 
         # Create dictionaries for faster lookup of building descriptions and types
-        building_desc_lookup = {
-            b.get("id"): b.get("name")
-            for b in self.building_desc_data
-            if b.get("id") is not None
-        }
+        building_desc_lookup = {b.get("id"): b.get("name") for b in self.building_desc_data if b.get("id") is not None}
         type_mapping_lookup = {
             desc_id: mapping.get("type_id")
             for mapping in self.building_function_type_mapping_desc_data
             if mapping.get("desc_ids")
             for desc_id in mapping["desc_ids"]
         }
-        building_type_desc_lookup = {
-            t.get("id"): t.get("name")
-            for t in self.building_type_desc_data
-            if t.get("id") is not None
-        }
+        building_type_desc_lookup = {t.get("id"): t.get("name") for t in self.building_type_desc_data if t.get("id") is not None}
 
         for building in buildings:
             building_description_id = building.get("building_description_id")
             if building_description_id is None:
-                logging.warning(
-                    f"Building data missing 'building_description_id': {building.get('entity_id', 'Unknown Entity')}"
-                )
+                logging.warning(f"Building data missing 'building_description_id': {building.get('entity_id', 'Unknown Entity')}")
                 continue
 
             # Optimized lookup for building name
@@ -255,26 +237,20 @@ class Claim:
                 building_name.startswith("Unknown Building")
                 and building_name == f"Unknown Building (ID:{building_description_id})"
             ):
-                logging.warning(
-                    f"Could not find name for building_description_id: {building_description_id}"
-                )
+                logging.warning(f"Could not find name for building_description_id: {building_description_id}")
             building["name"] = building_name  # Add name to the building dict
 
             # Optimized lookup for building type ID and description
             building_type_id = type_mapping_lookup.get(building_description_id)
             building_type_description = "Unknown Type"
             if building_type_id is not None:
-                building_type_description = building_type_desc_lookup.get(
-                    building_type_id, "Unknown Type"
-                )
+                building_type_description = building_type_desc_lookup.get(building_type_id, "Unknown Type")
                 if building_type_description == "Unknown Type":
                     logging.warning(
                         f"Could not find type description for type ID: {building_type_id} (from desc ID: {building_description_id})"
                     )
             else:
-                logging.warning(
-                    f"Could not find type ID for building_description_id: {building_description_id}"
-                )
+                logging.warning(f"Could not find type ID for building_description_id: {building_description_id}")
 
             # Store the type description directly in the building dictionary
             building["_type_description"] = building_type_description
@@ -283,9 +259,7 @@ class Claim:
             if building_type_description not in self.buildings:
                 self.buildings[building_type_description] = []
             self.buildings[building_type_description].append(building)
-        logging.debug(
-            f"Finished processing buildings. Stored {len(self.buildings)} types of buildings."
-        )
+        logging.debug(f"Finished processing buildings. Stored {len(self.buildings)} types of buildings.")
 
     def get_buildings(self) -> dict:
         return self.buildings
@@ -326,25 +300,17 @@ class Claim:
 
         # Ensure reference data is loaded
         if self.resource_desc is None or self.item_desc is None:
-            logging.error(
-                "Resource or item description data not loaded. Cannot process inventory."
-            )
+            logging.error("Resource or item description data not loaded. Cannot process inventory.")
             return {}
 
         # Create combined lookup for resource_map and item_map for O(1) average access
         combined_item_lookup = {}
         if self.resource_desc:
-            combined_item_lookup.update(
-                {r["id"]: r for r in self.resource_desc if "id" in r}
-            )
+            combined_item_lookup.update({r["id"]: r for r in self.resource_desc if "id" in r})
         if self.item_desc:
-            combined_item_lookup.update(
-                {i["id"]: i for i in self.item_desc if "id" in i}
-            )
+            combined_item_lookup.update({i["id"]: i for i in self.item_desc if "id" in i})
         if self.cargo_desc:
-            combined_item_lookup.update(
-                {c["id"]: c for c in self.cargo_desc if "id" in c}
-            )
+            combined_item_lookup.update({c["id"]: c for c in self.cargo_desc if "id" in c})
 
         collection = {}
         # Define columns to exclude from the item details.
@@ -372,9 +338,7 @@ class Claim:
         }
 
         # Iterate only through 'Storage' type buildings
-        for building in self.buildings.get("Storage", []) + self.buildings.get(
-            "Cargo Stockpile", []
-        ):
+        for building in self.buildings.get("Storage", []) + self.buildings.get("Cargo Stockpile", []):
             # Get building name and nickname for display
             building_name = building.get("building_name", "Unknown Building")
             building_nickname = building.get("nickname")
@@ -395,18 +359,14 @@ class Claim:
                 try:
                     inv_data = slot[1][1]
                     if not isinstance(inv_data, list) or len(inv_data) < 2:
-                        logging.debug(
-                            f"Invalid inventory slot data format (expected list of at least 2): {slot}"
-                        )
+                        logging.debug(f"Invalid inventory slot data format (expected list of at least 2): {slot}")
                         continue
 
                     inv_id = inv_data[0]
                     inv_num = inv_data[1]
 
                     # Optimize quantity conversion
-                    if isinstance(inv_num, list) or not isinstance(
-                        inv_num, (int, float)
-                    ):
+                    if isinstance(inv_num, list) or not isinstance(inv_num, (int, float)):
                         inv_num = 0
 
                     found_item_data = combined_item_lookup.get(inv_id)
@@ -414,29 +374,17 @@ class Claim:
                     if found_item_data:
                         if inv_id not in collection:
                             # Use dictionary comprehension for faster creation of item_details
-                            item_details = {
-                                key: value
-                                for key, value in found_item_data.items()
-                                if key not in EXCLUDE_COLUMNS
-                            }
+                            item_details = {key: value for key, value in found_item_data.items() if key not in EXCLUDE_COLUMNS}
 
-                            item_details["name"] = item_details.get(
-                                "name", "Unknown Item"
-                            )
+                            item_details["name"] = item_details.get("name", "Unknown Item")
                             item_details["tier"] = item_details.get("tier", 0)
 
                             # Handle tag consistently
                             tags_from_data = found_item_data.get("tag")
-                            item_details["tag"] = (
-                                tags_from_data
-                                if isinstance(tags_from_data, str)
-                                else ""
-                            )
+                            item_details["tag"] = tags_from_data if isinstance(tags_from_data, str) else ""
 
                             item_details["quantity"] = 0
-                            item_details["containers"] = (
-                                {}
-                            )  # Track containers and quantities
+                            item_details["containers"] = {}  # Track containers and quantities
                             collection[inv_id] = item_details
 
                         # Add to overall quantity
@@ -448,19 +396,13 @@ class Claim:
                         collection[inv_id]["containers"][container_name] += inv_num
 
                     else:
-                        logging.debug(
-                            f"Inventory item ID {inv_id} not found in reference data."
-                        )
+                        logging.debug(f"Inventory item ID {inv_id} not found in reference data.")
 
                 except (IndexError, TypeError) as e:
-                    logging.error(
-                        f"Invalid item data structure or type error in slot {slot}. Error: {e}"
-                    )
+                    logging.error(f"Invalid item data structure or type error in slot {slot}. Error: {e}")
                     continue
                 except Exception as e:
-                    logging.error(
-                        f"An unexpected error occurred while processing inventory slot {slot}: {e}"
-                    )
+                    logging.error(f"An unexpected error occurred while processing inventory slot {slot}: {e}")
                     continue
 
         return collection

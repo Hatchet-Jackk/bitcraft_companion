@@ -84,9 +84,7 @@ class BaseOverlay(ctk.CTkToplevel, ABC):
         """Setup the base UI components including controls frame and common buttons."""
         # Controls frame at the top
         self.controls_frame = ctk.CTkFrame(self)
-        self.controls_frame.grid(
-            row=0, column=0, padx=10, pady=10, sticky="ew", columnspan=2
-        )
+        self.controls_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew", columnspan=2)
         self.controls_frame.grid_columnconfigure(0, weight=1)
         self.controls_frame.grid_columnconfigure(1, weight=0)
         self.controls_frame.grid_columnconfigure(2, weight=0)
@@ -112,16 +110,12 @@ class BaseOverlay(ctk.CTkToplevel, ABC):
         self.always_on_top_switch.select()
 
         # Auto-refresh switch
-        self.auto_refresh_switch = ctk.CTkSwitch(
-            self.controls_frame, text="Auto-refresh", command=self.toggle_auto_refresh
-        )
+        self.auto_refresh_switch = ctk.CTkSwitch(self.controls_frame, text="Auto-refresh", command=self.toggle_auto_refresh)
         self.auto_refresh_switch.grid(row=0, column=2, padx=10, pady=5, sticky="e")
         self.auto_refresh_switch.select()
 
         # Refresh button
-        self.refresh_button = ctk.CTkButton(
-            self.controls_frame, text="Refresh", width=80, command=self.refresh_data
-        )
+        self.refresh_button = ctk.CTkButton(self.controls_frame, text="Refresh", width=80, command=self.refresh_data)
         self.refresh_button.grid(row=0, column=3, padx=10, pady=5, sticky="e")
 
         # Save button (optional - can be enabled by subclasses)
@@ -131,9 +125,7 @@ class BaseOverlay(ctk.CTkToplevel, ABC):
                 self.controls_frame,
                 text="Save",
                 width=80,
-                command=(
-                    self._on_save_clicked if hasattr(self, "_on_save_clicked") else None
-                ),
+                command=(self._on_save_clicked if hasattr(self, "_on_save_clicked") else None),
             )
             self.save_button.grid(row=0, column=4, padx=10, pady=5, sticky="e")
 
@@ -141,23 +133,17 @@ class BaseOverlay(ctk.CTkToplevel, ABC):
         """Setup the status bar at the bottom with status and timestamp labels."""
         # Status bar frame
         self.status_frame = ctk.CTkFrame(self)
-        self.status_frame.grid(
-            row=3, column=0, padx=10, pady=(0, 10), sticky="ew", columnspan=2
-        )
+        self.status_frame.grid(row=3, column=0, padx=10, pady=(0, 10), sticky="ew", columnspan=2)
         self.status_frame.grid_columnconfigure(0, weight=1)
         self.status_frame.grid_columnconfigure(1, weight=0)
         self.status_frame.grid_columnconfigure(2, weight=0)
 
         # Status label
-        self.status_label = ctk.CTkLabel(
-            self.status_frame, text="", font=ctk.CTkFont(size=11)
-        )
+        self.status_label = ctk.CTkLabel(self.status_frame, text="", font=ctk.CTkFont(size=11))
         self.status_label.grid(row=0, column=0, padx=10, pady=5, sticky="w")
 
         # Last updated label
-        self.last_updated_label = ctk.CTkLabel(
-            self.status_frame, text="", font=ctk.CTkFont(size=11), text_color="gray"
-        )
+        self.last_updated_label = ctk.CTkLabel(self.status_frame, text="", font=ctk.CTkFont(size=11), text_color="gray")
         self.last_updated_label.grid(row=0, column=1, padx=10, pady=5, sticky="e")
 
     def setup_treeview_styling(self):
@@ -198,9 +184,7 @@ class BaseOverlay(ctk.CTkToplevel, ABC):
             ctk.CTkFrame: Configured frame for containing a treeview.
         """
         tree_frame = ctk.CTkFrame(self)
-        tree_frame.grid(
-            row=row, column=0, padx=10, pady=(0, 10), sticky="nsew", columnspan=2
-        )
+        tree_frame.grid(row=row, column=0, padx=10, pady=(0, 10), sticky="nsew", columnspan=2)
         tree_frame.grid_columnconfigure(0, weight=1)
         tree_frame.grid_rowconfigure(0, weight=1)
         return tree_frame
@@ -239,25 +223,19 @@ class BaseOverlay(ctk.CTkToplevel, ABC):
     def update_timestamp(self):
         """Update the last updated timestamp to current time."""
         self.last_update_time = datetime.now()
-        self.last_updated_label.configure(
-            text=f"Last updated: {self.last_update_time.strftime('%H:%M:%S')}"
-        )
+        self.last_updated_label.configure(text=f"Last updated: {self.last_update_time.strftime('%H:%M:%S')}")
 
     def start_auto_refresh(self):
         """Start the auto-refresh timer if auto-refresh is enabled."""
         if self.auto_refresh_enabled:
-            self.refresh_job = self.after(
-                self.refresh_interval * 1000, self.auto_refresh_callback
-            )
+            self.refresh_job = self.after(self.refresh_interval * 1000, self.auto_refresh_callback)
 
     def auto_refresh_callback(self):
         """Callback method executed by auto-refresh timer to refresh data."""
         if self.auto_refresh_enabled:
             self.refresh_data()
             # Schedule next refresh
-            self.refresh_job = self.after(
-                self.refresh_interval * 1000, self.auto_refresh_callback
-            )
+            self.refresh_job = self.after(self.refresh_interval * 1000, self.auto_refresh_callback)
 
     def toggle_auto_refresh(self):
         """Toggle auto-refresh functionality on or off based on switch state."""

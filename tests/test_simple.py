@@ -64,9 +64,7 @@ class TestModularStructure(unittest.TestCase):
             inventory_window_has_class,
             "ClaimInventoryWindow should be in inventory_window module",
         )
-        self.assertFalse(
-            main_has_duplicate, "ClaimInventoryWindow should NOT be in main module"
-        )
+        self.assertFalse(main_has_duplicate, "ClaimInventoryWindow should NOT be in main module")
         self.assertFalse(
             overlay_has_duplicate,
             "ClaimInventoryWindow should NOT be in overlay module",

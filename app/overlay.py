@@ -40,11 +40,9 @@ class BitCraftOverlay(BaseWindow):
         # Initialize a client to check for stored credentials
         temp_client = BitCraft()
 
-        logging.info(f"Debug - Email from client: {temp_client.email}")
-        logging.info(f"Debug - Auth token exists: {bool(temp_client.auth)}")
-        logging.info(
-            f"Debug - Auth token value: {temp_client.auth[:20] if temp_client.auth else None}..."
-        )
+        logging.info(f"Email from client: {temp_client.email}")
+        logging.info(f"Auth token exists: {bool(temp_client.auth)}")
+        logging.info(f"Auth token value: {temp_client.auth[:20] if temp_client.auth else None}...")
 
         # Check if we have stored credentials and determine initial state
         if temp_client.auth and temp_client.email:
@@ -61,9 +59,7 @@ class BitCraftOverlay(BaseWindow):
         else:
             # No valid stored credentials, initialize services with new client
             self.initialize_services(temp_client)
-            self.status_label.configure(
-                text="Enter your email to begin", text_color="yellow"
-            )
+            self.status_label.configure(text="Enter your email to begin", text_color="yellow")
             self._transition_to_ui_state(OverlayState.LOGIN_EMAIL)
 
     def setup_ui(self):
@@ -88,28 +84,20 @@ class BitCraftOverlay(BaseWindow):
         if new_state == OverlayState.LOGIN_EMAIL:
             self._setup_login_email_ui()
             self.geometry("400x300")
-            self.status_label.configure(
-                text="Enter your email to begin", text_color="yellow"
-            )
+            self.status_label.configure(text="Enter your email to begin", text_color="yellow")
         elif new_state == OverlayState.ACCESS_CODE:
             self._setup_access_code_ui()
             self.geometry("400x250")
-            self.status_label.configure(
-                text="Enter access code from your email", text_color="yellow"
-            )
+            self.status_label.configure(text="Enter access code from your email", text_color="yellow")
         elif new_state == OverlayState.PLAYER_NAME:
             self._setup_player_name_ui()
             self.geometry("400x400")
-            self.status_label.configure(
-                text="Enter your player name", text_color="yellow"
-            )
+            self.status_label.configure(text="Enter your player name", text_color="yellow")
         elif new_state == OverlayState.MAIN_TOGGLES:
             self._setup_main_toggles_ui()
             self.geometry("400x300")
             self.title("BitCraft Companion")
-            self.status_label.configure(
-                text="BitCraft Companion ready", text_color="green"
-            )
+            self.status_label.configure(text="BitCraft Companion ready", text_color="green")
 
     def _setup_login_email_ui(self):
         """Set up the UI for email input during login flow."""
@@ -132,9 +120,7 @@ class BitCraftOverlay(BaseWindow):
         self.label_email = ctk.CTkLabel(self.email_frame, text="Email:")
         self.label_email.grid(row=1, column=0, padx=20, pady=(10, 5), sticky="w")
 
-        self.entry_email = ctk.CTkEntry(
-            self.email_frame, placeholder_text="Enter your email address"
-        )
+        self.entry_email = ctk.CTkEntry(self.email_frame, placeholder_text="Enter your email address")
         self.entry_email.grid(row=2, column=0, padx=20, pady=5, sticky="ew")
 
         # Set stored email if available
@@ -148,9 +134,7 @@ class BitCraftOverlay(BaseWindow):
         button_frame.grid_columnconfigure((0, 1), weight=1)
 
         # Get Access Code button
-        self.get_code_button = ctk.CTkButton(
-            button_frame, text="Get Access Code", command=self._get_access_code_flow
-        )
+        self.get_code_button = ctk.CTkButton(button_frame, text="Get Access Code", command=self._get_access_code_flow)
         self.get_code_button.grid(row=0, column=0, padx=(0, 10), pady=0, sticky="ew")
 
         # Quit button
@@ -184,14 +168,10 @@ class BitCraftOverlay(BaseWindow):
         title_label.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew")
 
         # Access code input
-        self.label_access_code = ctk.CTkLabel(
-            self.access_code_frame, text="Access Code:"
-        )
+        self.label_access_code = ctk.CTkLabel(self.access_code_frame, text="Access Code:")
         self.label_access_code.grid(row=1, column=0, padx=20, pady=(10, 5), sticky="w")
 
-        self.entry_access_code = ctk.CTkEntry(
-            self.access_code_frame, placeholder_text="Enter 6-character access code"
-        )
+        self.entry_access_code = ctk.CTkEntry(self.access_code_frame, placeholder_text="Enter 6-character access code")
         self.entry_access_code.grid(row=2, column=0, padx=20, pady=5, sticky="ew")
 
         # Set stored access code if available
@@ -205,12 +185,8 @@ class BitCraftOverlay(BaseWindow):
         button_frame.grid_columnconfigure((0, 1), weight=1)
 
         # Authenticate button
-        self.authenticate_button = ctk.CTkButton(
-            button_frame, text="Authenticate", command=self._authenticate_flow
-        )
-        self.authenticate_button.grid(
-            row=0, column=0, padx=(0, 10), pady=0, sticky="ew"
-        )
+        self.authenticate_button = ctk.CTkButton(button_frame, text="Authenticate", command=self._authenticate_flow)
+        self.authenticate_button.grid(row=0, column=0, padx=(0, 10), pady=0, sticky="ew")
 
         # Back button
         self.back_button = ctk.CTkButton(
@@ -271,14 +247,10 @@ class BitCraftOverlay(BaseWindow):
             info_label.grid(row=1, column=0, padx=20, pady=(0, 10), sticky="ew")
 
         # Player name input
-        self.label_player_name = ctk.CTkLabel(
-            self.player_name_frame, text="Player Name:"
-        )
+        self.label_player_name = ctk.CTkLabel(self.player_name_frame, text="Player Name:")
         self.label_player_name.grid(row=2, column=0, padx=20, pady=(10, 5), sticky="w")
 
-        self.entry_player_name = ctk.CTkEntry(
-            self.player_name_frame, placeholder_text="Enter your player name"
-        )
+        self.entry_player_name = ctk.CTkEntry(self.player_name_frame, placeholder_text="Enter your player name")
         self.entry_player_name.grid(row=3, column=0, padx=20, pady=5, sticky="ew")
 
         # Set stored player name if available
@@ -298,9 +270,7 @@ class BitCraftOverlay(BaseWindow):
             "bitcraft-5",
         ]
         self.region_var = ctk.StringVar(value=self.stored_region)
-        self.optionmenu_region = ctk.CTkOptionMenu(
-            self.player_name_frame, values=self.regions, variable=self.region_var
-        )
+        self.optionmenu_region = ctk.CTkOptionMenu(self.player_name_frame, values=self.regions, variable=self.region_var)
         self.optionmenu_region.grid(row=5, column=0, padx=20, pady=5, sticky="ew")
 
         # Button frame
@@ -311,9 +281,7 @@ class BitCraftOverlay(BaseWindow):
             # For authenticated users: Connect and Logout buttons
             button_frame.grid_columnconfigure((0, 1), weight=1)
 
-            self.connect_button = ctk.CTkButton(
-                button_frame, text="Connect", command=self._connect_flow
-            )
+            self.connect_button = ctk.CTkButton(button_frame, text="Connect", command=self._connect_flow)
             self.connect_button.grid(row=0, column=0, padx=(0, 10), pady=0, sticky="ew")
 
             self.logout_button = ctk.CTkButton(
@@ -328,9 +296,7 @@ class BitCraftOverlay(BaseWindow):
             # For new users: Connect and Back buttons
             button_frame.grid_columnconfigure((0, 1), weight=1)
 
-            self.connect_button = ctk.CTkButton(
-                button_frame, text="Connect", command=self._connect_flow
-            )
+            self.connect_button = ctk.CTkButton(button_frame, text="Connect", command=self._connect_flow)
             self.connect_button.grid(row=0, column=0, padx=(0, 10), pady=0, sticky="ew")
 
             self.back_button_player = ctk.CTkButton(
@@ -340,9 +306,7 @@ class BitCraftOverlay(BaseWindow):
                 fg_color="gray",
                 hover_color="darkgray",
             )
-            self.back_button_player.grid(
-                row=0, column=1, padx=(10, 0), pady=0, sticky="ew"
-            )
+            self.back_button_player.grid(row=0, column=1, padx=(10, 0), pady=0, sticky="ew")
 
         # Bind Enter key to connect
         self.entry_player_name.bind("<Return>", lambda event: self._connect_flow())
@@ -480,9 +444,7 @@ class BitCraftOverlay(BaseWindow):
 
         # Disable button and show loading state
         self.get_code_button.configure(state="disabled", text="Sending...")
-        self.status_label.configure(
-            text="Sending access code to your email...", text_color="yellow"
-        )
+        self.status_label.configure(text="Sending access code to your email...", text_color="yellow")
 
         # Run in thread to prevent UI blocking
         thread = threading.Thread(target=self._run_get_access_code, args=(email,))
@@ -512,17 +474,11 @@ class BitCraftOverlay(BaseWindow):
             success: True if access code was sent successfully, False otherwise
         """
         if success:
-            self.status_label.configure(
-                text="Access code sent! Check your email", text_color="green"
-            )
+            self.status_label.configure(text="Access code sent! Check your email", text_color="green")
             # Transition to access code input after a short delay
-            self.after(
-                1500, lambda: self._transition_to_ui_state(OverlayState.ACCESS_CODE)
-            )
+            self.after(1500, lambda: self._transition_to_ui_state(OverlayState.ACCESS_CODE))
         else:
-            self.status_label.configure(
-                text="Failed to send access code. Please try again", text_color="red"
-            )
+            self.status_label.configure(text="Failed to send access code. Please try again", text_color="red")
             self.get_code_button.configure(state="normal", text="Get Access Code")
 
     def _authenticate_flow(self):
@@ -534,9 +490,7 @@ class BitCraftOverlay(BaseWindow):
             return
 
         if not self.stored_email:
-            messagebox.showerror(
-                "Error", "Email not found. Please go back and enter your email"
-            )
+            messagebox.showerror("Error", "Email not found. Please go back and enter your email")
             return
 
         # Store access code
@@ -544,14 +498,10 @@ class BitCraftOverlay(BaseWindow):
 
         # Disable button and show loading state
         self.authenticate_button.configure(state="disabled", text="Authenticating...")
-        self.status_label.configure(
-            text="Authenticating with access code...", text_color="yellow"
-        )
+        self.status_label.configure(text="Authenticating with access code...", text_color="yellow")
 
         # Run in thread to prevent UI blocking
-        thread = threading.Thread(
-            target=self._run_authenticate, args=(self.stored_email, access_code)
-        )
+        thread = threading.Thread(target=self._run_authenticate, args=(self.stored_email, access_code))
         thread.daemon = True
         thread.start()
 
@@ -579,13 +529,9 @@ class BitCraftOverlay(BaseWindow):
             success: True if authentication succeeded, False otherwise
         """
         if success:
-            self.status_label.configure(
-                text="Authentication successful!", text_color="green"
-            )
+            self.status_label.configure(text="Authentication successful!", text_color="green")
             # Transition to player name input after a short delay
-            self.after(
-                1500, lambda: self._transition_to_ui_state(OverlayState.PLAYER_NAME)
-            )
+            self.after(1500, lambda: self._transition_to_ui_state(OverlayState.PLAYER_NAME))
         else:
             self.status_label.configure(
                 text="Authentication failed. Please check your access code",
@@ -616,9 +562,7 @@ class BitCraftOverlay(BaseWindow):
 
         # Disable button and show loading state
         self.connect_button.configure(state="disabled", text="Connecting...")
-        self.status_label.configure(
-            text="Connecting and fetching player data...", text_color="yellow"
-        )
+        self.status_label.configure(text="Connecting and fetching player data...", text_color="yellow")
 
         # Run in thread to prevent UI blocking
         thread = threading.Thread(target=self._run_connect, args=(player_name, region))
@@ -660,15 +604,11 @@ class BitCraftOverlay(BaseWindow):
             user_id: User entity ID if connection succeeded
         """
         if success and user_id:
-            self.status_label.configure(
-                text="Connected successfully!", text_color="green"
-            )
+            self.status_label.configure(text="Connected successfully!", text_color="green")
             # Initialize claim data for the user
             self._initialize_claim_data(user_id)
             # Transition to main toggles UI after a short delay
-            self.after(
-                1500, lambda: self._transition_to_ui_state(OverlayState.MAIN_TOGGLES)
-            )
+            self.after(1500, lambda: self._transition_to_ui_state(OverlayState.MAIN_TOGGLES))
         else:
             self.status_label.configure(
                 text="Connection failed. Please check your player name and region",
@@ -691,10 +631,7 @@ class BitCraftOverlay(BaseWindow):
             self.stored_player_name = None
 
             # Close any open inventory window
-            if (
-                self.claim_inventory_window
-                and self.claim_inventory_window.winfo_exists()
-            ):
+            if self.claim_inventory_window and self.claim_inventory_window.winfo_exists():
                 self.claim_inventory_window.destroy()
                 self.claim_inventory_window = None
 

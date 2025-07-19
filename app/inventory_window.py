@@ -47,13 +47,10 @@ class FilterDialog(ctk.CTkToplevel):
         options_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
         options_frame.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(options_frame, text="Select values:").grid(
-            row=0, column=0, padx=5, pady=5, sticky="w"
-        )
+        ctk.CTkLabel(options_frame, text="Select values:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
 
         initial_select_all = self.current_filter["selected"] is None or (
-            isinstance(self.current_filter["selected"], set)
-            and len(self.current_filter["selected"]) == len(self.unique_values)
+            isinstance(self.current_filter["selected"], set) and len(self.current_filter["selected"]) == len(self.unique_values)
         )
 
         self.all_selected_var = ctk.BooleanVar(value=initial_select_all)
@@ -72,8 +69,7 @@ class FilterDialog(ctk.CTkToplevel):
         self.checkbox_vars = {}
         for i, value in enumerate(self.unique_values):
             initial_checkbox_state = self.current_filter["selected"] is None or (
-                isinstance(self.current_filter["selected"], set)
-                and value in self.current_filter["selected"]
+                isinstance(self.current_filter["selected"], set) and value in self.current_filter["selected"]
             )
             var = ctk.BooleanVar(value=initial_checkbox_state)
             checkbox = ctk.CTkCheckBox(self.scroll_frame, text=str(value), variable=var)
@@ -87,34 +83,24 @@ class FilterDialog(ctk.CTkToplevel):
             self.range_frame.grid(row=2, column=0, padx=10, pady=10, sticky="ew")
             self.range_frame.grid_columnconfigure((0, 1), weight=1)
 
-            ctk.CTkLabel(self.range_frame, text="Min:").grid(
-                row=0, column=0, padx=5, pady=5, sticky="w"
-            )
+            ctk.CTkLabel(self.range_frame, text="Min:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
             self.min_entry = ctk.CTkEntry(self.range_frame, placeholder_text="Min")
             self.min_entry.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
             if self.current_filter["min"] is not None:
                 self.min_entry.insert(0, str(self.current_filter["min"]))
 
-            ctk.CTkLabel(self.range_frame, text="Max:").grid(
-                row=1, column=0, padx=5, pady=5, sticky="w"
-            )
+            ctk.CTkLabel(self.range_frame, text="Max:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
             self.max_entry = ctk.CTkEntry(self.range_frame, placeholder_text="Max")
             self.max_entry.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
             if self.current_filter["max"] is not None:
                 self.max_entry.insert(0, str(self.current_filter["max"]))
 
         button_frame = ctk.CTkFrame(self)
-        button_frame.grid(
-            row=3 if self.is_numeric else 2, column=0, padx=10, pady=10, sticky="ew"
-        )
+        button_frame.grid(row=3 if self.is_numeric else 2, column=0, padx=10, pady=10, sticky="ew")
         button_frame.grid_columnconfigure((0, 1), weight=1)
 
-        ctk.CTkButton(button_frame, text="Apply", command=self.apply_filter).grid(
-            row=0, column=0, padx=5, pady=5, sticky="ew"
-        )
-        ctk.CTkButton(button_frame, text="Clear", command=self.clear_filter).grid(
-            row=0, column=1, padx=5, pady=5, sticky="ew"
-        )
+        ctk.CTkButton(button_frame, text="Apply", command=self.apply_filter).grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+        ctk.CTkButton(button_frame, text="Clear", command=self.clear_filter).grid(row=0, column=1, padx=5, pady=5, sticky="ew")
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
@@ -124,18 +110,12 @@ class FilterDialog(ctk.CTkToplevel):
             var.set(select_all)
 
     def _update_select_all_checkbox(self):
-        all_checked = all(
-            self.checkbox_vars[val].get()
-            for val in self.unique_values
-            if val in self.checkbox_vars
-        )
+        all_checked = all(self.checkbox_vars[val].get() for val in self.unique_values if val in self.checkbox_vars)
         self.all_selected_var.set(all_checked)
 
     def apply_filter(self):
         """Apply the selected filter values and/or range to the parent window."""
-        selected_values = {
-            value for value, var in self.checkbox_vars.items() if var.get()
-        }
+        selected_values = {value for value, var in self.checkbox_vars.items() if var.get()}
 
         min_val = None
         max_val = None
@@ -145,18 +125,14 @@ class FilterDialog(ctk.CTkToplevel):
                 if min_val_str:
                     min_val = float(min_val_str)
             except ValueError:
-                logging.warning(
-                    f"Invalid min value for {self.column_name} filter: '{min_val_str}' - ignoring."
-                )
+                logging.warning(f"Invalid min value for {self.column_name} filter: '{min_val_str}' - ignoring.")
 
             try:
                 max_val_str = self.max_entry.get().strip()
                 if max_val_str:
                     max_val = float(max_val_str)
             except ValueError:
-                logging.warning(
-                    f"Invalid max value for {self.column_name} filter: '{max_val_str}' - ignoring."
-                )
+                logging.warning(f"Invalid max value for {self.column_name} filter: '{max_val_str}' - ignoring.")
 
         if len(selected_values) == len(self.unique_values):
             selected_values = None
@@ -237,12 +213,8 @@ class ClaimInventoryWindow(BaseOverlay):
         # Override auto-refresh settings for inventory
         self.refresh_interval = 300  # 5 minutes for inventory
 
-        logging.debug(
-            f"ClaimInventoryWindow constructor finished - instance id: {id(self)}"
-        )
-        logging.debug(
-            f"Constructor - timestamp_initialized: {self.timestamp_initialized}"
-        )
+        logging.debug(f"ClaimInventoryWindow constructor finished - instance id: {id(self)}")
+        logging.debug(f"Constructor - timestamp_initialized: {self.timestamp_initialized}")
         logging.debug(
             f"Constructor - current timestamp text: {getattr(self, 'last_updated_label', None) and self.last_updated_label.cget('text')}"
         )
@@ -254,28 +226,20 @@ class ClaimInventoryWindow(BaseOverlay):
         """
         # Search frame - positioned at row 1 (after controls at row 0)
         search_frame = ctk.CTkFrame(self)
-        search_frame.grid(
-            row=1, column=0, padx=10, pady=(0, 10), sticky="ew", columnspan=2
-        )
+        search_frame.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="ew", columnspan=2)
         search_frame.grid_columnconfigure(1, weight=1)
 
         # Search label
-        search_label = ctk.CTkLabel(
-            search_frame, text="Search:", font=ctk.CTkFont(size=12)
-        )
+        search_label = ctk.CTkLabel(search_frame, text="Search:", font=ctk.CTkFont(size=12))
         search_label.grid(row=0, column=0, padx=10, pady=5, sticky="w")
 
         # Search entry
-        self.search_entry = ctk.CTkEntry(
-            search_frame, placeholder_text="Type to search items..."
-        )
+        self.search_entry = ctk.CTkEntry(search_frame, placeholder_text="Type to search items...")
         self.search_entry.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
         self.search_entry.bind("<KeyRelease>", self._on_search_change)
 
         # Clear search button
-        self.clear_search_button = ctk.CTkButton(
-            search_frame, text="Clear", width=60, command=self._clear_search
-        )
+        self.clear_search_button = ctk.CTkButton(search_frame, text="Clear", width=60, command=self._clear_search)
         self.clear_search_button.grid(row=0, column=2, padx=10, pady=5, sticky="e")
 
         # Create treeview frame using base class method (at row 2)
@@ -317,9 +281,7 @@ class ClaimInventoryWindow(BaseOverlay):
         self.add_vertical_scrollbar(self.tree_frame, self.tree)
 
         # Horizontal scrollbar for treeview
-        hsb = ctk.CTkScrollbar(
-            self.tree_frame, orientation="horizontal", command=self.tree.xview
-        )
+        hsb = ctk.CTkScrollbar(self.tree_frame, orientation="horizontal", command=self.tree.xview)
         hsb.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
         self.tree.configure(xscrollcommand=hsb.set)
 
@@ -330,9 +292,7 @@ class ClaimInventoryWindow(BaseOverlay):
     def setup_status_bar_content(self):
         """Setup additional content in the status bar (e.g., item count label)."""
         # Add item count label to status bar
-        self.item_count_label = ctk.CTkLabel(
-            self.status_frame, text="Items: 0", font=ctk.CTkFont(size=11)
-        )
+        self.item_count_label = ctk.CTkLabel(self.status_frame, text="Items: 0", font=ctk.CTkFont(size=11))
         self.item_count_label.grid(row=0, column=2, padx=10, pady=5, sticky="e")
 
     def refresh_data(self):
@@ -387,13 +347,9 @@ class ClaimInventoryWindow(BaseOverlay):
             )
 
         self.tree.column("Tier", width=80, anchor="center")
-        self.tree.column(
-            "Name", width=0, minwidth=0, stretch=False
-        )  # Hide name column since it's now in tree column
+        self.tree.column("Name", width=0, minwidth=0, stretch=False)  # Hide name column since it's now in tree column
         self.tree.column("Quantity", width=100, anchor="center")
-        self.tree.column(
-            "Containers", width=120, anchor="w"
-        )  # Left-aligned for better readability
+        self.tree.column("Containers", width=120, anchor="w")  # Left-aligned for better readability
         self.tree.column("Tag", width=300, anchor="w")
 
         style = ttk.Style(self)
@@ -443,13 +399,9 @@ class ClaimInventoryWindow(BaseOverlay):
                 )
             )
 
-        current_filter_state = self.active_filters.get(
-            column_name, {"selected": None, "min": None, "max": None}
-        )
+        current_filter_state = self.active_filters.get(column_name, {"selected": None, "min": None, "max": None})
 
-        dialog = FilterDialog(
-            self, column_name, unique_values, current_filter_state, is_numeric
-        )
+        dialog = FilterDialog(self, column_name, unique_values, current_filter_state, is_numeric)
 
     def update_filter(self, column_name: str, new_filter_state: dict):
         """Callback from FilterDialog to update filter settings for a column."""
@@ -473,9 +425,7 @@ class ClaimInventoryWindow(BaseOverlay):
     def _refresh_data(self):
         """Trigger a re-fetch and re-display of inventory data, bypassing cache."""
         if hasattr(self.master, "status_label"):
-            self.master.status_label.configure(
-                text="Refreshing claim inventory data...", text_color="yellow"
-            )
+            self.master.status_label.configure(text="Refreshing claim inventory data...", text_color="yellow")
 
         # Force a fresh fetch bypassing the cache
         if hasattr(self.master, "force_inventory_refresh"):
@@ -485,9 +435,7 @@ class ClaimInventoryWindow(BaseOverlay):
 
     def apply_filters_and_sort(self, *args):
         """Apply filters and sorting to the inventory data and update the treeview."""
-        logging.debug(
-            f"apply_filters_and_sort called - timestamp before: {self.last_updated_label.cget('text')}"
-        )
+        logging.debug(f"apply_filters_and_sort called - timestamp before: {self.last_updated_label.cget('text')}")
         filtered_data = list(self.current_inventory_data)
 
         # Apply search filtering first
@@ -495,8 +443,7 @@ class ClaimInventoryWindow(BaseOverlay):
             filtered_data = [
                 item
                 for item in filtered_data
-                if self.search_term in str(item.get("Name", "")).lower()
-                or self.search_term in str(item.get("Tag", "")).lower()
+                if self.search_term in str(item.get("Name", "")).lower() or self.search_term in str(item.get("Tag", "")).lower()
             ]
 
         for col_name, filter_state in self.active_filters.items():
@@ -507,17 +454,9 @@ class ClaimInventoryWindow(BaseOverlay):
             if selected_values is not None:
                 if col_name == "Containers":
                     # For containers, filter by number of containers
-                    filtered_data = [
-                        item
-                        for item in filtered_data
-                        if str(len(item.get("containers", {}))) in selected_values
-                    ]
+                    filtered_data = [item for item in filtered_data if str(len(item.get("containers", {}))) in selected_values]
                 else:
-                    filtered_data = [
-                        item
-                        for item in filtered_data
-                        if str(item.get(col_name, "")) in selected_values
-                    ]
+                    filtered_data = [item for item in filtered_data if str(item.get(col_name, "")) in selected_values]
 
             if (min_val is not None) or (max_val is not None):
                 if col_name in ["Tier", "Quantity"]:
@@ -533,14 +472,8 @@ class ClaimInventoryWindow(BaseOverlay):
                     filtered_data = [
                         item
                         for item in filtered_data
-                        if (
-                            min_val is None
-                            or len(item.get("containers", {})) >= min_val
-                        )
-                        and (
-                            max_val is None
-                            or len(item.get("containers", {})) <= max_val
-                        )
+                        if (min_val is None or len(item.get("containers", {})) >= min_val)
+                        and (max_val is None or len(item.get("containers", {})) <= max_val)
                     ]
 
         sort_by = self.sort_column
@@ -569,9 +502,7 @@ class ClaimInventoryWindow(BaseOverlay):
 
                 filtered_data.sort(key=containers_sort_key, reverse=self.sort_direction)
             elif sort_by == "Tag":
-                filtered_data.sort(
-                    key=lambda x: x.get("Tag", "").lower(), reverse=self.sort_direction
-                )
+                filtered_data.sort(key=lambda x: x.get("Tag", "").lower(), reverse=self.sort_direction)
             else:
                 filtered_data.sort(
                     key=lambda x: str(x.get(sort_by, "")).lower(),
@@ -580,9 +511,7 @@ class ClaimInventoryWindow(BaseOverlay):
 
             # Log first few items to verify sort order
             if len(filtered_data) > 0:
-                logging.debug(
-                    f"First 3 items after sort: {[item.get(sort_by) for item in filtered_data[:3]]}"
-                )
+                logging.debug(f"First 3 items after sort: {[item.get(sort_by) for item in filtered_data[:3]]}")
         else:
             logging.info(f"No sorting applied - sort_by: {sort_by}")
 
@@ -590,9 +519,7 @@ class ClaimInventoryWindow(BaseOverlay):
 
         # Update only the item count, not the timestamp (sorting/filtering doesn't change last update time)
         self._update_item_count()
-        logging.debug(
-            f"apply_filters_and_sort finished - timestamp after: {self.last_updated_label.cget('text')}"
-        )
+        logging.debug(f"apply_filters_and_sort finished - timestamp after: {self.last_updated_label.cget('text')}")
 
     def _can_convert_to_float(self, value):
         """Check if a value can be safely converted to float."""
@@ -631,13 +558,9 @@ class ClaimInventoryWindow(BaseOverlay):
             container_count = len(containers_data)
 
             if container_count == 1:
-                container_display = list(containers_data.keys())[
-                    0
-                ]  # Show single container name
+                container_display = list(containers_data.keys())[0]  # Show single container name
             else:
-                container_display = (
-                    f"{container_count}×📦" if container_count > 0 else "0×📦"
-                )
+                container_display = f"{container_count}×📦" if container_count > 0 else "0×📦"
 
             # Create main row - use tree column for item name
             item_id = self.tree.insert(
@@ -703,9 +626,7 @@ class ClaimInventoryWindow(BaseOverlay):
         if visible_items == total_items:
             self.item_count_label.configure(text=f"Items: {total_items}")
         else:
-            self.item_count_label.configure(
-                text=f"Items: {visible_items} of {total_items}"
-            )
+            self.item_count_label.configure(text=f"Items: {visible_items} of {total_items}")
 
     def update_last_updated_time(self, schedule_refresh=True):
         """Update the status bar with last update time and item count."""
@@ -730,9 +651,7 @@ class ClaimInventoryWindow(BaseOverlay):
             time_str = fetch_time.strftime("%Y-%m-%d %H:%M:%S")
         else:
             time_str = str(fetch_time)
-        logging.debug(
-            f"_set_timestamp_from_fetch_time called with: {fetch_time}, formatted as: {time_str}"
-        )
+        logging.debug(f"_set_timestamp_from_fetch_time called with: {fetch_time}, formatted as: {time_str}")
         self.last_updated_label.configure(text=f"Last update: {time_str}")
 
         # Mark timestamp as properly initialized
@@ -741,9 +660,7 @@ class ClaimInventoryWindow(BaseOverlay):
     def sort_treeview_column(self, col):
         """Handle sorting when a column header is clicked and update indicators."""
         logging.debug(f"sort_treeview_column called for column: {col}")
-        logging.debug(
-            f"Before sort - timestamp label text: {self.last_updated_label.cget('text')}"
-        )
+        logging.debug(f"Before sort - timestamp label text: {self.last_updated_label.cget('text')}")
         # Always toggle direction if clicking the same column, else set to ascending
         if self.sort_column == col:
             self.sort_direction = not self.sort_direction
@@ -752,9 +669,7 @@ class ClaimInventoryWindow(BaseOverlay):
             self.sort_direction = False
         self._update_treeview_headers()
         self.apply_filters_and_sort()
-        logging.debug(
-            f"After sort - timestamp label text: {self.last_updated_label.cget('text')}"
-        )
+        logging.debug(f"After sort - timestamp label text: {self.last_updated_label.cget('text')}")
 
     def on_closing(self):
         """Handle window closing event and perform cleanup."""
@@ -774,9 +689,7 @@ class ClaimInventoryWindow(BaseOverlay):
 
         # Generate default filename with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        claim_name = getattr(
-            self.claim_instance, "claim_name", "Unknown_Claim"
-        ).replace(" ", "_")
+        claim_name = getattr(self.claim_instance, "claim_name", "Unknown_Claim").replace(" ", "_")
         default_filename = f"claim_inventory_{claim_name}_{timestamp}"
 
         # Ask user for file location and format
@@ -870,18 +783,10 @@ class ClaimInventoryWindow(BaseOverlay):
             textfile.write("=" * 50 + "\n\n")
 
             # Write metadata
-            textfile.write(
-                f"Claim: {getattr(self.claim_instance, 'claim_name', 'Unknown')}\n"
-            )
-            textfile.write(
-                f"Player: {getattr(self.bitcraft_client, 'player_name', 'Unknown')}\n"
-            )
-            textfile.write(
-                f"Region: {getattr(self.bitcraft_client, 'region', 'Unknown')}\n"
-            )
-            textfile.write(
-                f"Export Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-            )
+            textfile.write(f"Claim: {getattr(self.claim_instance, 'claim_name', 'Unknown')}\n")
+            textfile.write(f"Player: {getattr(self.bitcraft_client, 'player_name', 'Unknown')}\n")
+            textfile.write(f"Region: {getattr(self.bitcraft_client, 'region', 'Unknown')}\n")
+            textfile.write(f"Export Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             textfile.write(f"Total Items: {len(self.current_inventory_data)}\n\n")
 
             # Write table header
@@ -907,9 +812,7 @@ class ClaimInventoryWindow(BaseOverlay):
         """
         filter_state = self.active_filters.get(column_name, {})
         return (
-            filter_state.get("selected") is not None
-            or filter_state.get("min") is not None
-            or filter_state.get("max") is not None
+            filter_state.get("selected") is not None or filter_state.get("min") is not None or filter_state.get("max") is not None
         )
 
     def _show_combined_menu(self, column):
@@ -920,12 +823,8 @@ class ClaimInventoryWindow(BaseOverlay):
         menu = tk.Menu(self, tearoff=0)
 
         # Add sorting options
-        menu.add_command(
-            label=f"Sort A to Z", command=lambda: self._sort_column_asc(column)
-        )
-        menu.add_command(
-            label=f"Sort Z to A", command=lambda: self._sort_column_desc(column)
-        )
+        menu.add_command(label=f"Sort A to Z", command=lambda: self._sort_column_asc(column))
+        menu.add_command(label=f"Sort Z to A", command=lambda: self._sort_column_desc(column))
 
         menu.add_separator()
 
@@ -938,9 +837,7 @@ class ClaimInventoryWindow(BaseOverlay):
         # Get unique values for this column to show filter status
         if self._is_filter_active(column):
             menu.add_separator()
-            menu.add_command(
-                label="Clear filter", command=lambda: self._clear_column_filter(column)
-            )
+            menu.add_command(label="Clear filter", command=lambda: self._clear_column_filter(column))
 
         # Show menu at mouse position
         try:
@@ -952,12 +849,8 @@ class ClaimInventoryWindow(BaseOverlay):
         """Sort the specified column in ascending order."""
         logging.info(f"Sorting column '{column}' in ascending order")
         logging.debug(f"_sort_column_asc called on instance {id(self)}")
-        logging.debug(
-            f"_sort_column_asc - timestamp_initialized: {self.timestamp_initialized}"
-        )
-        logging.debug(
-            f"_sort_column_asc - current timestamp: {self.last_updated_label.cget('text')}"
-        )
+        logging.debug(f"_sort_column_asc - timestamp_initialized: {self.timestamp_initialized}")
+        logging.debug(f"_sort_column_asc - current timestamp: {self.last_updated_label.cget('text')}")
         self.sort_column = column
         self.sort_direction = False
         self._update_treeview_headers()
@@ -967,12 +860,8 @@ class ClaimInventoryWindow(BaseOverlay):
         """Sort the specified column in descending order."""
         logging.info(f"Sorting column '{column}' in descending order")
         logging.debug(f"_sort_column_desc called on instance {id(self)}")
-        logging.debug(
-            f"_sort_column_desc - timestamp_initialized: {self.timestamp_initialized}"
-        )
-        logging.debug(
-            f"_sort_column_desc - current timestamp: {self.last_updated_label.cget('text')}"
-        )
+        logging.debug(f"_sort_column_desc - timestamp_initialized: {self.timestamp_initialized}")
+        logging.debug(f"_sort_column_desc - current timestamp: {self.last_updated_label.cget('text')}")
         self.sort_column = column
         self.sort_direction = True
         self._update_treeview_headers()
@@ -1017,9 +906,7 @@ class ClaimInventoryWindow(BaseOverlay):
         filter_window.grid_rowconfigure(2, weight=1)  # Make scrollable area expandable
 
         # Get current filter state
-        current_filter = self.active_filters.get(
-            column, {"selected": None, "min": None, "max": None}
-        )
+        current_filter = self.active_filters.get(column, {"selected": None, "min": None, "max": None})
         current_selected = current_filter.get("selected", set(unique_values))
         if current_selected is None:
             current_selected = set(unique_values)
@@ -1112,9 +999,9 @@ class ClaimInventoryWindow(BaseOverlay):
         bottom_button_frame.grid_columnconfigure(0, weight=1)
         bottom_button_frame.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkButton(
-            bottom_button_frame, text="Apply", command=apply_filter, width=100
-        ).grid(row=0, column=0, padx=(0, 5), sticky="ew")
+        ctk.CTkButton(bottom_button_frame, text="Apply", command=apply_filter, width=100).grid(
+            row=0, column=0, padx=(0, 5), sticky="ew"
+        )
         ctk.CTkButton(
             bottom_button_frame,
             text="Cancel",
@@ -1151,9 +1038,7 @@ class ClaimInventoryWindow(BaseOverlay):
             label="View Containers",
             command=lambda: self._show_container_details(item_name),
         )
-        context_menu.add_command(
-            label="Go to Wiki", command=lambda: self._open_wiki_page(item_name)
-        )
+        context_menu.add_command(label="Go to Wiki", command=lambda: self._open_wiki_page(item_name))
 
         # Show menu at click position
         try:
@@ -1273,9 +1158,7 @@ class ClaimInventoryWindow(BaseOverlay):
                 break
 
         if not data_item:
-            messagebox.showwarning(
-                "No Data", f"No container data found for {item_name}"
-            )
+            messagebox.showwarning("No Data", f"No container data found for {item_name}")
             return
 
         # Get container details
@@ -1318,9 +1201,7 @@ class ClaimInventoryWindow(BaseOverlay):
         text_widget.configure(state="disabled")
 
         # Close button
-        close_button = ctk.CTkButton(
-            detail_window, text="Close", command=detail_window.destroy
-        )
+        close_button = ctk.CTkButton(detail_window, text="Close", command=detail_window.destroy)
         close_button.grid(row=2, column=0, padx=10, pady=10)
 
     def _on_double_click(self, event):

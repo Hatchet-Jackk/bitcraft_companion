@@ -84,12 +84,8 @@ class PassiveCraftingWindow(BaseOverlay):
         self.expanded_rows = set()  # Track which rows are expanded
         self.row_data_map = {}  # Map tree item IDs to data
 
-        logging.debug(
-            f"PassiveCraftingWindow constructor finished - instance id: {id(self)}"
-        )
-        logging.debug(
-            f"Constructor - timestamp_initialized: {self.timestamp_initialized}"
-        )
+        logging.debug(f"PassiveCraftingWindow constructor finished - instance id: {id(self)}")
+        logging.debug(f"Constructor - timestamp_initialized: {self.timestamp_initialized}")
 
     def setup_content_ui(self):
         """
@@ -97,28 +93,20 @@ class PassiveCraftingWindow(BaseOverlay):
         """
         # Search frame - positioned at row 1 (after controls at row 0)
         search_frame = ctk.CTkFrame(self)
-        search_frame.grid(
-            row=1, column=0, padx=10, pady=(0, 10), sticky="ew", columnspan=2
-        )
+        search_frame.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="ew", columnspan=2)
         search_frame.grid_columnconfigure(1, weight=1)
 
         # Search label
-        search_label = ctk.CTkLabel(
-            search_frame, text="Search:", font=ctk.CTkFont(size=12)
-        )
+        search_label = ctk.CTkLabel(search_frame, text="Search:", font=ctk.CTkFont(size=12))
         search_label.grid(row=0, column=0, padx=10, pady=5, sticky="w")
 
         # Search entry
-        self.search_entry = ctk.CTkEntry(
-            search_frame, placeholder_text="Type to search items..."
-        )
+        self.search_entry = ctk.CTkEntry(search_frame, placeholder_text="Type to search items...")
         self.search_entry.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
         self.search_entry.bind("<KeyRelease>", self._on_search_change)
 
         # Clear search button
-        self.clear_search_button = ctk.CTkButton(
-            search_frame, text="Clear", width=60, command=self._clear_search
-        )
+        self.clear_search_button = ctk.CTkButton(search_frame, text="Clear", width=60, command=self._clear_search)
         self.clear_search_button.grid(row=0, column=2, padx=10, pady=5, sticky="e")
 
         # Create treeview frame using base class method
@@ -160,9 +148,7 @@ class PassiveCraftingWindow(BaseOverlay):
         self.add_vertical_scrollbar(self.tree_frame, self.tree)
 
         # Horizontal scrollbar for treeview
-        hsb = ctk.CTkScrollbar(
-            self.tree_frame, orientation="horizontal", command=self.tree.xview
-        )
+        hsb = ctk.CTkScrollbar(self.tree_frame, orientation="horizontal", command=self.tree.xview)
         hsb.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
         self.tree.configure(xscrollcommand=hsb.set)
 
@@ -177,9 +163,7 @@ class PassiveCraftingWindow(BaseOverlay):
         Set up additional content in the status bar, such as the item count label.
         """
         # Add item count label to status bar
-        self.item_count_label = ctk.CTkLabel(
-            self.status_frame, text="Operations: 0", font=ctk.CTkFont(size=11)
-        )
+        self.item_count_label = ctk.CTkLabel(self.status_frame, text="Operations: 0", font=ctk.CTkFont(size=11))
         self.item_count_label.grid(row=0, column=2, padx=10, pady=5, sticky="e")
 
     def refresh_data(self):
@@ -234,9 +218,7 @@ class PassiveCraftingWindow(BaseOverlay):
             )
 
         self.tree.column("Tier", width=80, anchor="center")
-        self.tree.column(
-            "Name", width=0, minwidth=0, stretch=False
-        )  # Hide name column since it's now in tree column
+        self.tree.column("Name", width=0, minwidth=0, stretch=False)  # Hide name column since it's now in tree column
         self.tree.column("Quantity", width=100, anchor="center")
         self.tree.column("Refinery", width=200, anchor="w")
         self.tree.column("Crafters", width=80, anchor="center")
@@ -287,9 +269,7 @@ class PassiveCraftingWindow(BaseOverlay):
         Trigger a re-fetch and re-display of passive crafting data, bypassing cache.
         """
         if hasattr(self.master, "status_label"):
-            self.master.status_label.configure(
-                text="Refreshing passive crafting data...", text_color="yellow"
-            )
+            self.master.status_label.configure(text="Refreshing passive crafting data...", text_color="yellow")
 
         # Force a fresh fetch bypassing the cache
         if hasattr(self.master, "force_passive_crafting_refresh"):
@@ -304,9 +284,7 @@ class PassiveCraftingWindow(BaseOverlay):
         Args:
             *args: Optional arguments for compatibility with callbacks.
         """
-        logging.debug(
-            f"apply_filters_and_sort called - timestamp before: {self.last_updated_label.cget('text')}"
-        )
+        logging.debug(f"apply_filters_and_sort called - timestamp before: {self.last_updated_label.cget('text')}")
         filtered_data = list(self.current_crafting_data)
 
         # Apply search filtering first
@@ -325,11 +303,7 @@ class PassiveCraftingWindow(BaseOverlay):
             max_val = filter_state.get("max")
 
             if selected_values is not None:
-                filtered_data = [
-                    item
-                    for item in filtered_data
-                    if str(item.get(col_name, "")) in selected_values
-                ]
+                filtered_data = [item for item in filtered_data if str(item.get(col_name, "")) in selected_values]
 
             if (min_val is not None) or (max_val is not None):
                 if col_name in ["Quantity", "Tier"]:
@@ -372,9 +346,7 @@ class PassiveCraftingWindow(BaseOverlay):
 
             # Log first few items to verify sort order
             if len(filtered_data) > 0:
-                logging.debug(
-                    f"First 3 items after sort: {[item.get(sort_by) for item in filtered_data[:3]]}"
-                )
+                logging.debug(f"First 3 items after sort: {[item.get(sort_by) for item in filtered_data[:3]]}")
         else:
             logging.info(f"No sorting applied - sort_by: {sort_by}")
 
@@ -382,9 +354,7 @@ class PassiveCraftingWindow(BaseOverlay):
 
         # Update only the item count, not the timestamp (sorting/filtering doesn't change last update time)
         self._update_item_count()
-        logging.debug(
-            f"apply_filters_and_sort finished - timestamp after: {self.last_updated_label.cget('text')}"
-        )
+        logging.debug(f"apply_filters_and_sort finished - timestamp after: {self.last_updated_label.cget('text')}")
 
     def _can_convert_to_float(self, value):
         """
@@ -541,9 +511,7 @@ class PassiveCraftingWindow(BaseOverlay):
         if visible_items == total_items:
             self.item_count_label.configure(text=f"Operations: {total_items}")
         else:
-            self.item_count_label.configure(
-                text=f"Operations: {visible_items} of {total_items}"
-            )
+            self.item_count_label.configure(text=f"Operations: {visible_items} of {total_items}")
 
     def update_last_updated_time(self, schedule_refresh=True):
         """
@@ -578,9 +546,7 @@ class PassiveCraftingWindow(BaseOverlay):
             time_str = fetch_time.strftime("%Y-%m-%d %H:%M:%S")
         else:
             time_str = str(fetch_time)
-        logging.debug(
-            f"_set_timestamp_from_fetch_time called with: {fetch_time}, formatted as: {time_str}"
-        )
+        logging.debug(f"_set_timestamp_from_fetch_time called with: {fetch_time}, formatted as: {time_str}")
         self.last_updated_label.configure(text=f"Last update: {time_str}")
 
         # Mark timestamp as properly initialized
@@ -594,9 +560,7 @@ class PassiveCraftingWindow(BaseOverlay):
             time_str = fetch_time.strftime("%Y-%m-%d %H:%M:%S")
         else:
             time_str = str(fetch_time)
-        logging.debug(
-            f"_set_timestamp_from_fetch_time called with: {fetch_time}, formatted as: {time_str}"
-        )
+        logging.debug(f"_set_timestamp_from_fetch_time called with: {fetch_time}, formatted as: {time_str}")
         self.last_updated_label.configure(text=f"Last update: {time_str}")
 
         # Mark timestamp as properly initialized
@@ -614,9 +578,7 @@ class PassiveCraftingWindow(BaseOverlay):
         """
         filter_state = self.active_filters.get(column_name, {})
         return (
-            filter_state.get("selected") is not None
-            or filter_state.get("min") is not None
-            or filter_state.get("max") is not None
+            filter_state.get("selected") is not None or filter_state.get("min") is not None or filter_state.get("max") is not None
         )
 
     def _show_combined_menu(self, column):
@@ -632,12 +594,8 @@ class PassiveCraftingWindow(BaseOverlay):
         menu = tk.Menu(self, tearoff=0)
 
         # Add sorting options
-        menu.add_command(
-            label=f"Sort A to Z", command=lambda: self._sort_column_asc(column)
-        )
-        menu.add_command(
-            label=f"Sort Z to A", command=lambda: self._sort_column_desc(column)
-        )
+        menu.add_command(label=f"Sort A to Z", command=lambda: self._sort_column_asc(column))
+        menu.add_command(label=f"Sort Z to A", command=lambda: self._sort_column_desc(column))
 
         menu.add_separator()
 
@@ -650,9 +608,7 @@ class PassiveCraftingWindow(BaseOverlay):
         # Get unique values for this column to show filter status
         if self._is_filter_active(column):
             menu.add_separator()
-            menu.add_command(
-                label="Clear filter", command=lambda: self._clear_column_filter(column)
-            )
+            menu.add_command(label="Clear filter", command=lambda: self._clear_column_filter(column))
 
         # Show menu at mouse position
         try:
@@ -751,9 +707,7 @@ class PassiveCraftingWindow(BaseOverlay):
 
         # Get currently selected values
         current_filter = self.active_filters.get(column, {})
-        currently_selected = current_filter.get(
-            "selected", set(unique_values)
-        )  # Default to all selected
+        currently_selected = current_filter.get("selected", set(unique_values))  # Default to all selected
         if currently_selected is None:
             currently_selected = set(unique_values)
 
@@ -761,9 +715,7 @@ class PassiveCraftingWindow(BaseOverlay):
         checkbox_vars = {}
 
         # Select All checkbox
-        select_all_var = tk.BooleanVar(
-            value=len(currently_selected) == len(unique_values)
-        )
+        select_all_var = tk.BooleanVar(value=len(currently_selected) == len(unique_values))
         select_all_checkbox = ctk.CTkCheckBox(
             main_frame,
             text="Select All",
@@ -790,9 +742,7 @@ class PassiveCraftingWindow(BaseOverlay):
                 main_frame,
                 text=display_value,
                 variable=var,
-                command=lambda: self._update_select_all_state(
-                    checkbox_vars, select_all_var
-                ),
+                command=lambda: self._update_select_all_state(checkbox_vars, select_all_var),
             )
             checkbox.grid(row=i + 2, column=0, padx=10, pady=2, sticky="w")
 
@@ -805,9 +755,7 @@ class PassiveCraftingWindow(BaseOverlay):
 
         # Buttons
         def apply_filter():
-            selected_values = {
-                str(value) for value, var in checkbox_vars.items() if var.get()
-            }
+            selected_values = {str(value) for value, var in checkbox_vars.items() if var.get()}
 
             if len(selected_values) == len(unique_values):
                 # All selected = no filter
@@ -828,15 +776,9 @@ class PassiveCraftingWindow(BaseOverlay):
         def cancel():
             filter_window.destroy()
 
-        ctk.CTkButton(button_frame, text="Apply", command=apply_filter).grid(
-            row=0, column=0, padx=5, pady=5, sticky="ew"
-        )
-        ctk.CTkButton(button_frame, text="Clear", command=clear_filter).grid(
-            row=0, column=1, padx=5, pady=5, sticky="ew"
-        )
-        ctk.CTkButton(button_frame, text="Cancel", command=cancel).grid(
-            row=0, column=2, padx=5, pady=5, sticky="ew"
-        )
+        ctk.CTkButton(button_frame, text="Apply", command=apply_filter).grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+        ctk.CTkButton(button_frame, text="Clear", command=clear_filter).grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        ctk.CTkButton(button_frame, text="Cancel", command=cancel).grid(row=0, column=2, padx=5, pady=5, sticky="ew")
 
         # Focus the window
         filter_window.focus()
@@ -891,9 +833,7 @@ class PassiveCraftingWindow(BaseOverlay):
 
         # Generate default filename with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        claim_name = getattr(
-            self.claim_instance, "claim_name", "Unknown_Claim"
-        ).replace(" ", "_")
+        claim_name = getattr(self.claim_instance, "claim_name", "Unknown_Claim").replace(" ", "_")
         default_filename = f"passive_crafting_{claim_name}_{timestamp}"
 
         # Ask user for file location and format
@@ -922,9 +862,7 @@ class PassiveCraftingWindow(BaseOverlay):
             else:
                 self._save_as_text(file_path)
 
-            messagebox.showinfo(
-                "Success", f"Passive crafting data saved to:\n{file_path}"
-            )
+            messagebox.showinfo("Success", f"Passive crafting data saved to:\n{file_path}")
             logging.info(f"Passive crafting data saved to: {file_path}")
 
         except Exception as e:
@@ -993,24 +931,14 @@ class PassiveCraftingWindow(BaseOverlay):
             textfile.write("=" * 50 + "\n\n")
 
             # Write metadata
-            textfile.write(
-                f"Claim: {getattr(self.claim_instance, 'claim_name', 'Unknown')}\n"
-            )
-            textfile.write(
-                f"Player: {getattr(self.bitcraft_client, 'player_name', 'Unknown')}\n"
-            )
-            textfile.write(
-                f"Region: {getattr(self.bitcraft_client, 'region', 'Unknown')}\n"
-            )
-            textfile.write(
-                f"Export Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-            )
+            textfile.write(f"Claim: {getattr(self.claim_instance, 'claim_name', 'Unknown')}\n")
+            textfile.write(f"Player: {getattr(self.bitcraft_client, 'player_name', 'Unknown')}\n")
+            textfile.write(f"Region: {getattr(self.bitcraft_client, 'region', 'Unknown')}\n")
+            textfile.write(f"Export Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             textfile.write(f"Total Operations: {len(self.current_crafting_data)}\n\n")
 
             # Write table header
-            textfile.write(
-                f"{'Tier':<6} {'Name':<25} {'Qty':<5} {'Refinery':<30} {'Tag':<20}\n"
-            )
+            textfile.write(f"{'Tier':<6} {'Name':<25} {'Qty':<5} {'Refinery':<30} {'Tag':<20}\n")
             textfile.write("-" * 86 + "\n")
 
             # Write data
@@ -1021,9 +949,7 @@ class PassiveCraftingWindow(BaseOverlay):
                 refinery = str(item.get("Refinery", ""))[:29]  # Truncate if too long
                 tag = str(item.get("Tag", ""))[:19]  # Truncate if too long
 
-                textfile.write(
-                    f"{tier:<6} {name:<25} {quantity:<5} {refinery:<30} {tag:<20}\n"
-                )
+                textfile.write(f"{tier:<6} {name:<25} {quantity:<5} {refinery:<30} {tag:<20}\n")
 
     def _on_hover(self, event):
         """
@@ -1143,12 +1069,8 @@ class PassiveCraftingWindow(BaseOverlay):
 
         # Create context menu
         context_menu = tk.Menu(self, tearoff=0)
-        context_menu.add_command(
-            label="View Crafters", command=lambda: self._show_crafters_detail(item_name)
-        )
-        context_menu.add_command(
-            label="Go to Wiki", command=lambda: self._open_wiki_page(item_name)
-        )
+        context_menu.add_command(label="View Crafters", command=lambda: self._show_crafters_detail(item_name))
+        context_menu.add_command(label="Go to Wiki", command=lambda: self._open_wiki_page(item_name))
 
         # Show menu at click position
         try:
@@ -1230,15 +1152,11 @@ class PassiveCraftingWindow(BaseOverlay):
 
         # Add crafter information
         for i, crafter in enumerate(crafter_details):
-            crafter_label = ctk.CTkLabel(
-                scroll_frame, text=f"👤 {crafter}", font=ctk.CTkFont(size=12)
-            )
+            crafter_label = ctk.CTkLabel(scroll_frame, text=f"👤 {crafter}", font=ctk.CTkFont(size=12))
             crafter_label.grid(row=i, column=0, padx=10, pady=5, sticky="w")
 
         # Close button
-        close_button = ctk.CTkButton(
-            detail_window, text="Close", command=detail_window.destroy
-        )
+        close_button = ctk.CTkButton(detail_window, text="Close", command=detail_window.destroy)
         close_button.grid(row=2, column=0, padx=20, pady=(0, 20))
 
     def _on_double_click(self, event):

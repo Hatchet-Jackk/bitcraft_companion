@@ -28,9 +28,7 @@ def configure_logging():
 
     # Create rotating file handler (5MB max, 1 backup file)
     log_file = os.path.join(log_dir, "bc-companion.log")
-    file_handler = RotatingFileHandler(
-        log_file, maxBytes=5 * 1024 * 1024, backupCount=1, encoding="utf-8"  # 5MB
-    )
+    file_handler = RotatingFileHandler(log_file, maxBytes=5 * 1024 * 1024, backupCount=1, encoding="utf-8")  # 5MB
 
     # Configure logging with both file and console output
     logging.basicConfig(
@@ -68,9 +66,7 @@ class BitCraftMainWindow(BaseWindow):
             self.setup_ui()
             self._initialize_claim_data()
         else:
-            self.status_label.configure(
-                text="No authenticated client provided", text_color="red"
-            )
+            self.status_label.configure(text="No authenticated client provided", text_color="red")
 
     def setup_ui(self):
         """Setup the main user interface with feature toggles.
@@ -101,9 +97,7 @@ class BitCraftMainWindow(BaseWindow):
         self.toggle_timer_overlay.grid(row=1, column=0, padx=20, pady=10, sticky="w")
 
         # Spacer to push any future elements to the bottom
-        ctk.CTkFrame(self.toggles_frame, fg_color="transparent").grid(
-            row=2, column=0, sticky="nsew", pady=(0, 10)
-        )
+        ctk.CTkFrame(self.toggles_frame, fg_color="transparent").grid(row=2, column=0, sticky="nsew", pady=(0, 10))
 
         self.status_label.configure(text="BitCraft Companion ready", text_color="green")
 
@@ -118,9 +112,7 @@ class BitCraftMainWindow(BaseWindow):
         and handles errors gracefully by displaying appropriate messages.
         """
         if not self.bitcraft_client:
-            logging.error(
-                "No authenticated client available for claim data initialization"
-            )
+            logging.error("No authenticated client available for claim data initialization")
             return
 
         def run_initialization():
@@ -131,9 +123,7 @@ class BitCraftMainWindow(BaseWindow):
 
                 # If no region is set, this indicates a problem with authentication flow
                 if not region_from_file:
-                    logging.error(
-                        "No region found in client - authentication may be incomplete"
-                    )
+                    logging.error("No region found in client - authentication may be incomplete")
                     self.after(
                         0,
                         lambda: self.status_label.configure(
@@ -161,26 +151,20 @@ class BitCraftMainWindow(BaseWindow):
                         logging.warning("Could not fetch user ID from player name.")
                         self.after(
                             0,
-                            lambda: self.status_label.configure(
-                                text="Ready (user ID unavailable)", text_color="yellow"
-                            ),
+                            lambda: self.status_label.configure(text="Ready (user ID unavailable)", text_color="yellow"),
                         )
                 else:
                     logging.warning("Player name not available for initialization.")
                     self.after(
                         0,
-                        lambda: self.status_label.configure(
-                            text="Ready (player name unavailable)", text_color="yellow"
-                        ),
+                        lambda: self.status_label.configure(text="Ready (player name unavailable)", text_color="yellow"),
                     )
 
             except Exception as e:
                 logging.error(f"Error during claim data initialization: {e}")
                 self.after(
                     0,
-                    lambda: self.status_label.configure(
-                        text="Ready (claim data unavailable)", text_color="yellow"
-                    ),
+                    lambda: self.status_label.configure(text="Ready (claim data unavailable)", text_color="yellow"),
                 )
 
         # Run initialization in background thread
