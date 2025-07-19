@@ -1210,7 +1210,7 @@ class BitCraft:
             logging.info(
                 f"Executing passive craft state queries for {len(sanitized_ids)} buildings"
             )
-            logging.info(f"Sample queries: {query_strings[:3]}")
+            logging.debug(f"Sample queries: {query_strings[:3]}")
 
             subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
             sub = json.dumps(subscribe)
@@ -1225,8 +1225,6 @@ class BitCraft:
             logging.info(
                 f"Fetched {len(results)} rows from passive_craft_state for {len(sanitized_ids)} entity IDs."
             )
-            if results:
-                logging.info(f"Sample result: {results[0]}")
             return results
 
     def logout(self):

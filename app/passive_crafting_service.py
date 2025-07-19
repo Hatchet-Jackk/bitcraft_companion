@@ -291,7 +291,7 @@ class PassiveCraftingService:
                 entity_ids = [
                     building["entity_id"] for building in processing_buildings
                 ]
-                logging.info(
+                logging.debug(
                     f"Querying passive craft state for entity IDs: {entity_ids[:5]}{'...' if len(entity_ids) > 5 else ''}"
                 )
                 passive_craft_states = self.bitcraft_client.fetch_passive_craft_state(

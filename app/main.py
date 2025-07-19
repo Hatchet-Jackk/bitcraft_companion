@@ -88,14 +88,14 @@ class BitCraftMainWindow(BaseWindow):
 
         self.toggle_claim_inventory = ctk.CTkSwitch(
             self.toggles_frame,
-            text="Claim Inventory Report",
+            text="Claim Inventory",
             command=self.toggle_claim_inventory_window,
         )
         self.toggle_claim_inventory.grid(row=0, column=0, padx=20, pady=10, sticky="w")
 
         self.toggle_timer_overlay = ctk.CTkSwitch(
             self.toggles_frame,
-            text="Passive Crafting Timer Overlay",
+            text="Passive Crafting Timer",
             command=self.toggle_passive_crafting_timer_overlay,
         )
         self.toggle_timer_overlay.grid(row=1, column=0, padx=20, pady=10, sticky="w")

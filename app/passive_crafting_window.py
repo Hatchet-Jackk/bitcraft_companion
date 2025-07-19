@@ -64,7 +64,7 @@ class PassiveCraftingWindow(BaseOverlay):
         # Initialize with BaseOverlay - this will call setup_content_ui()
         super().__init__(
             master,
-            "Passive Crafting Status",
+            "BitCraft Companion",
             min_width=800,
             min_height=500,
             initial_width=900,
@@ -344,7 +344,7 @@ class PassiveCraftingWindow(BaseOverlay):
         sort_by = self.sort_column
 
         if sort_by in ["Tier", "Name", "Quantity", "Refinery", "Tag"]:
-            logging.info(
+            logging.debug(
                 f"Sorting data by '{sort_by}', direction: {'DESC' if self.sort_direction else 'ASC'}, data length: {len(filtered_data)}"
             )
             if sort_by in ["Quantity", "Tier"]:
@@ -372,7 +372,7 @@ class PassiveCraftingWindow(BaseOverlay):
 
             # Log first few items to verify sort order
             if len(filtered_data) > 0:
-                logging.info(
+                logging.debug(
                     f"First 3 items after sort: {[item.get(sort_by) for item in filtered_data[:3]]}"
                 )
         else:

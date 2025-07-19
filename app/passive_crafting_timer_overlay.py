@@ -33,7 +33,7 @@ class PassiveCraftingTimerOverlay(ctk.CTkToplevel):
         self.passive_crafting_service = passive_crafting_service
 
         # Window configuration
-        self.title("Passive Crafting Timer")
+        self.title("BitCraft Companion")
 
         # Make window resizable with better initial size
         min_width = 700

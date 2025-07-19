@@ -508,7 +508,7 @@ class BaseWindow(ctk.CTk, ABC):
             )
             self.passive_crafting_timer_overlay.focus_set()
             self.status_label.configure(
-                text="Passive crafting timer overlay opened.", text_color="green"
+                text="Passive crafting timer opened.", text_color="green"
             )
         else:
             # Closing the overlay
@@ -519,7 +519,7 @@ class BaseWindow(ctk.CTk, ABC):
                 self.passive_crafting_timer_overlay.destroy()
                 self.passive_crafting_timer_overlay = None
             self.status_label.configure(
-                text="Passive crafting timer overlay closed.", text_color="green"
+                text="Passive crafting timer closed.", text_color="green"
             )
 
     def on_passive_crafting_timer_overlay_close(self):
@@ -535,7 +535,7 @@ class BaseWindow(ctk.CTk, ABC):
             self.passive_crafting_timer_overlay.destroy()
             self.passive_crafting_timer_overlay = None
         self.status_label.configure(
-            text="Passive crafting timer overlay closed.", text_color="green"
+            text="Passive crafting timer closed.", text_color="green"
         )
 
     def _clear_content_frame(self):
