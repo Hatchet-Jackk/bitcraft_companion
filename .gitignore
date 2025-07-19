@@ -1,28 +1,36 @@
+# Python cache and environment
 __pycache__/
 .venv/
+.env
+.pytest_cache/
+
+# IDE and editor settings
 .vscode/
 .idea/
+
+# Git and version control
 .git/
-.pytest_cache/
-.env
+
+# Build and distribution
 dist/
 build/
+build_exe.bat
 
 # PyInstaller spec files (user-specific build configuration)
 *.spec
 
 # Build scripts (user-specific)
-build_exe.bat
 generate_version.py
 
-*.xlsx
-*.txt
-
+# Data and results
 server/
 results/
 files/
 backup/
 data/
-
-# Personal user data (should not be shared)
+logs/
 player_data.json
+
+# File types to ignore
+*.xlsx
+*.txt
