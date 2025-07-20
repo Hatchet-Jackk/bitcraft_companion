@@ -753,8 +753,6 @@ class BitCraft:
                 logging.error(f"Error receiving building states for claim ID {claim_id}: {e}")
                 return []
 
-            print(f"Building states received: {len(building_states)} rows")
-
             if building_states:
                 logging.info(f"Building states found for claim ID {claim_id}.")
                 return building_states
