@@ -749,7 +749,6 @@ class BitCraft:
             try:
                 for row in self._receive_websocket_data("fetch_claim_building_state"):
                     building_states.append(row)
-                    logging.info(f"Received row for fetch_claim_building_state: {row}")
             except Exception as e:
                 logging.error(f"Error receiving building states for claim ID {claim_id}: {e}")
                 return []
