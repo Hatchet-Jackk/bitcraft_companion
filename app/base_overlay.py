@@ -3,6 +3,7 @@ from tkinter import ttk
 import tkinter as tk
 from datetime import datetime
 from abc import ABC, abstractmethod
+import logging
 
 
 class ToolTip:
@@ -134,6 +135,10 @@ class BaseOverlay(ctk.CTkToplevel, ABC):
         # Allow subclasses to add custom status bar content
         if hasattr(self, "setup_status_bar_content"):
             self.setup_status_bar_content()
+
+        # Start auto-refresh if enabled (after all UI setup is complete)
+        if self.auto_refresh_enabled:
+            self.start_auto_refresh()
 
     def setup_base_ui(self):
         """Setup the base UI components including controls frame and common buttons."""
@@ -285,26 +290,50 @@ class BaseOverlay(ctk.CTkToplevel, ABC):
 
     def start_auto_refresh(self):
         """Start the auto-refresh timer if auto-refresh is enabled."""
+        window_type = self.__class__.__name__
+        logging.debug(
+            f"{window_type}: start_auto_refresh called, auto_refresh_enabled={self.auto_refresh_enabled}, interval={self.refresh_interval}s"
+        )
+
+        # Cancel any existing refresh job first
+        if self.refresh_job:
+            logging.debug(f"{window_type}: cancelling existing refresh job before starting new one")
+            self.after_cancel(self.refresh_job)
+            self.refresh_job = None
+
         if self.auto_refresh_enabled:
             self.refresh_job = self.after(self.refresh_interval * 1000, self.auto_refresh_callback)
+            logging.debug(f"{window_type}: auto-refresh timer scheduled for {self.refresh_interval} seconds")
 
     def auto_refresh_callback(self):
         """Callback method executed by auto-refresh timer to refresh data."""
+        window_type = self.__class__.__name__
+        logging.debug(f"auto_refresh_callback called for {window_type} (interval: {self.refresh_interval}s)")
+
         if self.auto_refresh_enabled:
+            logging.debug(f"{window_type}: auto_refresh_enabled=True, calling refresh_data()")
             self.refresh_data()
             # Schedule next refresh
             self.refresh_job = self.after(self.refresh_interval * 1000, self.auto_refresh_callback)
+            logging.debug(f"{window_type}: scheduled next refresh in {self.refresh_interval} seconds")
+        else:
+            logging.debug(f"{window_type}: auto_refresh_enabled=False, skipping refresh")
 
     def toggle_auto_refresh(self):
         """Toggle auto-refresh functionality on or off based on switch state."""
+        window_type = self.__class__.__name__
         self.auto_refresh_enabled = self.auto_refresh_switch.get()
+        logging.debug(f"{window_type}: toggle_auto_refresh called, auto_refresh_enabled={self.auto_refresh_enabled}")
 
         if self.auto_refresh_enabled:
+            logging.debug(f"{window_type}: starting auto-refresh")
             self.start_auto_refresh()
         else:
+            logging.debug(f"{window_type}: stopping auto-refresh")
             if self.refresh_job:
                 self.after_cancel(self.refresh_job)
                 self.refresh_job = None
+                logging.debug(f"{window_type}: cancelled existing refresh job")
 
     def hide_auto_refresh_controls(self):
         """Hide auto-refresh controls from the UI when not needed by subclass."""
