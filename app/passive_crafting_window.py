@@ -75,7 +75,7 @@ class PassiveCraftingWindow(BaseOverlay):
         self.set_title_text("Claim Passive Crafting Inventory")
 
         # Override auto-refresh settings for passive crafting
-        self.refresh_interval = 30  # 30 seconds for passive crafting
+        self.refresh_interval = 15  # 15 seconds for passive crafting
 
         # Flag to track if timestamp has been properly initialized
         self.timestamp_initialized = False
@@ -162,9 +162,7 @@ class PassiveCraftingWindow(BaseOverlay):
         """
         Set up additional content in the status bar, such as the item count label.
         """
-        # Add item count label to status bar
-        self.item_count_label = ctk.CTkLabel(self.status_frame, text="Operations: 0", font=ctk.CTkFont(size=11))
-        self.item_count_label.grid(row=0, column=2, padx=10, pady=5, sticky="e")
+        pass
 
     def refresh_data(self):
         """
@@ -268,14 +266,19 @@ class PassiveCraftingWindow(BaseOverlay):
         """
         Trigger a re-fetch and re-display of passive crafting data, bypassing cache.
         """
+        logging.debug(f"PassiveCraftingWindow._refresh_data called (auto-refresh)")
         if hasattr(self.master, "status_label"):
             self.master.status_label.configure(text="Refreshing passive crafting data...", text_color="yellow")
 
         # Force a fresh fetch bypassing the cache
         if hasattr(self.master, "force_passive_crafting_refresh"):
+            logging.debug("Calling master.force_passive_crafting_refresh()")
             self.master.force_passive_crafting_refresh()
         elif hasattr(self.master, "_force_passive_crafting_refresh"):
+            logging.debug("Calling master._force_passive_crafting_refresh()")
             self.master._force_passive_crafting_refresh()
+        else:
+            logging.error("No force_passive_crafting_refresh method found on master")
 
     def apply_filters_and_sort(self, *args):
         """
@@ -381,25 +384,48 @@ class PassiveCraftingWindow(BaseOverlay):
         Args:
             data (list): List of crafting data to display.
         """
-        # Remember which rows were expanded
+        # Save expanded state before updating
         expanded_items = set()
         for item_id in self.tree.get_children():
-            item_values = self.tree.item(item_id)["values"]
-            if len(item_values) > 1:
-                item_name = item_values[1]  # Name is at index 1
-                refinery = item_values[3]  # Refinery is at index 3
-                item_key = f"{item_name}|{refinery}"
-                if item_key in self.expanded_rows:
-                    expanded_items.add(item_key)
+            if self.tree.item(item_id, "open"):  # Check if item is actually expanded
+                try:
+                    # Get item name from text field (tree column)
+                    item_name = self.tree.item(item_id, "text")
+                    # Get refinery from values
+                    item_values = self.tree.item(item_id)["values"]
+                    if item_name and len(item_values) > 3:
+                        refinery = item_values[3]  # Refinery is at index 3
+                        item_key = f"{item_name}|{refinery}"
+                        expanded_items.add(item_key)
+                        self.expanded_rows.add(item_key)
+                except:
+                    # Fallback to values if text fails
+                    try:
+                        item_values = self.tree.item(item_id)["values"]
+                        if len(item_values) > 3:
+                            item_name = item_values[1]  # Name is at index 1 in values (but it's empty)
+                            refinery = item_values[3]  # Refinery is at index 3
+                            # Use tree text if values[1] is empty
+                            if not item_name:
+                                item_name = self.tree.item(item_id, "text")
+                            if item_name:
+                                item_key = f"{item_name}|{refinery}"
+                                expanded_items.add(item_key)
+                                self.expanded_rows.add(item_key)
+                    except:
+                        pass
 
-        # Clear all existing items to ensure proper ordering
+        # Hide the tree to prevent flickering during updates
+        self.tree.grid_forget()
+
+        # Clear all existing items
         for item in self.tree.get_children():
-            self.tree.delete(item)
-
-        # Clear the data map
+            self.tree.delete(item)  # Clear the data map
         self.row_data_map.clear()
 
-        # Insert all items in the correct order
+        # Batch insert all items
+        items_to_expand = []
+
         for item_data in data:
             # Format crafter display - show name if single crafter, count if multiple
             crafter_count = item_data.get("Crafters", 0)
@@ -429,9 +455,8 @@ class PassiveCraftingWindow(BaseOverlay):
             has_multiple_crafters = crafter_count > 1
             has_multiple_refineries = len(item_data.get("refineries", [])) > 1
 
-            # If item has multiple crafters or refineries, make it expandable by adding child rows immediately
+            # If item has multiple crafters or refineries, add child rows
             if has_multiple_crafters or has_multiple_refineries:
-                # Add child rows immediately so they're visible
                 if has_multiple_crafters:
                     # Show breakdown by crafter
                     for crafter in crafter_details:
@@ -482,17 +507,27 @@ class PassiveCraftingWindow(BaseOverlay):
 
                 # Store the data for this row
                 self.row_data_map[item_id] = item_data.copy()
+
+                # Mark for expansion if it was expanded before
+                item_name = item_data["Name"]
+                refinery = item_data["Refinery"]
+                item_key = f"{item_name}|{refinery}"
+                if item_key in expanded_items:
+                    items_to_expand.append((item_id, item_key))
             else:
                 # Store the data for this row
                 self.row_data_map[item_id] = item_data
 
-            # If this row was expanded before, expand it again
-            item_name = item_data["Name"]
-            refinery = item_data["Refinery"]
-            item_key = f"{item_name}|{refinery}"
-            if item_key in expanded_items:
-                self.expanded_rows.add(item_key)
-                self._expand_row(item_id, item_data)
+        # Re-enable the tree and show it
+        self.tree.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+
+        # Expand previously expanded items after tree is visible
+        for item_id, item_key in items_to_expand:
+            self.tree.item(item_id, open=True)
+            self.expanded_rows.add(item_key)
+
+        # Force update to ensure everything is rendered
+        self.tree.update_idletasks()
 
         logging.debug(f"Updated Treeview with {len(data)} items in sorted order.")
 
@@ -508,10 +543,10 @@ class PassiveCraftingWindow(BaseOverlay):
 
         total_items = len(self.current_crafting_data)
 
-        if visible_items == total_items:
-            self.item_count_label.configure(text=f"Operations: {total_items}")
-        else:
-            self.item_count_label.configure(text=f"Operations: {visible_items} of {total_items}")
+        # if visible_items == total_items:
+        #     self.item_count_label.configure(text=f"Operations: {total_items}")
+        # else:
+        #     self.item_count_label.configure(text=f"Operations: {visible_items} of {total_items}")
 
     def update_last_updated_time(self, schedule_refresh=True):
         """
@@ -520,10 +555,10 @@ class PassiveCraftingWindow(BaseOverlay):
         Args:
             schedule_refresh (bool): Whether to schedule the next refresh (default True).
         """
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        current_time = datetime.now().strftime("%H:%M:%S")
         logging.debug(f"update_last_updated_time called, setting to: {current_time}")
         self.last_updated_label.configure(text=f"Last update: {current_time}")
-        logging.info(f"Timestamp updated to: {current_time}")
 
         # Mark timestamp as properly initialized
         self.timestamp_initialized = True
@@ -541,9 +576,11 @@ class PassiveCraftingWindow(BaseOverlay):
             fetch_time: The fetch time as a timestamp, datetime, or string.
         """
         if isinstance(fetch_time, (int, float)):
-            time_str = datetime.fromtimestamp(fetch_time).strftime("%Y-%m-%d %H:%M:%S")
+            # time_str = datetime.fromtimestamp(fetch_time).strftime("%Y-%m-%d %H:%M:%S")
+            time_str = datetime.fromtimestamp(fetch_time).strftime("%H:%M:%S")
         elif isinstance(fetch_time, datetime):
-            time_str = fetch_time.strftime("%Y-%m-%d %H:%M:%S")
+            # time_str = fetch_time.strftime("%Y-%m-%d %H:%M:%S")
+            time_str = fetch_time.strftime("%H:%M:%S")
         else:
             time_str = str(fetch_time)
         logging.debug(f"_set_timestamp_from_fetch_time called with: {fetch_time}, formatted as: {time_str}")
@@ -555,9 +592,11 @@ class PassiveCraftingWindow(BaseOverlay):
     def _set_timestamp_from_fetch_time(self, fetch_time):
         """Set timestamp display from a cached fetch time."""
         if isinstance(fetch_time, (int, float)):
-            time_str = datetime.fromtimestamp(fetch_time).strftime("%Y-%m-%d %H:%M:%S")
+            # time_str = datetime.fromtimestamp(fetch_time).strftime("%Y-%m-%d %H:%M:%S")
+            time_str = datetime.fromtimestamp(fetch_time).strftime("%H:%M:%S")
         elif isinstance(fetch_time, datetime):
-            time_str = fetch_time.strftime("%Y-%m-%d %H:%M:%S")
+            # time_str = fetch_time.strftime("%Y-%m-%d %H:%M:%S")
+            time_str = fetch_time.strftime("%H:%M:%S")
         else:
             time_str = str(fetch_time)
         logging.debug(f"_set_timestamp_from_fetch_time called with: {fetch_time}, formatted as: {time_str}")
