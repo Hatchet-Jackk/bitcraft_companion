@@ -1,7 +1,62 @@
 import customtkinter as ctk
 from tkinter import ttk
+import tkinter as tk
 from datetime import datetime
 from abc import ABC, abstractmethod
+
+
+class ToolTip:
+    """Simple tooltip class for showing hover information on widgets."""
+
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tooltip_window = None
+
+        # Bind hover events
+        self.widget.bind("<Enter>", self.on_enter)
+        self.widget.bind("<Leave>", self.on_leave)
+
+    def on_enter(self, event=None):
+        """Show tooltip on mouse enter."""
+        if self.tooltip_window:
+            return
+
+        x = self.widget.winfo_rootx() + 25
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
+
+        self.tooltip_window = tk.Toplevel(self.widget)
+        self.tooltip_window.wm_overrideredirect(True)
+        self.tooltip_window.configure(bg="#2b2b2b", relief="solid", borderwidth=1)
+
+        # Check if parent window has topmost attribute and apply it to tooltip
+        try:
+            parent_window = self.widget.winfo_toplevel()
+            if parent_window.attributes("-topmost"):
+                self.tooltip_window.attributes("-topmost", True)
+        except:
+            # If there's any issue getting the parent's topmost state, just continue
+            pass
+
+        label = tk.Label(
+            self.tooltip_window,
+            text=self.text,
+            justify="left",
+            bg="#2b2b2b",
+            fg="white",
+            font=("Arial", 9),
+            padx=5,
+            pady=3,
+        )
+        label.pack()
+
+        self.tooltip_window.geometry(f"+{x}+{y}")
+
+    def on_leave(self, event=None):
+        """Hide tooltip on mouse leave."""
+        if self.tooltip_window:
+            self.tooltip_window.destroy()
+            self.tooltip_window = None
 
 
 class BaseOverlay(ctk.CTkToplevel, ABC):
@@ -113,6 +168,9 @@ class BaseOverlay(ctk.CTkToplevel, ABC):
         self.auto_refresh_switch = ctk.CTkSwitch(self.controls_frame, text="Auto-refresh", command=self.toggle_auto_refresh)
         self.auto_refresh_switch.grid(row=0, column=2, padx=10, pady=5, sticky="e")
         self.auto_refresh_switch.select()
+
+        # Add tooltip to auto-refresh toggle
+        ToolTip(self.auto_refresh_switch, f"Automatically refresh data every {self.refresh_interval} seconds")
 
         # Refresh button
         self.refresh_button = ctk.CTkButton(self.controls_frame, text="Refresh", width=80, command=self.refresh_data)
