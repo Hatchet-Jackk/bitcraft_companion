@@ -211,7 +211,7 @@ class ClaimInventoryWindow(BaseOverlay):
         self.set_title_text("Claim Inventory")
 
         # Override auto-refresh settings for inventory
-        self.refresh_interval = 300  # 5 minutes for inventory
+        self.refresh_interval = 120  # 2 minutes for inventory
 
         logging.debug(f"ClaimInventoryWindow constructor finished - instance id: {id(self)}")
         logging.debug(f"Constructor - timestamp_initialized: {self.timestamp_initialized}")

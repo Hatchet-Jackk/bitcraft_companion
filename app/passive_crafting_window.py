@@ -75,7 +75,7 @@ class PassiveCraftingWindow(BaseOverlay):
         self.set_title_text("Claim Passive Crafting Inventory")
 
         # Override auto-refresh settings for passive crafting
-        self.refresh_interval = 120  # 2 minutes for passive crafting
+        self.refresh_interval = 30  # 30 seconds for passive crafting
 
         # Flag to track if timestamp has been properly initialized
         self.timestamp_initialized = False

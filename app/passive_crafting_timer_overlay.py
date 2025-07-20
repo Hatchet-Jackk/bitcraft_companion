@@ -64,7 +64,7 @@ class PassiveCraftingTimerOverlay(ctk.CTkToplevel):
 
         # Auto-refresh settings
         self.auto_refresh_enabled = True
-        self.refresh_interval = 15  # seconds
+        self.refresh_interval = 10  # seconds
         self.refresh_job = None
         self.last_update_time = None
 
@@ -248,7 +248,6 @@ class PassiveCraftingTimerOverlay(ctk.CTkToplevel):
 
     def refresh_data(self):
         """Refresh the timer data by fetching the latest passive crafting state."""
-        self.status_label.configure(text="Refreshing...", text_color="yellow")
         self.passive_crafting_service.get_timer_data(self.on_data_received)
 
     def on_data_received(self, data: List[Dict[str, Any]], success: bool, message: str, has_data: bool):
