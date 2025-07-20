@@ -1,10 +1,12 @@
 import customtkinter as ctk
 from tkinter import ttk
+import tkinter as tk
 from typing import List, Dict, Any
 from datetime import datetime
 
 from client import BitCraft
 from passive_crafting_service import PassiveCraftingService
+from base_overlay import ToolTip
 
 
 class PassiveCraftingTimerOverlay(ctk.CTkToplevel):
@@ -122,6 +124,9 @@ class PassiveCraftingTimerOverlay(ctk.CTkToplevel):
         self.toggle_auto_refresh_switch = ctk.CTkSwitch(controls_frame, text="Auto-refresh", command=self.toggle_auto_refresh)
         self.toggle_auto_refresh_switch.grid(row=0, column=2, padx=10, pady=5, sticky="e")
         self.toggle_auto_refresh_switch.select()  # Start enabled
+
+        # Add tooltip to auto-refresh toggle
+        ToolTip(self.toggle_auto_refresh_switch, f"Automatically refresh data every {self.refresh_interval} seconds")
 
         # Manual refresh button
         self.refresh_button = ctk.CTkButton(controls_frame, text="Refresh", command=self.refresh_data, width=80)
@@ -248,7 +253,6 @@ class PassiveCraftingTimerOverlay(ctk.CTkToplevel):
 
     def refresh_data(self):
         """Refresh the timer data by fetching the latest passive crafting state."""
-        self.status_label.configure(text="Refreshing...", text_color="yellow")
         self.passive_crafting_service.get_timer_data(self.on_data_received)
 
     def on_data_received(self, data: List[Dict[str, Any]], success: bool, message: str, has_data: bool):

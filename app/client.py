@@ -1,6 +1,7 @@
 import os
 import json
 import sys
+import uuid
 from websockets import Subprotocol
 from websockets.sync.client import connect
 import logging
@@ -55,9 +56,7 @@ class BitCraft:
         Sets up WebSocket connection parameters, threading locks, reference data
         caching, and loads user credentials from keyring and configuration files.
         """
-        self.host = os.getenv(
-            "BITCRAFT_SPACETIME_HOST", "bitcraft-early-access.spacetimedb.com"
-        )
+        self.host = os.getenv("BITCRAFT_SPACETIME_HOST", "bitcraft-early-access.spacetimedb.com")
         self.uri = "{scheme}://{host}/v1/database/{module}/{endpoint}"
         self.proto = Subprotocol(self.DEFAULT_SUBPROTOCOL)
         self.ws_connection = None
@@ -78,9 +77,7 @@ class BitCraft:
         self.load_user_data_from_file()
 
         # Sensitive data will be loaded/stored via keyring, not directly in __init__
-        self.email = (
-            self._get_credential_from_keyring("email") or self.email
-        )  # Prefer keyring email over file
+        self.email = self._get_credential_from_keyring("email")
         self.auth = self._get_credential_from_keyring("authorization_token")
 
     def _get_credential_from_keyring(self, key_name: str) -> str | None:
@@ -100,9 +97,7 @@ class BitCraft:
                 logging.debug(f"Credential '{key_name}' not found in keyring.")
             return credential
         except keyring.errors.NoKeyringError:
-            logging.warning(
-                "No keyring backend found. Credentials will not be securely stored."
-            )
+            logging.warning("No keyring backend found. Credentials will not be securely stored.")
             return None
         except Exception as e:
             logging.error(f"Error retrieving '{key_name}' from keyring: {e}")
@@ -119,9 +114,7 @@ class BitCraft:
             keyring.set_password(self.SERVICE_NAME, key_name, value)
             logging.debug(f"Credential '{key_name}' stored in keyring.")
         except keyring.errors.NoKeyringError:
-            logging.warning(
-                "No keyring backend found. Cannot securely store credentials."
-            )
+            logging.warning("No keyring backend found. Cannot securely store credentials.")
         except Exception as e:
             logging.error(f"Error storing '{key_name}' in keyring: {e}")
 
@@ -155,9 +148,7 @@ class BitCraft:
         """
         if getattr(sys, "frozen", False):
             # Running as bundled executable - references are in the same directory
-            file_path = os.path.join(
-                os.path.dirname(sys.executable), "references", filename
-            )
+            file_path = os.path.join(os.path.dirname(sys.executable), "references", filename)
         else:
             # Running as script
             file_path = os.path.join(os.path.dirname(__file__), "references", filename)
@@ -209,9 +200,7 @@ class BitCraft:
         from the local JSON file. Handles missing or corrupted files gracefully.
         """
         try:
-            with open(
-                os.path.join(self._get_data_directory(), "player_data.json"), "r"
-            ) as f:
+            with open(os.path.join(self._get_data_directory(), "player_data.json"), "r") as f:
                 data = json.load(f)
                 self.email = data.get("email")
                 self.region = data.get("region")
@@ -220,16 +209,12 @@ class BitCraft:
                 self.host = data.get("host", self.host)
                 logging.info("Non-sensitive user data loaded successfully from file.")
         except FileNotFoundError:
-            logging.warning(
-                "player_data.json not found. Some user data might be missing."
-            )
+            logging.warning("player_data.json not found. Some user data might be missing.")
             self.email = None
             self.region = None
             self.player_name = None
         except json.JSONDecodeError:
-            logging.error(
-                "player_data.json is corrupted or empty. Please check the file."
-            )
+            logging.error("player_data.json is corrupted or empty. Please check the file.")
             self.email = None
             self.region = None
             self.player_name = None
@@ -274,20 +259,14 @@ class BitCraft:
         try:
             response = requests.post(uri)
             response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
-            logging.info(
-                "Access Code request was successful! Check your email for the code."
-            )
+            logging.info("Access Code request was successful! Check your email for the code.")
             return True  # Indicate success
         except requests.exceptions.HTTPError as http_err:
-            logging.error(
-                f"HTTP error requesting access code: {http_err} - {response.text}"
-            )
+            logging.error(f"HTTP error requesting access code: {http_err} - {response.text}")
         except requests.exceptions.RequestException as req_err:
             logging.error(f"Network error requesting access code: {req_err}")
         except Exception as e:
-            logging.error(
-                f"An unexpected error occurred during access code request: {e}"
-            )
+            logging.error(f"An unexpected error occurred during access code request: {e}")
 
         return False  # Indicate failure
 
@@ -310,9 +289,7 @@ class BitCraft:
         if not email:
             raise ValueError("Email is required to request an authorization token.")
         if not access_code:
-            raise ValueError(
-                "Access code is required to request an authorization token."
-            )
+            raise ValueError("Access code is required to request an authorization token.")
 
         if not self._is_valid_email(email):
             raise ValueError(f"Invalid email format: {email}")
@@ -327,9 +304,7 @@ class BitCraft:
 
             authorization_token = response.json()
             # Store the token and email in keyring and update instance properties
-            self._set_credential_in_keyring(
-                "authorization_token", f"Bearer {authorization_token}"
-            )
+            self._set_credential_in_keyring("authorization_token", f"Bearer {authorization_token}")
             self._set_credential_in_keyring("email", email)
             self.auth = f"Bearer {authorization_token}"
             self.email = email
@@ -337,17 +312,13 @@ class BitCraft:
             return self.auth
 
         except requests.exceptions.HTTPError as http_err:
-            logging.error(
-                f"HTTP error requesting authorization token: {http_err} - {response.text}"
-            )
+            logging.error(f"HTTP error requesting authorization token: {http_err} - {response.text}")
         except requests.exceptions.RequestException as req_err:
             logging.error(f"Network error requesting authorization token: {req_err}")
         except json.JSONDecodeError:
             logging.error("Failed to decode JSON response for authorization token.")
         except Exception as e:
-            logging.error(
-                f"An unexpected error occurred during authorization token request: {e}"
-            )
+            logging.error(f"An unexpected error occurred during authorization token request: {e}")
 
         return None  # Return None if token could not be obtained
 
@@ -372,9 +343,7 @@ class BitCraft:
             return False
 
         if not self._is_valid_email(effective_email):
-            logging.error(
-                f"Authentication failed: Invalid email format: {effective_email}"
-            )
+            logging.error(f"Authentication failed: Invalid email format: {effective_email}")
             return False
 
         # If we already have an auth token and no access_code is given (meaning we're trying to re-use)
@@ -384,9 +353,7 @@ class BitCraft:
 
         # If we need to get a new auth token (either no auth, or new access_code provided)
         if not access_code:
-            logging.error(
-                "Authentication failed: Access code is required to obtain a new authorization token."
-            )
+            logging.error("Authentication failed: Access code is required to obtain a new authorization token.")
             return False
 
         # Attempt to get a new authorization token using the provided/effective email and access code
@@ -395,9 +362,7 @@ class BitCraft:
             logging.info("Authentication successful!")
             return True
         else:
-            logging.error(
-                "Authentication failed: Could not obtain authorization token."
-            )
+            logging.error("Authentication failed: Could not obtain authorization token.")
             return False
 
     def set_host(self, host: str):
@@ -479,14 +444,10 @@ class BitCraft:
             RuntimeError: If authorization token is not available
         """
         if not self.host or not self.module or not self.endpoint:
-            raise ValueError(
-                "Host, module, and endpoint must be set before building WebSocket URI."
-            )
+            raise ValueError("Host, module, and endpoint must be set before building WebSocket URI.")
         if not self.auth:  # Ensure auth token is available for headers
             raise RuntimeError("Authorization token is not set. Authenticate first.")
-        self.ws_uri = self.uri.format(
-            scheme="wss", host=self.host, module=self.module, endpoint=self.endpoint
-        )
+        self.ws_uri = self.uri.format(scheme="wss", host=self.host, module=self.module, endpoint=self.endpoint)
         self.headers = {"Authorization": self.auth}
         logging.info(f"WebSocket URI set: {self.ws_uri}")
 
@@ -502,13 +463,9 @@ class BitCraft:
         """
         with self.ws_lock:
             if not self.ws_uri:
-                raise RuntimeError(
-                    "WebSocket URI is not set. Call set_websocket_uri() first."
-                )
+                raise RuntimeError("WebSocket URI is not set. Call set_websocket_uri() first.")
             if self.ws_connection:
-                logging.warning(
-                    "WebSocket connection already exists. Closing existing connection."
-                )
+                logging.warning("WebSocket connection already exists. Closing existing connection.")
                 self.close_websocket()
 
             try:
@@ -521,9 +478,7 @@ class BitCraft:
                 )
                 # Initial handshake or acknowledgment, if the server sends one immediately
                 first_msg = self.ws_connection.recv()
-                logging.debug(
-                    f"Initial WebSocket handshake message: {first_msg[:20]}..."
-                )
+                logging.debug(f"Initial WebSocket handshake message: {first_msg[:20]}...")
                 logging.info("WebSocket connection established")
             except Exception as e:
                 logging.error(f"Failed to establish WebSocket connection: {e}")
@@ -548,9 +503,7 @@ class BitCraft:
             else:
                 logging.warning("No WebSocket connection to close")
 
-    def _receive_websocket_subscription_data(
-        self, query_name: str
-    ):  # Removed expected_key as it wasn't used
+    def _receive_websocket_data(self, query_name: str):
         """Helper method to receive and parse data from a WebSocket subscription.
 
         Processes WebSocket messages and yields individual insert rows from
@@ -572,33 +525,35 @@ class BitCraft:
             try:
                 data = json.loads(msg)
                 if "InitialSubscription" in data:
-                    tables = (
-                        data["InitialSubscription"]
-                        .get("database_update", {})
-                        .get("tables", [])
-                    )
+                    tables = data["InitialSubscription"].get("database_update", {}).get("tables", [])
                     for table in tables:
                         for update in table.get("updates", []):
                             for insert in update.get("inserts", []):
                                 try:
-                                    row = json.loads(insert)
-                                    yield row
+                                    yield json.loads(insert)
                                 except json.JSONDecodeError:
-                                    logging.error(
-                                        f"Failed to decode JSON from WebSocket insert: {insert[:100]}..."
-                                    )
-                                    continue  # Skip malformed insert
-                    break  # Assuming one initial subscription response for these fetches
+                                    logging.error(f"Failed to decode JSON from WebSocket insert: {insert[:100]}...")
+                                    continue
+                    break
+                elif "OneOffQueryResponse" in data:
+                    tables = data["OneOffQueryResponse"].get("tables", [])
+                    for table in tables:
+                        for row in table.get("rows", []):
+                            try:
+                                yield json.loads(row)
+                            except json.JSONDecodeError:
+                                logging.error(f"Failed to decode JSON from WebSocket row: {str(row)[:100]}...")
+                                continue
+                            except Exception as e:
+                                logging.error(f"Error processing WebSocket row: {e}")
+                                continue
+                    break
+
                 elif "error" in data:
-                    logging.error(
-                        f"WebSocket error received for {query_name}: {data['error']}"
-                    )
+                    logging.error(f"WebSocket error received for {query_name}: {data['error']}")
                     return
-                # You might want to handle other message types here, e.g., 'TableUpdate' for live changes
             except json.JSONDecodeError:
-                logging.error(
-                    f"Failed to decode JSON from WebSocket message: {msg[:100]}..."
-                )
+                logging.error(f"Failed to decode JSON from WebSocket message: {msg[:100]}...")
             except Exception as e:
                 logging.error(f"Unexpected error processing WebSocket message: {e}")
         return
@@ -621,14 +576,12 @@ class BitCraft:
 
             sanitized_username = username.lower().replace("'", "''")
 
-            query_strings = [
-                f"SELECT * FROM player_lowercase_username_state WHERE username_lowercase = '{sanitized_username}';"
-            ]
-            subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+            query_string = f"SELECT * FROM player_lowercase_username_state WHERE username_lowercase = '{sanitized_username}';"
+            subscribe = dict(OneOffQuery=dict(message_id=str(uuid.uuid4()).replace("-", ""), query_string=query_string))
             sub = json.dumps(subscribe)
             self.ws_connection.send(sub)
 
-            for row in self._receive_websocket_subscription_data("fetch_user_id"):
+            for row in self._receive_websocket_data("fetch_user_id"):
                 user_id = row.get("entity_id")
                 if user_id:
                     logging.info(f"User ID for {username} found: {user_id}")
@@ -660,16 +613,12 @@ class BitCraft:
 
             sanitized_user_id = str(user_id).replace("'", "''")
 
-            query_strings = [
-                f"SELECT * FROM claim_member_state WHERE player_entity_id = '{sanitized_user_id}';"
-            ]
-            subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+            query_string = f"SELECT * FROM claim_member_state WHERE player_entity_id = '{sanitized_user_id}';"
+            subscribe = dict(OneOffQuery=dict(message_id=str(uuid.uuid4()).replace("-", ""), query_string=query_string))
             sub = json.dumps(subscribe)
             self.ws_connection.send(sub)
 
-            for row in self._receive_websocket_subscription_data(
-                "fetch_claim_membership_id_by_user_id"
-            ):
+            for row in self._receive_websocket_data("fetch_claim_membership_id_by_user_id"):
                 claim_id = row.get("claim_entity_id")
                 if claim_id:
                     logging.info(f"Claim ID for user {user_id} found: {claim_id}")
@@ -701,14 +650,12 @@ class BitCraft:
 
             sanitized_claim_id = str(claim_id).replace("'", "''")
 
-            query_strings = [
-                f"SELECT * FROM claim_state WHERE entity_id = '{sanitized_claim_id}';"
-            ]
-            subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+            query_string = f"SELECT * FROM claim_state WHERE entity_id = '{sanitized_claim_id}';"
+            subscribe = dict(OneOffQuery=dict(message_id=str(uuid.uuid4()).replace("-", ""), query_string=query_string))
             sub = json.dumps(subscribe)
             self.ws_connection.send(sub)
 
-            for row in self._receive_websocket_subscription_data("fetch_claim_state"):
+            for row in self._receive_websocket_data("fetch_claim_state"):
                 claim_data = {
                     "claim_id": row.get("entity_id"),
                     "owner_id": row.get("owner_player_entity_id"),
@@ -744,28 +691,20 @@ class BitCraft:
 
             sanitized_claim_id = str(claim_id).replace("'", "''")
 
-            query_strings = [
-                f"SELECT * FROM claim_local_state WHERE entity_id = '{sanitized_claim_id}';"
-            ]
-            subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+            query_string = f"SELECT * FROM claim_local_state WHERE entity_id = '{sanitized_claim_id}';"
+            subscribe = dict(OneOffQuery=dict(message_id=str(uuid.uuid4()).replace("-", ""), query_string=query_string))
             sub = json.dumps(subscribe)
             self.ws_connection.send(sub)
 
-            for row in self._receive_websocket_subscription_data(
-                "fetch_claim_local_state"
-            ):
+            for row in self._receive_websocket_data("fetch_claim_local_state"):
                 collected_data = {
                     "claim_id": row.get("entity_id"),
                     "building_maintenance": row.get("building_maintenance"),
                     "num_tiles": row.get("num_tiles"),
                     "num_tile_neighbors": row.get("num_tile_neighbors"),
                     "treasury": row.get("treasury"),
-                    "xp_gained_since_last_coin_minting": row.get(
-                        "xp_gained_since_last_coin_minting"
-                    ),
-                    "supplies_purchase_threshold": row.get(
-                        "supplies_purchase_threshold"
-                    ),
+                    "xp_gained_since_last_coin_minting": row.get("xp_gained_since_last_coin_minting"),
+                    "supplies_purchase_threshold": row.get("supplies_purchase_threshold"),
                     "supplies_purchase_price": row.get("supplies_purchase_price"),
                     "building_description_id": row.get("building_description_id"),
                 }
@@ -799,22 +738,20 @@ class BitCraft:
             try:
                 int_claim_id = int(claim_id)
             except ValueError:
-                raise ValueError(
-                    f"Invalid claim ID format: {claim_id}. Expected an integer."
-                )
+                raise ValueError(f"Invalid claim ID format: {claim_id}. Expected an integer.")
 
-            query_strings = [
-                f"select * from building_state where claim_entity_id = {int_claim_id};"
-            ]
-            subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+            query_string = f"select * from building_state where claim_entity_id = {int_claim_id};"
+            subscribe = dict(OneOffQuery=dict(message_id=str(uuid.uuid4()).replace("-", ""), query_string=query_string))
             sub = json.dumps(subscribe)
             self.ws_connection.send(sub)
 
             building_states = []
-            for row in self._receive_websocket_subscription_data(
-                "fetch_claim_building_state"
-            ):
-                building_states.append(row)
+            try:
+                for row in self._receive_websocket_data("fetch_claim_building_state"):
+                    building_states.append(row)
+            except Exception as e:
+                logging.error(f"Error receiving building states for claim ID {claim_id}: {e}")
+                return []
 
             if building_states:
                 logging.info(f"Building states found for claim ID {claim_id}.")
@@ -836,9 +773,7 @@ class BitCraft:
             ValueError: If building_id is missing
         """
         if not self.ws_connection:
-            logging.warning(
-                "WebSocket connection not established, but fetching building description from local file."
-            )
+            logging.warning("WebSocket connection not established, but fetching building description from local file.")
 
         if not building_id:
             raise ValueError("Building ID is missing.")
@@ -859,9 +794,7 @@ class BitCraft:
         logging.error(f"Building description for building ID {building_id} not found")
         return None
 
-    def fetch_building_type_id(
-        self, build_description_id: str | int
-    ) -> str | int | None:
+    def fetch_building_type_id(self, build_description_id: str | int) -> str | int | None:
         """Fetch building type ID from local reference data.
 
         Args:
@@ -874,17 +807,13 @@ class BitCraft:
             ValueError: If build_description_id is missing
         """
         if not self.ws_connection:
-            logging.warning(
-                "WebSocket connection not established, but fetching building type ID from local file."
-            )
+            logging.warning("WebSocket connection not established, but fetching building type ID from local file.")
 
         if not build_description_id:
             raise ValueError("Building description ID is missing.")
 
         if self._building_function_type_mapping_desc is None:
-            self._building_function_type_mapping_desc = self._load_reference_data(
-                "building_function_type_mapping_desc.json"
-            )
+            self._building_function_type_mapping_desc = self._load_reference_data("building_function_type_mapping_desc.json")
             if self._building_function_type_mapping_desc is None:
                 return None
 
@@ -892,22 +821,17 @@ class BitCraft:
             (
                 b
                 for b in self._building_function_type_mapping_desc
-                if str(build_description_id)
-                in [str(d_id) for d_id in b.get("desc_ids", [])]
+                if str(build_description_id) in [str(d_id) for d_id in b.get("desc_ids", [])]
             ),
             None,
         )
 
         if selected_type:
             type_id = selected_type.get("type_id")
-            logging.debug(
-                f"Building type ID for description ID {build_description_id} found: {type_id}"
-            )
+            logging.debug(f"Building type ID for description ID {build_description_id} found: {type_id}")
             return type_id
 
-        logging.error(
-            f"Building type for building description ID {build_description_id} not found"
-        )
+        logging.error(f"Building type for building description ID {build_description_id} not found")
         return None
 
     def fetch_building_type_description(self, type_id: str | int) -> dict | None:
@@ -923,23 +847,17 @@ class BitCraft:
             ValueError: If type_id is missing
         """
         if not self.ws_connection:
-            logging.warning(
-                "WebSocket connection not established, but fetching building type description from local file."
-            )
+            logging.warning("WebSocket connection not established, but fetching building type description from local file.")
 
         if not type_id:
             raise ValueError("Type ID is missing.")
 
         if self._building_type_desc is None:
-            self._building_type_desc = self._load_reference_data(
-                "building_type_desc.json"
-            )
+            self._building_type_desc = self._load_reference_data("building_type_desc.json")
             if self._building_type_desc is None:
                 return None
 
-        selected_type = next(
-            (b for b in self._building_type_desc if b.get("id") == int(type_id)), None
-        )
+        selected_type = next((b for b in self._building_type_desc if b.get("id") == int(type_id)), None)
         if selected_type:
             logging.debug(f"Building type description for type ID {type_id} found.")
             return selected_type
@@ -973,17 +891,13 @@ class BitCraft:
 
             sanitized_claim_id = str(claim_id).replace("'", "''")
 
-            query_strings = [
-                f"SELECT * FROM claim_member_state WHERE claim_entity_id = '{sanitized_claim_id}';"
-            ]
-            subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+            query_string = f"SELECT * FROM claim_member_state WHERE claim_entity_id = '{sanitized_claim_id}';"
+            subscribe = dict(OneOffQuery=dict(message_id=str(uuid.uuid4()).replace("-", ""), query_string=query_string))
             sub = json.dumps(subscribe)
             self.ws_connection.send(sub)
 
             members = []
-            for row in self._receive_websocket_subscription_data(
-                "fetch_claim_member_state"
-            ):
+            for row in self._receive_websocket_data("fetch_claim_member_state"):
                 member_data = {
                     "entity_id": row.get("entity_id"),
                     "claim_entity_id": row.get("claim_entity_id"),
@@ -997,9 +911,7 @@ class BitCraft:
                 members.append(member_data)
 
             if members:
-                logging.info(
-                    f"Found {len(members)} claim members for claim ID {claim_id}"
-                )
+                logging.info(f"Found {len(members)} claim members for claim ID {claim_id}")
                 return members
             else:
                 logging.info(f"No claim members found for claim ID {claim_id}")
@@ -1027,16 +939,12 @@ class BitCraft:
 
             sanitized_player_id = str(player_entity_id).replace("'", "''")
 
-            query_strings = [
-                f"SELECT * FROM claim_member_state WHERE player_entity_id = '{sanitized_player_id}';"
-            ]
-            subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+            query_string = f"SELECT * FROM claim_member_state WHERE player_entity_id = '{sanitized_player_id}';"
+            subscribe = dict(OneOffQuery=dict(message_id=str(uuid.uuid4()).replace("-", ""), query_string=query_string))
             sub = json.dumps(subscribe)
             self.ws_connection.send(sub)
 
-            for row in self._receive_websocket_subscription_data(
-                "fetch_user_by_player_entity_id"
-            ):
+            for row in self._receive_websocket_data("fetch_user_by_player_entity_id"):
                 user_data = {
                     "entity_id": row.get("entity_id"),
                     "player_entity_id": row.get("player_entity_id"),
@@ -1044,9 +952,7 @@ class BitCraft:
                     "claim_entity_id": row.get("claim_entity_id"),
                 }
                 if user_data.get("user_name"):
-                    logging.debug(
-                        f"Found user data for player {player_entity_id}: {user_data.get('user_name')}"
-                    )
+                    logging.debug(f"Found user data for player {player_entity_id}: {user_data.get('user_name')}")
                     return user_data
 
             logging.debug(f"No user data found for player entity ID {player_entity_id}")
@@ -1074,16 +980,12 @@ class BitCraft:
 
             sanitized_entity_id = str(entity_id).replace("'", "''")
 
-            query_strings = [
-                f"SELECT * FROM inventory_state WHERE owner_entity_id = '{sanitized_entity_id}';"
-            ]
-            subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+            query_string = f"SELECT * FROM inventory_state WHERE owner_entity_id = '{sanitized_entity_id}';"
+            subscribe = dict(OneOffQuery=dict(message_id=str(uuid.uuid4()).replace("-", ""), query_string=query_string))
             sub = json.dumps(subscribe)
             self.ws_connection.send(sub)
 
-            for row in self._receive_websocket_subscription_data(
-                "fetch_inventory_state"
-            ):
+            for row in self._receive_websocket_data("fetch_inventory_state"):
                 logging.info(f"Inventory state for entity ID {entity_id} found.")
                 return row
 
@@ -1113,16 +1015,12 @@ class BitCraft:
 
             sanitized_claim_id = claim_id.replace("'", "''")
 
-            query_strings = [
-                f"SELECT * FROM claim_local_state WHERE entity_id = '{sanitized_claim_id}';"
-            ]
-            subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+            query_string = f"SELECT * FROM claim_local_state WHERE entity_id = '{sanitized_claim_id}';"
+            subscribe = dict(OneOffQuery=dict(message_id=str(uuid.uuid4()).replace("-", ""), query_string=query_string))
             sub = json.dumps(subscribe)
             self.ws_connection.send(sub)
 
-            for row in self._receive_websocket_subscription_data(
-                "fetch_claim_supplies"
-            ):
+            for row in self._receive_websocket_data("fetch_claim_supplies"):
                 collected_data = {
                     "claim_id": row.get("entity_id"),
                     "supplies": row.get("supplies"),
@@ -1149,21 +1047,17 @@ class BitCraft:
             if not self.ws_connection:
                 raise RuntimeError("WebSocket connection is not established")
 
-            query_strings = ["SELECT * FROM building_nickname_state;"]
-            subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
+            query_string = "SELECT * FROM building_nickname_state;"
+            subscribe = dict(OneOffQuery=dict(message_id=str(uuid.uuid4()).replace("-", ""), query_string=query_string))
             sub = json.dumps(subscribe)
             self.ws_connection.send(sub)
 
             results = []
-            for row in self._receive_websocket_subscription_data(
-                "fetch_building_nickname_state"
-            ):
+            for row in self._receive_websocket_data("fetch_building_nickname_state"):
                 results.append(row)
 
             if results:
-                logging.info(
-                    f"Fetched {len(results)} rows from building_nickname_state."
-                )
+                logging.info(f"Fetched {len(results)} rows from building_nickname_state.")
                 return results
             else:
                 logging.error("No rows found in building_nickname_state.")
@@ -1189,42 +1083,27 @@ class BitCraft:
                 return []
 
             # Sanitize entity IDs
-            sanitized_ids = [
-                str(int(entity_id))
-                for entity_id in entity_ids
-                if str(entity_id).isdigit()
-            ]
+            sanitized_ids = [str(int(entity_id)) for entity_id in entity_ids if str(entity_id).isdigit()]
 
             if not sanitized_ids:
-                logging.warning(
-                    "No valid entity IDs provided for passive craft state query"
-                )
+                logging.warning("No valid entity IDs provided for passive craft state query")
                 return []
 
             # Query each entity ID individually to avoid database constraints
             query_strings = [
-                f"SELECT * FROM passive_craft_state WHERE building_entity_id = '{entity_id}';"
-                for entity_id in sanitized_ids
+                f"SELECT * FROM passive_craft_state WHERE building_entity_id = '{entity_id}';" for entity_id in sanitized_ids
             ]
-
-            logging.info(
-                f"Executing passive craft state queries for {len(sanitized_ids)} buildings"
-            )
-            logging.debug(f"Sample queries: {query_strings[:3]}")
-
-            subscribe = dict(Subscribe=dict(request_id=1, query_strings=query_strings))
-            sub = json.dumps(subscribe)
-            self.ws_connection.send(sub)
+            logging.info(f"Executing passive craft state queries for {len(sanitized_ids)} buildings")
 
             results = []
-            for row in self._receive_websocket_subscription_data(
-                "fetch_passive_craft_state"
-            ):
-                results.append(row)
+            for query_string in query_strings:
+                subscribe = dict(OneOffQuery=dict(message_id=str(uuid.uuid4()).replace("-", ""), query_string=query_string))
+                sub = json.dumps(subscribe)
+                self.ws_connection.send(sub)
+                for row in self._receive_websocket_data("fetch_passive_craft_state"):
+                    results.append(row)
 
-            logging.info(
-                f"Fetched {len(results)} rows from passive_craft_state for {len(sanitized_ids)} entity IDs."
-            )
+            logging.info(f"Fetched {len(results)} rows from passive_craft_state for {len(sanitized_ids)} entity IDs.")
             return results
 
     def logout(self):

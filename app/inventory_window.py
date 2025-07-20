@@ -211,7 +211,7 @@ class ClaimInventoryWindow(BaseOverlay):
         self.set_title_text("Claim Inventory")
 
         # Override auto-refresh settings for inventory
-        self.refresh_interval = 300  # 5 minutes for inventory
+        self.refresh_interval = 15  # 15 seconds for inventory
 
         logging.debug(f"ClaimInventoryWindow constructor finished - instance id: {id(self)}")
         logging.debug(f"Constructor - timestamp_initialized: {self.timestamp_initialized}")
@@ -290,10 +290,10 @@ class ClaimInventoryWindow(BaseOverlay):
         self._save_to_file()
 
     def setup_status_bar_content(self):
-        """Setup additional content in the status bar (e.g., item count label)."""
-        # Add item count label to status bar
-        self.item_count_label = ctk.CTkLabel(self.status_frame, text="Items: 0", font=ctk.CTkFont(size=11))
-        self.item_count_label.grid(row=0, column=2, padx=10, pady=5, sticky="e")
+        """
+        Set up additional content in the status bar, such as the item count label.
+        """
+        pass
 
     def refresh_data(self):
         """Refresh the data displayed in the overlay by triggering a re-fetch."""
@@ -346,11 +346,11 @@ class ClaimInventoryWindow(BaseOverlay):
                 command=lambda column=col: self._show_combined_menu(column),
             )
 
-        self.tree.column("Tier", width=80, anchor="center")
-        self.tree.column("Name", width=0, minwidth=0, stretch=False)  # Hide name column since it's now in tree column
-        self.tree.column("Quantity", width=100, anchor="center")
-        self.tree.column("Containers", width=120, anchor="w")  # Left-aligned for better readability
-        self.tree.column("Tag", width=300, anchor="w")
+        self.tree.column("Tier", width=80, anchor="center", stretch=True)
+        self.tree.column("Name", width=0, minwidth=0, stretch=True)  # Hide name column since it's now in tree column
+        self.tree.column("Quantity", width=100, anchor="center", stretch=True)
+        self.tree.column("Containers", width=120, anchor="w", stretch=True)  # Left-aligned for better readability
+        self.tree.column("Tag", width=300, anchor="w", stretch=True, minwidth=200)
 
         style = ttk.Style(self)
         style.theme_use("clam")
@@ -537,21 +537,41 @@ class ClaimInventoryWindow(BaseOverlay):
         Args:
             data: List of inventory items to display in the treeview
         """
-        # Remember which rows were expanded
+        # Save expanded state before updating
         expanded_items = set()
         for item_id in self.tree.get_children():
-            item_name = self.tree.item(item_id)["values"][1]  # Name is at index 1
-            if item_name in self.expanded_rows:
-                expanded_items.add(item_name)
+            if self.tree.item(item_id, "open"):  # Check if item is actually expanded
+                try:
+                    # Get item name from text field (tree column)
+                    item_name = self.tree.item(item_id, "text")
+                    if item_name:
+                        expanded_items.add(item_name)
+                        self.expanded_rows.add(item_name)
+                except:
+                    # Fallback to values if text fails
+                    try:
+                        item_values = self.tree.item(item_id)["values"]
+                        if len(item_values) > 1:
+                            item_name = item_values[1]  # Name is at index 1 in values
+                            if item_name:
+                                expanded_items.add(item_name)
+                                self.expanded_rows.add(item_name)
+                    except:
+                        pass
 
-        # Clear all existing items to ensure proper ordering
+        # Hide the tree to prevent flickering during updates
+        self.tree.grid_forget()
+
+        # Clear all existing items
         for item in self.tree.get_children():
             self.tree.delete(item)
 
         # Clear the data map
         self.row_data_map.clear()
 
-        # Insert all items in the correct order
+        # Batch insert all items
+        items_to_expand = []
+
         for item_data in data:
             # Format container display - show name if single container, count if multiple
             containers_data = item_data.get("containers", {})
@@ -576,9 +596,8 @@ class ClaimInventoryWindow(BaseOverlay):
                 ),
             )
 
-            # If item has multiple containers, make it expandable by adding child rows immediately
+            # If item has multiple containers, add child rows
             if container_count > 1:
-                # Add child rows immediately so they're visible
                 for container_name, quantity in containers_data.items():
                     detail_id = self.tree.insert(
                         item_id,
@@ -601,15 +620,25 @@ class ClaimInventoryWindow(BaseOverlay):
 
                 # Store the data for this row
                 self.row_data_map[item_id] = item_data.copy()
+
+                # Mark for expansion if it was expanded before
+                item_name = item_data["Name"]
+                if item_name in expanded_items:
+                    items_to_expand.append((item_id, item_name))
             else:
                 # Store the data for this row
                 self.row_data_map[item_id] = item_data
 
-            # If this row was expanded before, expand it again
-            item_name = item_data["Name"]
-            if item_name in expanded_items:
-                self.expanded_rows.add(item_name)
-                self._expand_row(item_id, item_data)
+        # Re-enable the tree and show it
+        self.tree.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+
+        # Expand previously expanded items after tree is visible
+        for item_id, item_name in items_to_expand:
+            self.tree.item(item_id, open=True)
+            self.expanded_rows.add(item_name)
+
+        # Force update to ensure everything is rendered
+        self.tree.update_idletasks()
 
         logging.debug(f"Updated Treeview with {len(data)} items in sorted order.")
 
@@ -621,19 +650,19 @@ class ClaimInventoryWindow(BaseOverlay):
             if not self.tree.parent(item_id):  # Only count top-level items
                 visible_items += 1
 
-        total_items = len(self.current_inventory_data)
+        # total_items = len(self.current_inventory_data)
 
-        if visible_items == total_items:
-            self.item_count_label.configure(text=f"Items: {total_items}")
-        else:
-            self.item_count_label.configure(text=f"Items: {visible_items} of {total_items}")
+        # if visible_items == total_items:
+        #     self.item_count_label.configure(text=f"Items: {total_items}")
+        # else:
+        #     self.item_count_label.configure(text=f"Items: {visible_items} of {total_items}")
 
     def update_last_updated_time(self, schedule_refresh=True):
         """Update the status bar with last update time and item count."""
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        current_time = datetime.now().strftime("%H:%M:%S")
         logging.debug(f"update_last_updated_time called, setting to: {current_time}")
         self.last_updated_label.configure(text=f"Last update: {current_time}")
-        logging.info(f"Timestamp updated to: {current_time}")
 
         # Mark timestamp as properly initialized
         self.timestamp_initialized = True
@@ -646,9 +675,11 @@ class ClaimInventoryWindow(BaseOverlay):
     def _set_timestamp_from_fetch_time(self, fetch_time):
         """Set timestamp display from a cached fetch time value."""
         if isinstance(fetch_time, (int, float)):
-            time_str = datetime.fromtimestamp(fetch_time).strftime("%Y-%m-%d %H:%M:%S")
+            # time_str = datetime.fromtimestamp(fetch_time).strftime("%Y-%m-%d %H:%M:%S")
+            time_str = datetime.fromtimestamp(fetch_time).strftime("%H:%M:%S")
         elif isinstance(fetch_time, datetime):
-            time_str = fetch_time.strftime("%Y-%m-%d %H:%M:%S")
+            # time_str = fetch_time.strftime("%Y-%m-%d %H:%M:%S")
+            time_str = fetch_time.strftime("%H:%M:%S")
         else:
             time_str = str(fetch_time)
         logging.debug(f"_set_timestamp_from_fetch_time called with: {fetch_time}, formatted as: {time_str}")

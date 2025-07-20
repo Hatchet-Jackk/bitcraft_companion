@@ -1,7 +1,63 @@
 import customtkinter as ctk
 from tkinter import ttk
+import tkinter as tk
 from datetime import datetime
 from abc import ABC, abstractmethod
+import logging
+
+
+class ToolTip:
+    """Simple tooltip class for showing hover information on widgets."""
+
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tooltip_window = None
+
+        # Bind hover events
+        self.widget.bind("<Enter>", self.on_enter)
+        self.widget.bind("<Leave>", self.on_leave)
+
+    def on_enter(self, event=None):
+        """Show tooltip on mouse enter."""
+        if self.tooltip_window:
+            return
+
+        x = self.widget.winfo_rootx() + 25
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
+
+        self.tooltip_window = tk.Toplevel(self.widget)
+        self.tooltip_window.wm_overrideredirect(True)
+        self.tooltip_window.configure(bg="#2b2b2b", relief="solid", borderwidth=1)
+
+        # Check if parent window has topmost attribute and apply it to tooltip
+        try:
+            parent_window = self.widget.winfo_toplevel()
+            if parent_window.attributes("-topmost"):
+                self.tooltip_window.attributes("-topmost", True)
+        except:
+            # If there's any issue getting the parent's topmost state, just continue
+            pass
+
+        label = tk.Label(
+            self.tooltip_window,
+            text=self.text,
+            justify="left",
+            bg="#2b2b2b",
+            fg="white",
+            font=("Arial", 9),
+            padx=5,
+            pady=3,
+        )
+        label.pack()
+
+        self.tooltip_window.geometry(f"+{x}+{y}")
+
+    def on_leave(self, event=None):
+        """Hide tooltip on mouse leave."""
+        if self.tooltip_window:
+            self.tooltip_window.destroy()
+            self.tooltip_window = None
 
 
 class BaseOverlay(ctk.CTkToplevel, ABC):
@@ -80,6 +136,10 @@ class BaseOverlay(ctk.CTkToplevel, ABC):
         if hasattr(self, "setup_status_bar_content"):
             self.setup_status_bar_content()
 
+        # Start auto-refresh if enabled (after all UI setup is complete)
+        if self.auto_refresh_enabled:
+            self.start_auto_refresh()
+
     def setup_base_ui(self):
         """Setup the base UI components including controls frame and common buttons."""
         # Controls frame at the top
@@ -113,6 +173,9 @@ class BaseOverlay(ctk.CTkToplevel, ABC):
         self.auto_refresh_switch = ctk.CTkSwitch(self.controls_frame, text="Auto-refresh", command=self.toggle_auto_refresh)
         self.auto_refresh_switch.grid(row=0, column=2, padx=10, pady=5, sticky="e")
         self.auto_refresh_switch.select()
+
+        # Add tooltip to auto-refresh toggle
+        ToolTip(self.auto_refresh_switch, f"Automatically refresh data every {self.refresh_interval} seconds")
 
         # Refresh button
         self.refresh_button = ctk.CTkButton(self.controls_frame, text="Refresh", width=80, command=self.refresh_data)
@@ -227,26 +290,50 @@ class BaseOverlay(ctk.CTkToplevel, ABC):
 
     def start_auto_refresh(self):
         """Start the auto-refresh timer if auto-refresh is enabled."""
+        window_type = self.__class__.__name__
+        logging.debug(
+            f"{window_type}: start_auto_refresh called, auto_refresh_enabled={self.auto_refresh_enabled}, interval={self.refresh_interval}s"
+        )
+
+        # Cancel any existing refresh job first
+        if self.refresh_job:
+            logging.debug(f"{window_type}: cancelling existing refresh job before starting new one")
+            self.after_cancel(self.refresh_job)
+            self.refresh_job = None
+
         if self.auto_refresh_enabled:
             self.refresh_job = self.after(self.refresh_interval * 1000, self.auto_refresh_callback)
+            logging.debug(f"{window_type}: auto-refresh timer scheduled for {self.refresh_interval} seconds")
 
     def auto_refresh_callback(self):
         """Callback method executed by auto-refresh timer to refresh data."""
+        window_type = self.__class__.__name__
+        logging.debug(f"auto_refresh_callback called for {window_type} (interval: {self.refresh_interval}s)")
+
         if self.auto_refresh_enabled:
+            logging.debug(f"{window_type}: auto_refresh_enabled=True, calling refresh_data()")
             self.refresh_data()
             # Schedule next refresh
             self.refresh_job = self.after(self.refresh_interval * 1000, self.auto_refresh_callback)
+            logging.debug(f"{window_type}: scheduled next refresh in {self.refresh_interval} seconds")
+        else:
+            logging.debug(f"{window_type}: auto_refresh_enabled=False, skipping refresh")
 
     def toggle_auto_refresh(self):
         """Toggle auto-refresh functionality on or off based on switch state."""
+        window_type = self.__class__.__name__
         self.auto_refresh_enabled = self.auto_refresh_switch.get()
+        logging.debug(f"{window_type}: toggle_auto_refresh called, auto_refresh_enabled={self.auto_refresh_enabled}")
 
         if self.auto_refresh_enabled:
+            logging.debug(f"{window_type}: starting auto-refresh")
             self.start_auto_refresh()
         else:
+            logging.debug(f"{window_type}: stopping auto-refresh")
             if self.refresh_job:
                 self.after_cancel(self.refresh_job)
                 self.refresh_job = None
+                logging.debug(f"{window_type}: cancelled existing refresh job")
 
     def hide_auto_refresh_controls(self):
         """Hide auto-refresh controls from the UI when not needed by subclass."""
