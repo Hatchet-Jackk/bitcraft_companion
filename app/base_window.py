@@ -377,17 +377,27 @@ class BaseWindow(ctk.CTk, ABC):
         Clears cached passive crafting data and triggers a fresh fetch from
         the server. Only works when passive crafting window is currently open.
         """
+        logging.debug(f"force_passive_crafting_refresh called")
+        logging.debug(f"  - has toggle_passive_crafting: {hasattr(self, 'toggle_passive_crafting')}")
+        if hasattr(self, "toggle_passive_crafting"):
+            logging.debug(f"  - toggle state: {self.toggle_passive_crafting.get()}")
+        logging.debug(f"  - passive_crafting_window exists: {self.passive_crafting_window is not None}")
+        if self.passive_crafting_window:
+            logging.debug(f"  - window still valid: {self.passive_crafting_window.winfo_exists()}")
+
         if (
             hasattr(self, "toggle_passive_crafting")
             and self.toggle_passive_crafting.get()
             and self.passive_crafting_window
             and self.passive_crafting_window.winfo_exists()
         ):
-
+            logging.info("Executing force_passive_crafting_refresh - clearing cache and fetching new data")
             # Clear cache and refresh
             self.passive_crafting_service.clear_cache()
             self.status_label.configure(text="Refreshing passive crafting data...", text_color="yellow")
             self.passive_crafting_service.fetch_passive_crafting_async(self._on_passive_crafting_data_ready)
+        else:
+            logging.debug("force_passive_crafting_refresh conditions not met - skipping refresh")
 
     def toggle_passive_crafting_timer_overlay(self):
         """Toggle the passive crafting timer overlay on/off.
