@@ -9,10 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fix
 - **WebSocket Optimization**: Switched from `Subscribe` to `OneOffQuery` to prevent multiple simultaneous WebSocket connections 
 and reduce resource usage.
+- **Overlay Update Reliability**: Fixed an issue where overlays were not updating properly, ensuring inventory and passive crafting overlays now refresh as expected.
+- **Overlay Table In-Place Updates**: Fixed overlay tables so they now update in place without requiring a full redraw, eliminating flickering and ensuring smoother refreshes.
 
-### Update
+
+### Change
 - **Reduced Overlay Refresh Intervals**: Lowered the refresh intervals for inventory and passive crafting overlays for more 
-responsive updates.
+- **Status Bar Consistency**: Standardized the display of "Last Update" datetimes across all status bars for a uniform user experience.
+
+### Add
+- **Tooltip for Auto Refresh Toggle**: Added informative tooltip to the auto refresh toggle for improved user guidance.
 
 ## [0.1.7]
 ### Added
