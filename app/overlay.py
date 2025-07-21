@@ -268,6 +268,10 @@ class BitCraftOverlay(BaseWindow):
             "bitcraft-3",
             "bitcraft-4",
             "bitcraft-5",
+            "bitcraft-6",
+            "bitcraft-7",
+            "bitcraft-8",
+            "bitcraft-9",
         ]
         self.region_var = ctk.StringVar(value=self.stored_region)
         self.optionmenu_region = ctk.CTkOptionMenu(self.player_name_frame, values=self.regions, variable=self.region_var)
