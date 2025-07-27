@@ -7,7 +7,6 @@ from typing import Dict, List, Optional, Callable
 from client import BitCraft
 from claim import Claim
 import re
-import ast
 
 
 class PassiveCraftingService:
@@ -303,8 +302,7 @@ class PassiveCraftingService:
                     recipe_quantity = 1  # Default quantity per recipe
 
                     # Look for produced items in recipe
-                    produced_items = ast.literal_eval(recipe_info.get("crafted_item_stacks", []))
-
+                    produced_items = recipe_info.get("crafted_item_stacks", [])
                     if produced_items and len(produced_items) > 0:
                         # Take the first produced item
                         first_item = produced_items[0]
@@ -533,7 +531,7 @@ class PassiveCraftingService:
                     crafted_item_tier = 0
                     recipe_quantity = 1
 
-                    produced_items = ast.literal_eval(recipe_info.get("crafted_item_stacks", []))
+                    produced_items = recipe_info.get("crafted_item_stacks", [])
                     if produced_items and len(produced_items) > 0:
                         first_item = produced_items[0]
                         if len(first_item) >= 2:
