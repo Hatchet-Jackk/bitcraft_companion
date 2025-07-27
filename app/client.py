@@ -298,9 +298,7 @@ class BitCraft:
                     max_queue=None,
                 )
                 first_msg = self.ws_connection.recv()
-                if not first_msg:
-                    raise RuntimeError("Failed to establish WebSocket connection: no initial message received.")
-                logging.debug(f"Initial WebSocket handshake message: {first_msg[:20]}...")
+                logging.info(f"Initial WebSocket handshake message: {first_msg[:20]}...")
                 logging.info("WebSocket connection established")
             except Exception as e:
                 logging.error(f"Failed to establish WebSocket connection: {e}")

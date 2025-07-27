@@ -91,7 +91,8 @@ class DataService:
 
             # 3. Perform One-Off queries to get the essential claim ID
             # FIX: The client and player instances must be passed to the get_claim_id method.
-            claim_id = self.claim.get_claim_id(self.client, self.player)
+            claim_id = self.claim.get_claim_id()
+            # claim_id = self.claim.get_claim_id(self.client, self.player)
             if not claim_id:
                 logging.error("[DataService] Could not retrieve claim ID.")
                 self.data_queue.put({"type": "error", "data": "Could not retrieve claim ID."})
