@@ -94,21 +94,14 @@ class Claim:
             rows = cursor.fetchall()
             result = [dict(row) for row in rows]
 
-            # Deserialize JSON fields if present
-            json_fields_map = {
-                "resource_desc": ["on_destroy_yield", "footprint", "rarity", "enemy_params_id"],
-                "item_desc": ["rarity"],
-                "cargo_desc": ["on_destroy_yield_cargos", "rarity"],
-                "building_desc": ["functions", "footprint", "build_permission", "interact_permission"],
-                "type_desc_ids": ["desc_ids"],
-                "building_types": ["category", "actions"],
-            }
-            json_fields = json_fields_map.get(table, [])
+            # Try to decode any string field as JSON (list/dict)
             for row in result:
-                for field in json_fields:
-                    if field in row and row[field] is not None:
+                for key, value in row.items():
+                    if isinstance(value, str):
                         try:
-                            row[field] = json.loads(row[field])
+                            decoded = json.loads(value)
+                            if isinstance(decoded, (list, dict)):
+                                row[key] = decoded
                         except Exception:
                             pass
             conn.close()
