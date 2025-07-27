@@ -1,14 +1,16 @@
-import os
 import json
+import logging
+import os
+import re
+import sqlite3
 import sys
+import threading
 import uuid
+
+import keyring
+import requests
 from websockets import Subprotocol
 from websockets.sync.client import connect
-import logging
-import requests
-import keyring
-import re
-import threading
 
 
 class BitCraft:
@@ -134,32 +136,47 @@ class BitCraft:
         except Exception as e:
             logging.error(f"Error deleting '{key_name}' from keyring: {e}")
 
-    def _load_reference_data(self, filename: str) -> dict | list | None:
-        """Load reference data from a JSON file.
+    def _load_reference_data(self, table: str) -> list[dict] | None:
+        """Load reference data from the SQLite database by table name. Only player_data.json is file-based."""
+        if table == "player_data":
+            file_path = os.path.join(self._get_data_directory(), "player_data.json")
+            try:
+                with open(file_path, "r") as f:
+                    return json.load(f)
+            except Exception as e:
+                logging.error(f"Error loading player_data.json: {e}")
+                return None
 
-        Handles both bundled executable and development environment paths
-        for loading game reference data files.
-
-        Args:
-            filename: Name of the JSON reference file to load
-
-        Returns:
-            dict or list: Parsed JSON data, or None if file not found or invalid
-        """
-        if getattr(sys, "frozen", False):
-            # Running as bundled executable - references are in the same directory
-            file_path = os.path.join(os.path.dirname(sys.executable), "references", filename)
-        else:
-            # Running as script
-            file_path = os.path.join(os.path.dirname(__file__), "references", filename)
+        db_path = os.path.join(os.path.dirname(__file__), "data", "data.db")
         try:
-            with open(file_path, "r") as f:
-                return json.load(f)
-        except FileNotFoundError:
-            logging.error(f"Reference file not found: {filename} at {file_path}")
-            return None
-        except json.JSONDecodeError:
-            logging.error(f"Error decoding JSON from: {filename}")
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(f"SELECT * FROM {table}")
+            rows = cursor.fetchall()
+            result = [dict(row) for row in rows]
+
+            # Deserialize JSON fields if present
+            json_fields_map = {
+                "resource_desc": ["on_destroy_yield", "footprint", "rarity", "enemy_params_id"],
+                "item_desc": ["rarity"],
+                "cargo_desc": ["on_destroy_yield_cargos", "rarity"],
+                "building_desc": ["functions", "footprint", "build_permission", "interact_permission"],
+                "type_desc_ids": ["desc_ids"],
+                "building_types": ["category", "actions"],
+            }
+            json_fields = json_fields_map.get(table, [])
+            for row in result:
+                for field in json_fields:
+                    if field in row and row[field] is not None:
+                        try:
+                            row[field] = json.loads(row[field])
+                        except Exception:
+                            pass
+            conn.close()
+            return result
+        except Exception as e:
+            logging.error(f"Error loading reference data from DB for table {table}: {e}")
             return None
 
     def update_user_data_file(self, key: str, value: str):
@@ -779,7 +796,7 @@ class BitCraft:
             raise ValueError("Building ID is missing.")
 
         if self._building_desc is None:
-            self._building_desc = self._load_reference_data("building_desc.json")
+            self._building_desc = self._load_reference_data("building_desc")
             if self._building_desc is None:
                 return None
 
@@ -813,7 +830,7 @@ class BitCraft:
             raise ValueError("Building description ID is missing.")
 
         if self._building_function_type_mapping_desc is None:
-            self._building_function_type_mapping_desc = self._load_reference_data("building_function_type_mapping_desc.json")
+            self._building_function_type_mapping_desc = self._load_reference_data("building_function_type_mapping_desc")
             if self._building_function_type_mapping_desc is None:
                 return None
 
@@ -853,7 +870,7 @@ class BitCraft:
             raise ValueError("Type ID is missing.")
 
         if self._building_type_desc is None:
-            self._building_type_desc = self._load_reference_data("building_type_desc.json")
+            self._building_type_desc = self._load_reference_data("building_type_desc")
             if self._building_type_desc is None:
                 return None
 

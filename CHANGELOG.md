@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.11]
+### Fixed
+- Resolved issue where certain items were not appearing in the claim inventory
+
+### Refactored
+- Migrated reference data storage from JSON files to a database for improved performance and scalability
+
+### Known Issues
+- Inventory overlay reappears unexpectedly after being closed when processing the inventory list
+- Updated overlays automatically move to the foreground
+
 ## [0.1.10]
 ### Added
 - **Missing Regions**: Added support for additional regions to improve compatibility and coverage.
@@ -139,8 +150,8 @@ and reduce resource usage.
 ## Future Roadmap
 
 ### Planned Features
-  - Passive item processing progress
   - Desktop notifications for completed crafting
   - Low inventory alerts
   - Travelers' task monitoring 
+  - Claim supplies 
 

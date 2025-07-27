@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Callable
 from client import BitCraft
 from claim import Claim
 import re
+import ast
 
 
 class PassiveCraftingService:
@@ -55,7 +56,7 @@ class PassiveCraftingService:
         """
         try:
             # Load crafting recipes using the claim's existing method
-            recipes_list = self.claim_instance._load_reference_data("crafting_recipe_desc.json")
+            recipes_list = self.claim_instance._load_reference_data("crafting_recipe_desc")
             if recipes_list:
                 return {recipe["id"]: recipe for recipe in recipes_list}
             return {}
@@ -77,7 +78,7 @@ class PassiveCraftingService:
 
             # If not available, try to load it
             logging.warning("item_desc not available in claim instance, trying to load directly")
-            items_list = self.claim_instance._load_reference_data("item_desc.json")
+            items_list = self.claim_instance._load_reference_data("item_desc")
             if items_list:
                 logging.info(f"Loaded item descriptions directly, count: {len(items_list)}")
                 return {item["id"]: item for item in items_list}
@@ -302,7 +303,7 @@ class PassiveCraftingService:
                     recipe_quantity = 1  # Default quantity per recipe
 
                     # Look for produced items in recipe
-                    produced_items = recipe_info.get("crafted_item_stacks", [])
+                    produced_items = ast.literal_eval(recipe_info.get("crafted_item_stacks", []))
 
                     if produced_items and len(produced_items) > 0:
                         # Take the first produced item
@@ -532,7 +533,7 @@ class PassiveCraftingService:
                     crafted_item_tier = 0
                     recipe_quantity = 1
 
-                    produced_items = recipe_info.get("crafted_item_stacks", [])
+                    produced_items = ast.literal_eval(recipe_info.get("crafted_item_stacks", []))
                     if produced_items and len(produced_items) > 0:
                         first_item = produced_items[0]
                         if len(first_item) >= 2:
