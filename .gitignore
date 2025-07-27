@@ -27,7 +27,7 @@ server/
 results/
 files/
 backup/
-data/
+ref/
 logs/
 player_data.json
 

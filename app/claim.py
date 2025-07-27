@@ -1,3 +1,4 @@
+import sqlite3
 import logging
 import os
 import json
@@ -50,54 +51,70 @@ class Claim:
 
         # Load reference data once for the class
         if Claim._resource_desc is None:
-            Claim._resource_desc = self._load_reference_data("resource_desc.json")
+            Claim._resource_desc = self._load_reference_data("resource_desc")
         self.resource_desc = Claim._resource_desc
 
         if Claim._item_desc is None:
-            Claim._item_desc = self._load_reference_data("item_desc.json")
+            Claim._item_desc = self._load_reference_data("item_desc")
         self.item_desc = Claim._item_desc
 
         if Claim._cargo_desc is None:
-            Claim._cargo_desc = self._load_reference_data("cargo_desc.json")
+            Claim._cargo_desc = self._load_reference_data("cargo_desc")
         self.cargo_desc = Claim._cargo_desc
 
         if Claim._building_desc_data is None:
-            Claim._building_desc_data = self._load_reference_data("building_desc.json")
+            Claim._building_desc_data = self._load_reference_data("building_desc")
         self.building_desc_data = Claim._building_desc_data
 
         if Claim._building_function_type_mapping_desc_data is None:
-            Claim._building_function_type_mapping_desc_data = self._load_reference_data(
-                "building_function_type_mapping_desc.json"
-            )
+            Claim._building_function_type_mapping_desc_data = self._load_reference_data("type_desc_ids")
         self.building_function_type_mapping_desc_data = Claim._building_function_type_mapping_desc_data
 
         if Claim._building_type_desc_data is None:
-            Claim._building_type_desc_data = self._load_reference_data("building_type_desc.json")
+            Claim._building_type_desc_data = self._load_reference_data("building_types")
         self.building_type_desc_data = Claim._building_type_desc_data
 
-    def _load_reference_data(self, filename: str) -> dict | list | None:
-        """Load reference data from a JSON file with error handling.
+    def _load_reference_data(self, table: str) -> list[dict] | None:
+        """Load reference data from the SQLite database by table name. Only player_data.json is file-based."""
+        if table == "player_data":
+            file_path = os.path.join(self._get_data_directory(), "player_data.json")
+            try:
+                with open(file_path, "r") as f:
+                    return json.load(f)
+            except Exception as e:
+                logging.error(f"Error loading player_data.json: {e}")
+                return None
 
-        Args:
-            filename (str): Name of the JSON file in the references directory.
-
-        Returns:
-            dict | list | None: Parsed JSON data, or None if loading failed.
-        """
-        file_path = os.path.join(os.path.dirname(__file__), "references", filename)
+        db_path = os.path.join(os.path.dirname(__file__), "data", "data.db")
         try:
-            with open(file_path, "r") as f:
-                data = json.load(f)
-                logging.debug(f"Loaded reference data from {filename}")
-                return data
-        except FileNotFoundError:
-            logging.error(f"Reference file not found: {filename}")
-            return None
-        except json.JSONDecodeError:
-            logging.error(f"Error decoding JSON from: {filename}")
-            return None
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(f"SELECT * FROM {table}")
+            rows = cursor.fetchall()
+            result = [dict(row) for row in rows]
+
+            # Deserialize JSON fields if present
+            json_fields_map = {
+                "resource_desc": ["on_destroy_yield", "footprint", "rarity", "enemy_params_id"],
+                "item_desc": ["rarity"],
+                "cargo_desc": ["on_destroy_yield_cargos", "rarity"],
+                "building_desc": ["functions", "footprint", "build_permission", "interact_permission"],
+                "type_desc_ids": ["desc_ids"],
+                "building_types": ["category", "actions"],
+            }
+            json_fields = json_fields_map.get(table, [])
+            for row in result:
+                for field in json_fields:
+                    if field in row and row[field] is not None:
+                        try:
+                            row[field] = json.loads(row[field])
+                        except Exception:
+                            pass
+            conn.close()
+            return result
         except Exception as e:
-            logging.error(f"An unexpected error occurred loading {filename}: {e}")
+            logging.error(f"Error loading reference data from DB for table {table}: {e}")
             return None
 
     def _get_building_name_from_id(self, building_description_id: int) -> str | None:
@@ -303,14 +320,13 @@ class Claim:
             logging.error("Resource or item description data not loaded. Cannot process inventory.")
             return {}
 
-        # Create combined lookup for resource_map and item_map for O(1) average access
+        # Create a dict of lists to avoid overwriting items with the same ID from different sources
         combined_item_lookup = {}
-        if self.resource_desc:
-            combined_item_lookup.update({r["id"]: r for r in self.resource_desc if "id" in r})
-        if self.item_desc:
-            combined_item_lookup.update({i["id"]: i for i in self.item_desc if "id" in i})
-        if self.cargo_desc:
-            combined_item_lookup.update({c["id"]: c for c in self.cargo_desc if "id" in c})
+        for data in [self.resource_desc, self.item_desc, self.cargo_desc]:
+            if data:
+                for entry in data:
+                    if "id" in entry:
+                        combined_item_lookup.setdefault(entry["id"], []).append(entry)
 
         collection = {}
         # Define columns to exclude from the item details.
@@ -369,32 +385,32 @@ class Claim:
                     if isinstance(inv_num, list) or not isinstance(inv_num, (int, float)):
                         inv_num = 0
 
-                    found_item_data = combined_item_lookup.get(inv_id)
+                    found_item_datas = combined_item_lookup.get(inv_id, [])
 
-                    if found_item_data:
-                        if inv_id not in collection:
-                            # Use dictionary comprehension for faster creation of item_details
-                            item_details = {key: value for key, value in found_item_data.items() if key not in EXCLUDE_COLUMNS}
+                    if found_item_datas:
+                        # If multiple entries exist for the same ID, process each
+                        for found_item_data in found_item_datas:
+                            # Use a tuple key to distinguish between sources if needed
+                            source_key = (inv_id, found_item_data.get("tag", ""), found_item_data.get("name", ""))
+                            if source_key not in collection:
+                                item_details = {
+                                    key: value for key, value in found_item_data.items() if key not in EXCLUDE_COLUMNS
+                                }
+                                item_details["name"] = item_details.get("name", "Unknown Item")
+                                item_details["tier"] = item_details.get("tier", 0)
+                                tags_from_data = found_item_data.get("tag")
+                                item_details["tag"] = tags_from_data if isinstance(tags_from_data, str) else ""
+                                item_details["quantity"] = 0
+                                item_details["containers"] = {}
+                                collection[source_key] = item_details
 
-                            item_details["name"] = item_details.get("name", "Unknown Item")
-                            item_details["tier"] = item_details.get("tier", 0)
+                            # Add to overall quantity
+                            collection[source_key]["quantity"] += inv_num
 
-                            # Handle tag consistently
-                            tags_from_data = found_item_data.get("tag")
-                            item_details["tag"] = tags_from_data if isinstance(tags_from_data, str) else ""
-
-                            item_details["quantity"] = 0
-                            item_details["containers"] = {}  # Track containers and quantities
-                            collection[inv_id] = item_details
-
-                        # Add to overall quantity
-                        collection[inv_id]["quantity"] += inv_num
-
-                        # Track container-specific quantities
-                        if container_name not in collection[inv_id]["containers"]:
-                            collection[inv_id]["containers"][container_name] = 0
-                        collection[inv_id]["containers"][container_name] += inv_num
-
+                            # Track container-specific quantities
+                            if container_name not in collection[source_key]["containers"]:
+                                collection[source_key]["containers"][container_name] = 0
+                            collection[source_key]["containers"][container_name] += inv_num
                     else:
                         logging.debug(f"Inventory item ID {inv_id} not found in reference data.")
 
