@@ -11,7 +11,8 @@ import time
 import keyring
 import requests
 from websockets import Subprotocol
-from websockets.sync.client import connect
+from websockets.sync.client import connect, ClientConnection
+from websockets.exceptions import ConnectionClosed
 
 
 class BitCraft:
@@ -31,7 +32,7 @@ class BitCraft:
         self.host = os.getenv("BITCRAFT_SPACETIME_HOST", "bitcraft-early-access.spacetimedb.com")
         self.uri = "{scheme}://{host}/v1/database/{module}/{endpoint}"
         self.proto = Subprotocol(self.DEFAULT_SUBPROTOCOL)
-        self.ws_connection = None
+        self.ws_connection: ClientConnection | None = None
         self.module = None
         self.endpoint = None
         self.ws_uri = None
@@ -40,15 +41,98 @@ class BitCraft:
         self.subscription_thread = None
         self._stop_subscription = threading.Event()
 
-        self._building_desc = None
-        self._building_function_type_mapping_desc = None
-        self._building_type_desc = None
-
+        # Load initial data
         self.load_user_data_from_file()
         self.email = self._get_credential_from_keyring("email")
         self.auth = self._get_credential_from_keyring("authorization_token")
 
-    # ... (all your existing methods like _get_credential_from_keyring, authenticate, etc. remain unchanged)
+    # --- NEW: Centralized Query Method ---
+    def query(self, query_string: str) -> list[dict] | None:
+        """
+        Sends a one-off SQL query over the WebSocket and returns all result rows.
+
+        Args:
+            query_string (str): The SQL query to execute.
+
+        Returns:
+            A list of dictionaries representing the rows of the result, or None if no data is returned.
+
+        Raises:
+            RuntimeError: If the WebSocket connection is not established.
+        """
+        with self.ws_lock:
+            if not self.ws_connection:
+                raise RuntimeError("WebSocket connection is not established")
+
+            message_id = str(uuid.uuid4()).replace("-", "")
+            subscribe_message = {
+                "OneOffQuery": {
+                    "message_id": message_id,
+                    "query_string": query_string,
+                }
+            }
+
+            try:
+                self.ws_connection.send(json.dumps(subscribe_message))
+                logging.debug(f"Sent query: {query_string}")
+
+                # Use the internal method to listen for the specific response
+                return list(self._receive_one_off_query(message_id))
+            except (ConnectionClosed, TimeoutError) as e:
+                logging.error(f"Failed to send or receive query due to connection issue: {e}")
+                # You might want to handle reconnection logic here
+                self.close_websocket()
+                return None
+            except Exception as e:
+                logging.error(f"An unexpected error occurred during query: {e}")
+                return None
+
+    # --- INTERNAL: Helper for the query method ---
+    def _receive_one_off_query(self, message_id: str):
+        """Listens for a specific OneOffQueryResponse and yields its rows."""
+        if not self.ws_connection:
+            raise RuntimeError("WebSocket connection is not established")
+
+        # Set a timeout to avoid blocking indefinitely
+        timeout_seconds = 10
+        start_time = time.time()
+
+        while time.time() - start_time < timeout_seconds:
+            try:
+                msg = self.ws_connection.recv(timeout=1.0)
+                data = json.loads(msg)
+
+                if "OneOffQueryResponse" in data and data["OneOffQueryResponse"].get("message_id") == message_id:
+                    tables = data["OneOffQueryResponse"].get("tables", [])
+                    for table in tables:
+                        for row_str in table.get("rows", []):
+                            try:
+                                yield json.loads(row_str)
+                            except json.JSONDecodeError:
+                                logging.error(f"Failed to decode JSON from WebSocket row: {row_str[:100]}...")
+                    return  # Exit after processing the correct response
+
+                elif "error" in data:
+                    logging.error(f"WebSocket error received for message {message_id}: {data['error']}")
+                    return
+
+            except TimeoutError:
+                # No message received, just continue waiting
+                continue
+            except json.JSONDecodeError:
+                logging.error(f"Failed to decode JSON from WebSocket message: {msg[:100]}...")
+            except ConnectionClosed:
+                logging.error("Connection closed while waiting for query response.")
+                return
+            except Exception as e:
+                logging.error(f"Unexpected error processing WebSocket message: {e}")
+                return
+
+        logging.warning(f"Timed out waiting for response to query with message_id: {message_id}")
+
+    # --- All your other existing methods remain here ---
+    # (e.g., _get_credential_from_keyring, authenticate, connect_websocket, etc.)
+
     def _get_credential_from_keyring(self, key_name: str) -> str | None:
         try:
             credential = keyring.get_password(self.SERVICE_NAME, key_name)
@@ -102,20 +186,11 @@ class BitCraft:
             cursor.execute(f"SELECT * FROM {table}")
             rows = cursor.fetchall()
             result = [dict(row) for row in rows]
-            json_fields_map = {
-                "resource_desc": ["on_destroy_yield", "footprint", "rarity", "enemy_params_id"],
-                "item_desc": ["rarity"],
-                "cargo_desc": ["on_destroy_yield_cargos", "rarity"],
-                "building_desc": ["functions", "footprint", "build_permission", "interact_permission"],
-                "type_desc_ids": ["desc_ids"],
-                "building_types": ["category", "actions"],
-            }
-            json_fields = json_fields_map.get(table, [])
             for row in result:
-                for field in json_fields:
-                    if field in row and row[field] is not None:
+                for field, value in row.items():
+                    if isinstance(value, str):
                         try:
-                            row[field] = json.loads(row[field])
+                            row[field] = json.loads(value)
                         except Exception:
                             pass
             conn.close()
@@ -163,6 +238,41 @@ class BitCraft:
             self.email = None
             self.region = None
             self.player_name = None
+
+    # In client.py, add this method inside the BitCraft class
+
+    def fetch_user_id_by_username(self, username: str) -> str | None:
+        """
+        Fetches the user entity ID for a given username using a one-off query.
+
+        Args:
+            username: The player username to look up.
+
+        Returns:
+            The user entity ID if found, otherwise None.
+        """
+        if not username:
+            logging.error("Username cannot be empty for fetch_user_id.")
+            return None
+
+        # Sanitize username and construct the exact query needed
+        sanitized_username = username.lower().replace("'", "''")
+        query_string = f"SELECT * FROM player_lowercase_username_state WHERE username_lowercase = '{sanitized_username}';"
+        try:
+            results = self.query(query_string)
+
+            # The query method returns a list of results
+            if results and isinstance(results, list) and len(results) > 0:
+                user_id = results[0].get("entity_id")
+                if user_id:
+                    logging.info(f"Successfully found user ID for {username}: {user_id}")
+                    return user_id
+
+            logging.warning(f"Query for username '{username}' returned no results.")
+            return None
+        except Exception as e:
+            logging.error(f"An unexpected error occurred in fetch_user_id_by_username: {e}")
+            return None
 
     def _is_valid_email(self, email: str) -> bool:
         email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
@@ -322,31 +432,6 @@ class BitCraft:
             else:
                 logging.warning("No WebSocket connection to close")
 
-    def _receive_one_off_query(self, query_name: str):
-        if not self.ws_connection:
-            raise RuntimeError("WebSocket connection is not established")
-        for msg in self.ws_connection:
-            try:
-                data = json.loads(msg)
-                if "OneOffQueryResponse" in data:
-                    tables = data["OneOffQueryResponse"].get("tables", [])
-                    for table in tables:
-                        for row in table.get("rows", []):
-                            try:
-                                yield json.loads(row)
-                            except json.JSONDecodeError:
-                                logging.error(f"Failed to decode JSON from WebSocket row: {str(row)[:100]}...")
-                                continue
-                    break  # Exit after processing the one-off response
-                elif "error" in data:
-                    logging.error(f"WebSocket error received for {query_name}: {data['error']}")
-                    return
-            except json.JSONDecodeError:
-                logging.error(f"Failed to decode JSON from WebSocket message: {msg[:100]}...")
-            except Exception as e:
-                logging.error(f"Unexpected error processing WebSocket message: {e}")
-        return
-
     def _listen_for_subscription_updates(self, callback):
         """A dedicated loop for listening to subscription messages."""
         logging.info("Subscription listener thread started.")
@@ -373,89 +458,34 @@ class BitCraft:
         finally:
             logging.info("Subscription listener thread stopped.")
 
+    # In client.py
+
     def start_subscription_listener(self, queries: list[str], callback: callable):
-        """Sends subscription queries and starts a listener thread."""
+        """
+        Sends a subscription request and starts the background listener thread.
+        It no longer waits for an initial response itself.
+        """
         with self.ws_lock:
             if not self.ws_connection:
                 raise RuntimeError("WebSocket connection is not established.")
+            if not queries:
+                logging.warning("No queries provided for subscription.")
+                return
 
             self._stop_subscription.clear()
 
-            # Send all subscription queries
-            for query_string in queries:
-                subscribe_message = {
-                    "Subscribe": {"message_id": str(uuid.uuid4()).replace("-", ""), "query_string": query_string}
-                }
-                self.ws_connection.send(json.dumps(subscribe_message))
-                logging.info(f"Sent subscription request: {query_string}")
-                # We need to consume the initial response for each subscription
-                initial_response = self.ws_connection.recv()
-                logging.debug(f"Initial subscription response: {initial_response[:100]}...")
+            subscribe_message = {"Subscribe": {"request_id": str(uuid.uuid4()).replace("-", ""), "query_strings": queries}}
 
-            # Start the listener thread
+            # Send the request and immediately start the listener.
+            # The listener thread is now the ONLY one responsible for calling recv().
+            self.ws_connection.send(json.dumps(subscribe_message))
+            logging.info(f"Sent subscription request for {len(queries)} queries.")
+
             self.subscription_thread = threading.Thread(
                 target=self._listen_for_subscription_updates, args=(callback,), daemon=True
             )
             self.subscription_thread.start()
-
-    # --- Your existing fetch methods (fetch_user_id, etc.) ---
-    # These will now use _receive_one_off_query
-    def fetch_user_id(self, username: str) -> str | None:
-        with self.ws_lock:
-            if not self.ws_connection:
-                raise RuntimeError("WebSocket connection is not established")
-            sanitized_username = username.lower().replace("'", "''")
-            query_string = f"SELECT * FROM player_lowercase_username_state WHERE username_lowercase = '{sanitized_username}';"
-            subscribe = dict(OneOffQuery=dict(message_id=str(uuid.uuid4()).replace("-", ""), query_string=query_string))
-            self.ws_connection.send(json.dumps(subscribe))
-            for row in self._receive_one_off_query("fetch_user_id"):
-                user_id = row.get("entity_id")
-                if user_id:
-                    logging.info(f"User ID for {username} found: {user_id}")
-                    return user_id
-            logging.error(f"User ID for {username} not found")
-            return None
-
-    def fetch_claim_membership_id_by_user_id(self, user_id: str) -> str | None:
-        with self.ws_lock:
-            if not self.ws_connection:
-                raise RuntimeError("WebSocket connection is not established")
-            if not user_id:
-                raise ValueError("User ID missing.")
-            sanitized_user_id = str(user_id).replace("'", "''")
-            query_string = f"SELECT * FROM claim_member_state WHERE player_entity_id = '{sanitized_user_id}';"
-            subscribe = dict(OneOffQuery=dict(message_id=str(uuid.uuid4()).replace("-", ""), query_string=query_string))
-            self.ws_connection.send(json.dumps(subscribe))
-            for row in self._receive_one_off_query("fetch_claim_membership_id_by_user_id"):
-                claim_id = row.get("claim_entity_id")
-                if claim_id:
-                    logging.info(f"Claim ID for user {user_id} found: {claim_id}")
-                    return claim_id
-            logging.error(f"Claim ID for user {user_id} not found")
-            return None
-
-    # ... (adapt all other fetch_* methods similarly to use _receive_one_off_query) ...
-    def fetch_claim_state(self, claim_id: str) -> dict | None:
-        with self.ws_lock:
-            if not self.ws_connection:
-                raise RuntimeError("WebSocket connection is not established")
-            if not claim_id:
-                raise ValueError("Claim ID is missing.")
-            sanitized_claim_id = str(claim_id).replace("'", "''")
-            query_string = f"SELECT * FROM claim_state WHERE entity_id = '{sanitized_claim_id}';"
-            subscribe = dict(OneOffQuery=dict(message_id=str(uuid.uuid4()).replace("-", ""), query_string=query_string))
-            self.ws_connection.send(json.dumps(subscribe))
-            for row in self._receive_one_off_query("fetch_claim_state"):
-                claim_data = {
-                    "claim_id": row.get("entity_id"),
-                    "owner_id": row.get("owner_player_entity_id"),
-                    "owner_building_id": row.get("owner_building_entity_id"),
-                    "claim_name": row.get("name"),
-                }
-                logging.info(f"Claim state for claim ID {claim_id} found.")
-                return claim_data
-            logging.error(f"Claim data for claim ID {claim_id} not found")
-            return None
+            logging.info("Subscription listener thread started.")
 
     def logout(self):
         try:

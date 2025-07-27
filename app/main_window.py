@@ -188,7 +188,7 @@ class ClaimInventoryTab(BaseTab):
 
     def apply_filter(self):
         global_filter_text = self.app.search_var.get().lower()
-        filtered_data = self.all_data[:]
+        filtered_data = self.all_data.copy()
         if self.active_filters:
             filtered_data = [
                 row
