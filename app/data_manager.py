@@ -58,8 +58,6 @@ class DataService:
             self.service_thread.join()  # Wait for the thread to finish
         logging.info("DataService stopped.")
 
-    # In data_manager.py
-
     def _run(self, username, password, region, player_name):
         """The main loop for the data service thread."""
         logging.info("[DataService] Thread started.")
@@ -73,12 +71,11 @@ class DataService:
                 )
                 return
 
-            # --- FIX: Re-added the necessary client configuration calls ---
             # 2. Configure and establish WebSocket connection
             self.client.set_region(region)
             self.client.set_endpoint("subscribe")
             self.client.set_websocket_uri()
-            self.client.connect_websocket()  # This will now succeed
+            self.client.connect_websocket()
 
             self.data_queue.put({"type": "connection_status", "data": {"status": "connected"}})
 
@@ -109,11 +106,11 @@ class DataService:
 
             # 6. Use the user_id to get the Claim ID
             claim_id = self.claim.fetch_and_set_claim_id_by_user(user_id)
-            if not claim_id:
-                logging.error("[DataService] Could not retrieve claim ID.")
-                self.data_queue.put({"type": "error", "data": "Could not retrieve claim ID."})
-                return
-            logging.info(f"[DataService] Acquired Claim ID: {claim_id}")
+            if claim_id:
+                # Fetch initial claim info
+                claim_info = self.fetch_claim_info(claim_id)
+                self.data_queue.put({"type": "claim_info_update", "data": claim_info})
+                logging.info(f"Initial claim info sent to UI: {claim_info}")
 
             # 7. Initialize Services
             self.inventory_service = self.InventoryServiceClass(bitcraft_client=self.client, claim_instance=self.claim)
@@ -122,23 +119,41 @@ class DataService:
             )
 
             # 8. PERFORM INITIAL DATA FETCHES BEFORE SUBSCRIBING
+            # Initialize inventory data
             self.inventory_service.initialize_full_inventory()
             initial_inventory = self.claim.get_inventory()
             self.data_queue.put({"type": "inventory_update", "data": initial_inventory})
             logging.info("Initial inventory data has been sent to the UI.")
 
+            # Initialize crafting data
+            initial_crafting_data = self.passive_crafting_service.get_all_crafting_data()
+            self.data_queue.put({"type": "crafting_update", "data": initial_crafting_data})
+            logging.info("Initial crafting data has been sent to the UI.")
+
             # 9. BUILD AND START SUBSCRIPTIONS FOR LIVE UPDATES
-            buildings_query = f"SELECT entity_id FROM building_state WHERE claim_entity_id = '{claim_id}';"
+            buildings_query = f"SELECT * FROM building_state WHERE claim_entity_id = '{claim_id}';"
             building_results = self.client.query(buildings_query)
             building_ids = [b["entity_id"] for b in building_results if "entity_id" in b] if building_results else []
 
             if building_ids:
+                # Get subscription queries for both services
                 inventory_queries = self.inventory_service.get_subscription_queries(building_ids)
                 passive_crafting_queries = self.passive_crafting_service.get_subscription_queries(building_ids)
+
+                # Combine all subscription queries
                 all_subscriptions = inventory_queries + passive_crafting_queries
+
+                # Add claim-level subscriptions
+                if claim_id:
+                    claim_subscription_queries = [
+                        f"SELECT * FROM claim_local_state WHERE entity_id = '{claim_id}';",
+                        f"SELECT * FROM claim_state WHERE entity_id = '{claim_id}';",
+                    ]
+                    all_subscriptions.extend(claim_subscription_queries)
 
                 if all_subscriptions:
                     self.client.start_subscription_listener(all_subscriptions, self._handle_message)
+                    logging.info(f"Started subscriptions for {len(all_subscriptions)} queries")
             else:
                 logging.warning("No buildings found; skipping subscriptions.")
 
@@ -155,16 +170,79 @@ class DataService:
             logging.info("[DataService] Thread stopped and connection closed.")
 
     def _handle_message(self, message):
-        """Callback to process messages from the client's listener thread."""
-        # The listener will now pass both the initial confirmation and subsequent updates here.
-        if "InitialSubscription" in message or "SubscriptionUpdate" in message:
-            logging.info("Processing data from subscription...")
-            # Upon any relevant update, we re-run the full inventory consolidation.
-            # This is a simple but effective strategy.
-            self.inventory_service.initialize_full_inventory()
-            fresh_inventory = self.claim.get_inventory()
-            self.data_queue.put({"type": "inventory_update", "data": fresh_inventory})
+        """Enhanced callback to process inventory, crafting, and claim info messages."""
+        try:
+            message_str = str(message)
 
-        # Add similar logic for passive_crafting if needed
-        # if self.passive_crafting_service.parse_crafting_message(db_update):
-        #     ...
+            # Handle claim info updates
+            if "claim_local_state" in message_str or "claim_state" in message_str:
+                if self.claim and self.claim.claim_id:
+                    updated_claim_info = self.fetch_claim_info(self.claim.claim_id)
+                    self.data_queue.put({"type": "claim_info_update", "data": updated_claim_info})
+                    logging.debug("Claim info updated via subscription")
+
+            # Handle inventory updates
+            if "inventory_state" in message_str or "building_state" in message_str:
+                logging.debug("Processing inventory update from subscription...")
+                self.inventory_service.initialize_full_inventory()
+                fresh_inventory = self.claim.get_inventory()
+                self.data_queue.put({"type": "inventory_update", "data": fresh_inventory})
+
+            # Handle passive crafting updates
+            if "passive_craft_state" in message_str:
+                logging.debug("Processing crafting update from subscription...")
+                if self.passive_crafting_service.parse_crafting_update(message):
+                    fresh_crafting_data = self.passive_crafting_service.get_current_crafting_data_for_gui()
+                    self.data_queue.put({"type": "crafting_update", "data": fresh_crafting_data})
+
+        except Exception as e:
+            logging.error(f"Error handling WebSocket message: {e}")
+
+    def fetch_claim_info(self, claim_id):
+        """
+        Fetches comprehensive claim information including name, treasury, supplies, etc.
+
+        Args:
+            claim_id (str): The claim entity ID
+
+        Returns:
+            dict: Claim information ready for the UI
+        """
+        try:
+            claim_info = {
+                "name": "Unknown Claim",
+                "treasury": 0,
+                "supplies": 0,
+                "supplies_per_hour": 0,
+            }
+
+            # Fetch claim local state (treasury, supplies, etc.)
+            local_state_query = f"SELECT * FROM claim_local_state WHERE entity_id = '{claim_id}';"
+            local_results = self.client.query(local_state_query)
+
+            if local_results and len(local_results) > 0:
+                local_data = local_results[0]
+                claim_info["treasury"] = local_data.get("treasury", 0)
+                claim_info["supplies"] = local_data.get("supplies", 0)
+
+                # Extract building maintenance rate for supplies calculation
+                building_maintenance = local_data.get("building_maintenance", 0.0)
+                # Convert per-second rate to per-hour (approximate)
+                claim_info["supplies_per_hour"] = building_maintenance * 3600 if building_maintenance > 0 else 0
+
+                logging.debug(f"Claim local state: Treasury={claim_info['treasury']}, Supplies={claim_info['supplies']}")
+
+            # Fetch claim state (name, owner, etc.)
+            claim_state_query = f"SELECT * FROM claim_state WHERE entity_id = '{claim_id}';"
+            state_results = self.client.query(claim_state_query)
+
+            if state_results and len(state_results) > 0:
+                state_data = state_results[0]
+                claim_info["name"] = state_data.get("name", "Unknown Claim")
+                logging.debug(f"Claim name: {claim_info['name']}")
+
+            return claim_info
+
+        except Exception as e:
+            logging.error(f"Error fetching claim info: {e}")
+            return {"name": "Error Loading", "treasury": 0, "supplies": 0, "supplies_per_hour": 0}

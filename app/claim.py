@@ -1,8 +1,5 @@
 import logging
 
-# We no longer need sqlite3, os, or json imports here, as this class
-# should not be directly accessing the filesystem or database.
-
 
 class Claim:
     """
@@ -122,8 +119,6 @@ class Claim:
             return {}
 
         logging.info("Consolidating resources from claim inventory.")
-
-        # Create a combined lookup for all item types
         combined_item_lookup = {}
         for data_list in [self.resource_desc, self.item_desc, self.cargo_desc]:
             if data_list:
@@ -135,19 +130,23 @@ class Claim:
         storage_buildings = self.buildings.get("Storage", []) + self.buildings.get("Cargo Stockpile", [])
 
         for building in storage_buildings:
-            # --- FIX: Add a safety check for the inventory key ---
-            inventory = building.get("inventory")
-            if not inventory:
-                continue  # Skip this building if it has no inventory data
-
             container_name = building.get("nickname") or building.get("name", "Unknown Storage")
 
+            # --- FIX: Add a robust safety check for the inventory object ---
+            inventory_data = building.get("inventory")
+            if not inventory_data:
+                # This building has no inventory attached, so we skip it.
+                continue
+
             # Now it's safe to access "pockets"
-            for slot in inventory.get("pockets", []):
+            for slot in inventory_data.get("pockets", []):
                 try:
-                    # Assuming the format is [slot_index, [item_id, quantity]]
-                    item_id = slot[1][0]
-                    quantity = int(slot[1][1])
+                    inv_data = slot[1][1]
+                    if not isinstance(inv_data, list) or len(inv_data) < 2:
+                        logging.debug(f"Invalid inventory slot data format (expected list of at least 2): {slot}")
+                        continue
+                    item_id = inv_data[0]
+                    quantity = inv_data[1]
 
                     if item_id in combined_item_lookup:
                         item_data = combined_item_lookup[item_id]
@@ -164,7 +163,6 @@ class Claim:
 
                         collection[item_name]["quantity"] += quantity
 
-                        # Track quantity per container
                         if container_name not in collection[item_name]["containers"]:
                             collection[item_name]["containers"][container_name] = 0
                         collection[item_name]["containers"][container_name] += quantity

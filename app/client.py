@@ -474,7 +474,7 @@ class BitCraft:
 
             self._stop_subscription.clear()
 
-            subscribe_message = {"Subscribe": {"request_id": str(uuid.uuid4()).replace("-", ""), "query_strings": queries}}
+            subscribe_message = {"Subscribe": {"request_id": 1, "query_strings": queries}}
 
             # Send the request and immediately start the listener.
             # The listener thread is now the ONLY one responsible for calling recv().

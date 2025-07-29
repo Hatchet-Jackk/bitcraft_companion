@@ -28,10 +28,12 @@ class InventoryService:
 
     # In inventory_service.py
 
+    # In inventory_service.py
+
     def initialize_full_inventory(self):
         """
         Performs a full, one-time fetch to populate the entire claim and inventory state,
-        reverting to the proven method of fetching inventories individually.
+        using the correct, individual query method for each building's inventory.
         """
         claim_id = self.claim.claim_id
         if not claim_id:
