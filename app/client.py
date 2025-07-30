@@ -416,21 +416,36 @@ class BitCraft:
                 raise
 
     def close_websocket(self):
-        with self.ws_lock:
-            self._stop_subscription.set()  # Signal subscription thread to stop
-            if self.subscription_thread and self.subscription_thread.is_alive():
-                self.subscription_thread.join()  # Wait for thread to finish
+        """Enhanced WebSocket closing with timeout handling."""
+        logging.info("Closing WebSocket connection...")
 
-            if self.ws_connection:
-                try:
-                    self.ws_connection.close()
-                    logging.info("WebSocket connection closed")
-                except Exception as e:
-                    logging.warning(f"Error closing WebSocket: {e}")
-                finally:
-                    self.ws_connection = None
-            else:
-                logging.warning("No WebSocket connection to close")
+        try:
+            with self.ws_lock:
+                # Signal subscription thread to stop
+                self._stop_subscription.set()
+
+                # Wait for subscription thread with timeout
+                if self.subscription_thread and self.subscription_thread.is_alive():
+                    logging.info("Waiting for subscription thread to finish...")
+                    self.subscription_thread.join(timeout=1.0)  # 1 second timeout
+
+                    if self.subscription_thread.is_alive():
+                        logging.warning("Subscription thread did not finish within timeout")
+
+                # Close WebSocket connection
+                if self.ws_connection:
+                    try:
+                        self.ws_connection.close()
+                        logging.info("WebSocket connection closed")
+                    except Exception as e:
+                        logging.warning(f"Error closing WebSocket: {e}")
+                    finally:
+                        self.ws_connection = None
+                else:
+                    logging.info("No WebSocket connection to close")
+
+        except Exception as e:
+            logging.error(f"Error in close_websocket: {e}")
 
     def start_subscription_listener(self, queries: list[str], callback: callable):
         """

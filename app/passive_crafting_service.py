@@ -67,12 +67,29 @@ class PassiveCraftingService:
         logging.info("Started real-time crafting countdown timer")
 
     def stop_real_time_timer(self):
-        """Stop the real-time countdown timer."""
-        if self.timer_thread:
-            self.timer_stop_event.set()
-            if self.timer_thread.is_alive():
-                self.timer_thread.join(timeout=1.0)
-        logging.info("Stopped real-time crafting countdown timer")
+        """Stop the real-time countdown timer with improved cleanup."""
+        logging.info("Stopping real-time crafting countdown timer...")
+
+        try:
+            if self.timer_thread:
+                # Set stop event
+                self.timer_stop_event.set()
+
+                # Wait for thread with timeout
+                if self.timer_thread.is_alive():
+                    self.timer_thread.join(timeout=1.0)  # 1 second timeout
+
+                    if self.timer_thread.is_alive():
+                        logging.warning("Timer thread did not finish within timeout")
+                    else:
+                        logging.info("Timer thread finished cleanly")
+
+                self.timer_thread = None
+
+        except Exception as e:
+            logging.error(f"Error stopping timer thread: {e}")
+        finally:
+            logging.info("Real-time timer shutdown complete")
 
     def _timer_loop(self):
         """Background thread that updates timers every second."""

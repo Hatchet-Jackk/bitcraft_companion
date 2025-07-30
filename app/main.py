@@ -3,6 +3,7 @@ Main entry point for the Bitcraft Companion application.
 Handles the login process and launches the main application window.
 """
 
+import sys
 import customtkinter as ctk
 import queue
 import logging
@@ -189,10 +190,30 @@ class LoginWindow(ctk.CTk):
         main_app.mainloop()
 
     def on_closing(self):
-        """Handles cleanup when the window is closed."""
-        self.data_service.stop()
-        self.destroy()
-        self.quit()
+        """Handles cleanup when the login window is closed."""
+        logging.info("[LoginWindow] Closing login window...")
+
+        try:
+            if hasattr(self, "data_service") and self.data_service:
+                logging.info("[LoginWindow] Stopping data service...")
+                self.data_service.stop()
+
+            logging.info("[LoginWindow] Destroying login window...")
+            self.destroy()
+
+        except Exception as e:
+            logging.error(f"[LoginWindow] Error during shutdown: {e}")
+            try:
+                self.destroy()
+            except:
+                pass
+        finally:
+            try:
+                self.quit()
+            except:
+                pass
+
+            sys.exit(0)
 
 
 if __name__ == "__main__":

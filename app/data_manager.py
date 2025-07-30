@@ -58,17 +58,38 @@ class DataService:
     def stop(self):
         """Stop the data service and clean up resources."""
         logging.info("Stopping DataService...")
-        self._stop_event.set()
 
-        # Stop the real-time timer
-        if self.passive_crafting_service:
-            self.passive_crafting_service.stop_real_time_timer()
+        try:
+            # Set stop event first
+            self._stop_event.set()
 
-        if self.client:
-            self.client.close_websocket()
-        if self.service_thread and self.service_thread.is_alive():
-            self.service_thread.join()
-        logging.info("DataService stopped.")
+            # Stop the real-time timer with timeout
+            if self.passive_crafting_service:
+                logging.info("Stopping real-time timer...")
+                self.passive_crafting_service.stop_real_time_timer()
+
+            # Close WebSocket connection with timeout
+            if self.client:
+                logging.info("Closing WebSocket connection...")
+                try:
+                    self.client.close_websocket()
+                except Exception as e:
+                    logging.warning(f"Error closing WebSocket: {e}")
+
+            # Wait for service thread to finish with timeout
+            if self.service_thread and self.service_thread.is_alive():
+                logging.info("Waiting for service thread to finish...")
+                self.service_thread.join(timeout=2.0)  # 2 second timeout
+
+                if self.service_thread.is_alive():
+                    logging.warning("Service thread did not finish within timeout")
+                else:
+                    logging.info("Service thread finished cleanly")
+
+        except Exception as e:
+            logging.error(f"Error during DataService shutdown: {e}")
+        finally:
+            logging.info("DataService stopped.")
 
     def _run(self, username, password, region, player_name):
         """Main loop for the data service thread."""

@@ -94,7 +94,13 @@ class ClaimInventoryTab(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
 
         # Set up headings and column widths
-        column_widths = {"Name": 220, "Tier": 70, "Quantity": 90, "Tag": 140, "Containers": 220}
+        column_widths = {
+            "Name": 200,
+            "Tier": 60,
+            "Quantity": 80,
+            "Tag": 120,
+            "Containers": 240,
+        }
 
         for header in self.headers:
             self.tree.heading(header, text=header, command=lambda h=header: self.sort_by(h), anchor="w")

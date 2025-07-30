@@ -103,11 +103,11 @@ class PassiveCraftingTab(ctk.CTkFrame):
         # Set up headings and column widths
         column_widths = {
             "Item": 180,
-            "Tier": 60,
-            "Quantity": 80,
-            "Recipe": 120,
+            "Tier": 50,
+            "Quantity": 70,
+            "Recipe": 70,
             "Time Remaining": 120,
-            "Crafter": 100,
+            "Crafter": 90,
             "Building": 200,
         }
 

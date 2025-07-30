@@ -1,3 +1,4 @@
+import sys
 import customtkinter as ctk
 import queue
 import logging
@@ -437,6 +438,33 @@ class MainWindow(ctk.CTk):
     def on_closing(self):
         """Handles cleanup when the window is closed."""
         logging.info("[MainWindow] Closing application...")
-        self.data_service.stop()
-        self.destroy()
-        self.quit()
+
+        try:
+            # Stop the data service first - this is critical
+            if hasattr(self, "data_service") and self.data_service:
+                logging.info("[MainWindow] Stopping data service...")
+                self.data_service.stop()
+
+                # Give it a moment to clean up
+                import time
+
+                time.sleep(0.5)
+
+            logging.info("[MainWindow] Destroying window...")
+            self.destroy()
+
+        except Exception as e:
+            logging.error(f"[MainWindow] Error during shutdown: {e}")
+            # Force destroy even if there's an error
+            try:
+                self.destroy()
+            except:
+                pass
+        finally:
+            # Ensure we quit the application
+            try:
+                self.quit()
+            except:
+                pass
+
+            sys.exit(0)

@@ -23,6 +23,8 @@ class TravelerTasksTab(ctk.CTkFrame):
 
         # Track expansion state for better user experience
         self.has_had_first_load = False
+        # IMPROVED: Use more specific expansion tracking
+        self.expansion_state = set()  # Store traveler IDs that should be expanded
 
         self._create_widgets()
         self._create_context_menu()
@@ -32,7 +34,7 @@ class TravelerTasksTab(ctk.CTkFrame):
         style = ttk.Style()
         style.theme_use("default")
 
-        # Configure the Treeview colors - consistent with other tabs
+        # Configure the Treeview colors - CONSISTENT WITH OTHER TABS
         style.configure(
             "Treeview",
             background="#2a2d2e",
@@ -44,7 +46,7 @@ class TravelerTasksTab(ctk.CTkFrame):
         )
         style.map("Treeview", background=[("selected", "#1f6aa5")])
 
-        # Configure headers
+        # Configure headers - CONSISTENT WITH OTHER TABS
         style.configure(
             "Treeview.Heading",
             background="#1e2124",
@@ -56,7 +58,7 @@ class TravelerTasksTab(ctk.CTkFrame):
         )
         style.map("Treeview.Heading", background=[("active", "#2c5d8f")])
 
-        # Style scrollbars
+        # FIXED: Style scrollbars to match other tabs exactly
         style.configure(
             "Vertical.TScrollbar",
             background="#1e2124",
@@ -89,7 +91,7 @@ class TravelerTasksTab(ctk.CTkFrame):
         self.tree.tag_configure("child_completed", background="#3a4a3a", foreground="#4CAF50")  # Green for completed tasks
         self.tree.tag_configure("child_incomplete", background="#3a3a3a", foreground="white")  # Neutral for incomplete tasks
 
-        # Create scrollbars
+        # Create scrollbars with CONSISTENT styling
         vsb = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview, style="Vertical.TScrollbar")
         hsb = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview, style="Horizontal.TScrollbar")
         self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
@@ -100,14 +102,19 @@ class TravelerTasksTab(ctk.CTkFrame):
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        # Set up headings and column widths
-        column_widths = {"Traveler": 200, "Task": 320, "Required Items": 250, "Complete": 80}
+        # FIXED: Set up headings and IMPROVED column widths
+        column_widths = {
+            "Traveler": 140,  # Reduced from 200 - was too wide
+            "Task": 380,  # Increased from 320 - more space for task descriptions
+            "Required Items": 200,  # Reduced from 250 - reasonable space
+            "Complete": 90,  # Increased from 80 - ensure header isn't cut off
+        }
 
         for header in self.headers:
             self.tree.heading(header, text=header, command=lambda h=header: self.sort_by(h), anchor="w")
             self.tree.column(header, width=column_widths.get(header, 150), minwidth=50, anchor="w")
 
-        # Configure the tree column for expansion
+        # Configure the tree column for expansion - CONSISTENT with other tabs
         self.tree.column("#0", width=20, minwidth=20, stretch=False, anchor="center")
         self.tree.heading("#0", text="", anchor="w")
 
@@ -285,14 +292,9 @@ class TravelerTasksTab(ctk.CTkFrame):
             self.tree.heading(header, text=text + filter_indicator)
 
     def render_table(self):
-        """Renders the traveler tasks data with expandable traveler groups."""
-        # Save current expansion state
-        is_first_load = not self.has_had_first_load
-        if self.has_had_first_load:
-            expanded_items = self._save_expansion_state()
-        else:
-            expanded_items = set()
-            self.has_had_first_load = True
+        """Renders the traveler tasks data with expandable traveler groups, PRESERVING expansion state."""
+        # IMPROVED: Save current expansion state before clearing
+        self._save_current_expansion_state()
 
         # Clear the tree
         self.tree.delete(*self.tree.get_children())
@@ -304,10 +306,10 @@ class TravelerTasksTab(ctk.CTkFrame):
             completion_status = row_data.get("complete", "❌")
             operations = row_data.get("operations", [])
             is_expandable = row_data.get("is_expandable", False)
-
-            # Create a unique identifier for expansion tracking
             traveler_id = row_data.get("traveler_id", "")
-            row_id = f"traveler_{traveler_id}"
+
+            # Create a stable identifier for expansion tracking
+            expansion_key = f"traveler_{traveler_id}_{traveler_name}"
 
             # Prepare main row values
             values = [traveler_name, task_summary, required_items, completion_status]
@@ -322,14 +324,8 @@ class TravelerTasksTab(ctk.CTkFrame):
                 # Create expandable parent row
                 parent_id = self.tree.insert("", "end", values=values, tags=(tag,))
 
-                # Determine if this traveler should be expanded
-                should_expand = False
-                if is_first_load:
-                    # Auto-expand on first load to show tasks
-                    should_expand = True
-                elif not is_first_load and row_id in expanded_items:
-                    # Previously expanded
-                    should_expand = True
+                # IMPROVED: Check if this traveler should be expanded based on saved state
+                should_expand = expansion_key in self.expansion_state
 
                 # Add individual tasks as children
                 for task_data in operations:
@@ -342,25 +338,36 @@ class TravelerTasksTab(ctk.CTkFrame):
                 # Non-expandable row
                 self.tree.insert("", "end", values=values, tags=(tag,))
 
-    def _save_expansion_state(self):
-        """Save the current expansion state of traveler groups."""
-        expanded_items = set()
+        # Mark that we've had our first load
+        if not self.has_had_first_load:
+            self.has_had_first_load = True
+
+    def _save_current_expansion_state(self):
+        """IMPROVED: Save the current expansion state of traveler groups."""
+        if not self.has_had_first_load:
+            return  # Don't save state on first load
+
+        self.expansion_state = set()
 
         def check_item(item_id):
             # Get the item's values to create identifier
             values = self.tree.item(item_id, "values")
             if values and len(values) >= 1:
-                # Extract traveler info for identifier (remove completion count)
-                traveler_full = values[0]
-                # This is a simplification - in practice you'd want to use traveler_id
-                traveler_base = traveler_full.split(" (")[0] if " (" in traveler_full else traveler_full
-                row_id = f"traveler_{traveler_base}"
+                # Extract traveler name and create stable identifier
+                traveler_name = values[0]
 
-                # If this item is expanded, save its identifier
-                if self.tree.item(item_id, "open"):
-                    expanded_items.add(row_id)
+                # Find the corresponding data to get traveler_id
+                for row_data in self.filtered_data:
+                    if row_data.get("traveler", "") == traveler_name:
+                        traveler_id = row_data.get("traveler_id", "")
+                        expansion_key = f"traveler_{traveler_id}_{traveler_name}"
 
-            # Check children recursively
+                        # If this item is expanded, save its identifier
+                        if self.tree.item(item_id, "open"):
+                            self.expansion_state.add(expansion_key)
+                        break
+
+            # Check children recursively (though we don't expect nested expansion here)
             for child_id in self.tree.get_children(item_id):
                 check_item(child_id)
 
@@ -368,7 +375,7 @@ class TravelerTasksTab(ctk.CTkFrame):
         for item_id in self.tree.get_children():
             check_item(item_id)
 
-        return expanded_items
+        logging.debug(f"Saved expansion state for {len(self.expansion_state)} travelers")
 
     def _render_task_row(self, parent_id, task_data):
         """Renders an individual task as a child row."""
