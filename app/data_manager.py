@@ -122,9 +122,9 @@ class DataService:
                 "type_desc_ids",
                 "building_types",
                 "crafting_recipe_desc",
+                "claim_tile_cost",
             ]
             reference_data = {table: self.client._load_reference_data(table) for table in reference_tables}
-            # Note: NPC and task descriptions will be fetched live by TravelerTasksService
 
             # 4. Initialize services
             self.player = self.PlayerClass(username=player_name)
@@ -263,7 +263,7 @@ class DataService:
             timestamp_micros = transaction_data.get("timestamp", {}).get("__timestamp_micros_since_unix_epoch__", 0)
             timestamp_seconds = timestamp_micros / 1_000_000 if timestamp_micros else 0
 
-            logging.info(f"LIVE TRANSACTION: {reducer_name}")
+            logging.debug(f"LIVE TRANSACTION: {reducer_name}")
 
             # Process table updates
             tables = status.get("Committed", {}).get("tables", [])
@@ -533,17 +533,18 @@ class DataService:
                 self.data_queue.put(
                     {"type": "claim_info_update", "data": fresh_claim_info, "source": "live_update", "timestamp": time.time()}
                 )
-                logging.info("Sent claim info update")
+                logging.debug("Sent claim info update")
         except Exception as e:
             logging.error(f"Error refreshing claim info: {e}")
 
     def fetch_claim_info(self, claim_id):
-        """Fetch comprehensive claim information."""
+        """Fetch comprehensive claim information including tile count."""
         try:
             claim_info = {
                 "name": "Unknown Claim",
                 "treasury": 0,
                 "supplies": 0,
+                "tile_count": 0,  # NEW: Add tile count
                 "supplies_per_hour": 0,
             }
 
@@ -555,10 +556,13 @@ class DataService:
                 local_data = local_results[0]
                 claim_info["treasury"] = local_data.get("treasury", 0)
                 claim_info["supplies"] = local_data.get("supplies", 0)
-                building_maintenance = local_data.get("building_maintenance", 0.0)
-                claim_info["supplies_per_hour"] = building_maintenance * 3600 if building_maintenance > 0 else 0
+                num_tiles = local_data.get("num_tiles", 0)
+                claim_info["tile_count"] = num_tiles
+                claim_tile_cost = self.client._load_reference_data("claim_tile_cost")
+                # supplies_per_hour will be calculated in the UI using claim_tile_cost and tile_count only
+                claim_info["supplies_per_hour"] = 0
 
-            # Fetch claim state
+            # Fetch claim state for name
             claim_state_query = f"SELECT * FROM claim_state WHERE entity_id = '{claim_id}';"
             state_results = self.client.query(claim_state_query)
 
@@ -566,8 +570,22 @@ class DataService:
                 state_data = state_results[0]
                 claim_info["name"] = state_data.get("name", "Unknown Claim")
 
+            # If we didn't get tile count from size, try to calculate from coordinates
+            if claim_info["tile_count"] == 0:
+                try:
+                    # Try to get tile count from claim coordinates
+                    coord_query = f"SELECT * FROM claim_coordinate_state WHERE claim_entity_id = '{claim_id}';"
+                    coord_results = self.client.query(coord_query)
+
+                    if coord_results:
+                        claim_info["tile_count"] = len(coord_results)
+                        logging.info(f"Calculated tile count from coordinates: {claim_info['tile_count']} tiles")
+                except Exception as e:
+                    logging.warning(f"Could not calculate tile count from coordinates: {e}")
+
+            logging.debug(f"Fetched claim info: {claim_info}")
             return claim_info
 
         except Exception as e:
             logging.error(f"Error fetching claim info: {e}")
-            return {"name": "Error Loading", "treasury": 0, "supplies": 0, "supplies_per_hour": 0}
+            return {"name": "Error Loading", "treasury": 0, "supplies": 0, "tile_count": 0, "supplies_per_hour": 0}
