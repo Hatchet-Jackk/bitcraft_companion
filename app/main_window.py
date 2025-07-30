@@ -11,6 +11,7 @@ from data_manager import DataService
 from claim_info_header import ClaimInfoHeader
 from claim_inventory_tab import ClaimInventoryTab
 from passive_crafting_tab import PassiveCraftingTab
+from traveler_tasks_tab import TravelerTasksTab
 
 
 class MainWindow(ctk.CTk):
@@ -41,7 +42,8 @@ class MainWindow(ctk.CTk):
 
         # Track loading state
         self.is_loading = True
-        self.has_received_data = False
+        self.expected_data_types = {"inventory", "crafting", "tasks", "claim_info"}
+        self.received_data_types = set()
 
         # Create tab content area with border/outline
         self.tab_content_area = ctk.CTkFrame(self, fg_color="#2b2b2b", border_width=2, border_color="#404040", corner_radius=10)
@@ -61,6 +63,10 @@ class MainWindow(ctk.CTk):
         # Ensure loading overlay is visible on top and lock tab buttons
         self.show_loading()
         self._set_tab_buttons_state("disabled")
+
+        # Start data processing with enhanced timer support
+        self.after(100, self.process_data_queue)
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def _set_tab_buttons_state(self, state: str):
         """Enable or disable all tab buttons."""
@@ -156,23 +162,6 @@ class MainWindow(ctk.CTk):
 
         return overlay
 
-    def _animate_loading(self):
-        """Animates the loading text with rotating symbols."""
-        if self.is_loading:
-            current_text = self.loading_label.cget("text")
-            symbols = ["⏳", "⌛", "🔄", "⏳"]
-
-            # Find current symbol and get next one
-            for i, symbol in enumerate(symbols):
-                if symbol in current_text:
-                    next_symbol = symbols[(i + 1) % len(symbols)]
-                    new_text = current_text.replace(symbol, next_symbol)
-                    self.loading_label.configure(text=new_text)
-                    break
-
-            # Continue animation
-            self.after(500, self._animate_loading)
-
     def show_loading(self):
         """Shows the loading overlay and disables tab buttons."""
         self.is_loading = True
@@ -188,9 +177,11 @@ class MainWindow(ctk.CTk):
 
     def _create_tabs(self):
         """Creates all tab instances using the modular tab classes."""
+
         tab_classes = {
             "Claim Inventory": ClaimInventoryTab,
             "Passive Crafting": PassiveCraftingTab,
+            "Traveler's Tasks": TravelerTasksTab,
         }
 
         for name, TabClass in tab_classes.items():
@@ -250,8 +241,14 @@ class MainWindow(ctk.CTk):
         if self.active_tab_name and hasattr(self.tabs[self.active_tab_name], "apply_filter"):
             self.tabs[self.active_tab_name].apply_filter()
 
+    def _check_all_data_loaded(self):
+        """Check if all expected data types have been received and hide loading if so."""
+        if self.is_loading and self.received_data_types >= self.expected_data_types:
+            logging.info(f"All initial data loaded: {self.received_data_types}")
+            self.hide_loading()
+
     def process_data_queue(self):
-        """Enhanced data queue processing that handles timer updates and other messages."""
+        """Enhanced data queue processing that handles timer updates and task updates."""
         try:
             while not self.data_service.data_queue.empty():
                 message = self.data_service.data_queue.get_nowait()
@@ -263,10 +260,10 @@ class MainWindow(ctk.CTk):
                         self.tabs["Claim Inventory"].update_data(msg_data)
                         logging.debug("Inventory data updated in UI")
 
-                        # Hide loading on first data
-                        if self.is_loading and not self.has_received_data:
-                            self.has_received_data = True
-                            self.hide_loading()
+                        # Track that we've received inventory data
+                        if self.is_loading:
+                            self.received_data_types.add("inventory")
+                            self._check_all_data_loaded()
 
                 elif msg_type == "crafting_update":
                     if "Passive Crafting" in self.tabs:
@@ -279,10 +276,10 @@ class MainWindow(ctk.CTk):
 
                         logging.debug("Crafting data updated in UI")
 
-                        # Hide loading on first data
-                        if self.is_loading and not self.has_received_data:
-                            self.has_received_data = True
-                            self.hide_loading()
+                        # Track that we've received crafting data
+                        if self.is_loading:
+                            self.received_data_types.add("crafting")
+                            self._check_all_data_loaded()
 
                 # NEW: Handle real-time timer updates
                 elif msg_type == "timer_update":
@@ -291,9 +288,30 @@ class MainWindow(ctk.CTk):
                         self.tabs["Passive Crafting"].update_data(msg_data)
                         logging.debug("Timer data updated in UI")
 
+                elif msg_type == "tasks_update":
+                    if "Traveler's Tasks" in self.tabs:
+                        self.tabs["Traveler's Tasks"].update_data(msg_data)
+
+                        # Check for task completions
+                        changes = message.get("changes", {})
+                        if changes.get("completed_tasks"):
+                            self._celebrate_task_completions(changes["completed_tasks"])
+
+                        logging.debug("Tasks data updated in UI")
+
+                        # Track that we've received tasks data
+                        if self.is_loading:
+                            self.received_data_types.add("tasks")
+                            self._check_all_data_loaded()
+
                 elif msg_type == "claim_info_update":
                     self.claim_info.update_claim_data(msg_data)
                     logging.debug("Claim info updated in UI")
+
+                    # Track that we've received claim info data
+                    if self.is_loading:
+                        self.received_data_types.add("claim_info")
+                        self._check_all_data_loaded()
 
                 elif msg_type == "error":
                     messagebox.showerror("Error", msg_data)
@@ -313,6 +331,41 @@ class MainWindow(ctk.CTk):
         finally:
             # Check for updates every 100ms for smooth real-time timer updates
             self.after(100, self.process_data_queue)
+
+    def _celebrate_task_completions(self, completed_tasks):
+        """
+        Celebrate completed tasks with visual feedback.
+
+        Args:
+            completed_tasks: List of completed task information
+        """
+        try:
+            if not completed_tasks:
+                return
+
+            # Log celebratory message
+            count = len(completed_tasks)
+            logging.info(f"🎉 {count} task(s) completed!")
+
+            # Update window title briefly to show completion
+            original_title = self.title()
+            if count == 1:
+                task_name = completed_tasks[0].get("task_description", "Task")[:30]
+                self.title(f"🎉 Task completed: {task_name}... - {original_title}")
+            else:
+                self.title(f"🎉 {count} tasks completed! - {original_title}")
+
+            # Reset title after 3 seconds
+            self.after(3000, lambda: self.title(original_title))
+
+            # Log each completion
+            for task in completed_tasks:
+                task_desc = task.get("task_description", "Unknown Task")
+                traveler_name = task.get("traveler_name", "Unknown Traveler")
+                logging.info(f"✅ Completed: {task_desc} for {traveler_name}")
+
+        except Exception as e:
+            logging.error(f"Error celebrating task completions: {e}")
 
     def _celebrate_completions(self, completed_items):
         """

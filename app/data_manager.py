@@ -21,6 +21,7 @@ class DataService:
         from claim import Claim
         from inventory_service import InventoryService
         from passive_crafting_service import PassiveCraftingService
+        from traveler_tasks_service import TravelerTasksService
 
         # Store the classes themselves
         self.BitCraftClass = BitCraft
@@ -28,6 +29,7 @@ class DataService:
         self.ClaimClass = Claim
         self.InventoryServiceClass = InventoryService
         self.PassiveCraftingServiceClass = PassiveCraftingService
+        self.TravelerTasksServiceClass = TravelerTasksService
 
         # Instantiate the client immediately to load saved user data
         self.client = self.BitCraftClass()
@@ -37,6 +39,7 @@ class DataService:
         self.claim = None
         self.inventory_service = None
         self.passive_crafting_service = None
+        self.traveler_tasks_service = None
 
         self.data_queue = queue.Queue()
         self._stop_event = threading.Event()
@@ -100,6 +103,7 @@ class DataService:
                 "crafting_recipe_desc",
             ]
             reference_data = {table: self.client._load_reference_data(table) for table in reference_tables}
+            # Note: NPC and task descriptions will be fetched live by TravelerTasksService
 
             # 4. Initialize services
             self.player = self.PlayerClass(username=player_name)
@@ -123,6 +127,9 @@ class DataService:
             self.passive_crafting_service = self.PassiveCraftingServiceClass(
                 bitcraft_client=self.client, claim_instance=self.claim, reference_data=reference_data
             )
+            self.traveler_tasks_service = self.TravelerTasksServiceClass(
+                bitcraft_client=self.client, player_instance=self.player, reference_data=reference_data
+            )
 
             # 7. Initial data loads
             self.inventory_service.initialize_full_inventory()
@@ -139,6 +146,16 @@ class DataService:
                 }
             )
 
+            initial_tasks_data = self.traveler_tasks_service.get_all_tasks_data_grouped()
+            self.data_queue.put(
+                {
+                    "type": "tasks_update",
+                    "data": initial_tasks_data,
+                    "changes": {"initial_load": True},
+                    "timestamp": time.time(),
+                }
+            )
+
             # Start real-time timer
             self.passive_crafting_service.start_real_time_timer(self._handle_timer_update)
 
@@ -147,21 +164,28 @@ class DataService:
             building_results = self.client.query(buildings_query)
             building_ids = [b["entity_id"] for b in building_results if "entity_id" in b] if building_results else []
 
+            all_subscriptions = []
+
             if building_ids:
                 inventory_queries = self.inventory_service.get_subscription_queries(building_ids)
                 passive_crafting_queries = self.passive_crafting_service.get_subscription_queries(building_ids)
-                all_subscriptions = inventory_queries + passive_crafting_queries
+                all_subscriptions.extend(inventory_queries)
+                all_subscriptions.extend(passive_crafting_queries)
 
-                if claim_id:
-                    claim_queries = [
-                        f"SELECT * FROM claim_local_state WHERE entity_id = '{claim_id}';",
-                        f"SELECT * FROM claim_state WHERE entity_id = '{claim_id}';",
-                    ]
-                    all_subscriptions.extend(claim_queries)
+            # Add task subscriptions
+            task_queries = self.traveler_tasks_service.get_subscription_queries()
+            all_subscriptions.extend(task_queries)
 
-                if all_subscriptions:
-                    self.client.start_subscription_listener(all_subscriptions, self._handle_message)
-                    logging.info(f"Started subscriptions for {len(all_subscriptions)} queries")
+            if claim_id:
+                claim_queries = [
+                    f"SELECT * FROM claim_local_state WHERE entity_id = '{claim_id}';",
+                    f"SELECT * FROM claim_state WHERE entity_id = '{claim_id}';",
+                ]
+                all_subscriptions.extend(claim_queries)
+
+            if all_subscriptions:
+                self.client.start_subscription_listener(all_subscriptions, self._handle_message)
+                logging.info(f"Started subscriptions for {len(all_subscriptions)} queries")
 
             # Keep thread alive
             while not self._stop_event.is_set():
@@ -231,6 +255,8 @@ class DataService:
                     self._handle_inventory_transaction(table_update, reducer_name, timestamp_seconds)
                 elif table_name in ["claim_local_state", "claim_state"]:
                     self._handle_claim_transaction(table_update, reducer_name, timestamp_seconds)
+                elif table_name == "traveler_task_state":  # FIX: ADD TASKS HANDLING
+                    self._handle_tasks_transaction(table_update, reducer_name, timestamp_seconds)
 
         except Exception as e:
             logging.error(f"Error processing transaction update: {e}")
@@ -248,6 +274,7 @@ class DataService:
             needs_inventory_update = False
             needs_crafting_update = False
             needs_claim_update = False
+            needs_tasks_update = False
 
             for table_update in tables:
                 table_name = table_update.get("table_name", "")
@@ -258,6 +285,8 @@ class DataService:
                     needs_crafting_update = True
                 elif table_name in ["claim_local_state", "claim_state"]:
                     needs_claim_update = True
+                elif table_name == "traveler_task_state":  # FIX: ADD TASKS HANDLING
+                    needs_tasks_update = True
 
             # Send consolidated updates
             if needs_inventory_update:
@@ -266,6 +295,8 @@ class DataService:
                 self._refresh_crafting()
             if needs_claim_update:
                 self._refresh_claim_info()
+            if needs_tasks_update:  # FIX: ADD TASKS REFRESH
+                self._refresh_tasks()
 
         except Exception as e:
             logging.error(f"Error processing subscription update: {e}")
@@ -303,6 +334,34 @@ class DataService:
 
         except Exception as e:
             logging.error(f"Error handling crafting transaction: {e}")
+
+    def _handle_tasks_transaction(self, table_update, reducer_name, timestamp):
+        """Handle traveler_task_state transactions."""
+        try:
+            updates = table_update.get("updates", [])
+
+            for update in updates:
+                inserts = update.get("inserts", [])
+                deletes = update.get("deletes", [])
+
+                if inserts or deletes:
+                    logging.info(f"TASK UPDATE: {len(inserts)} inserts, {len(deletes)} deletes - {reducer_name}")
+
+                    # Check for task completions in inserts
+                    for insert_str in inserts:
+                        try:
+                            task_data = ast.literal_eval(insert_str)
+                            if isinstance(task_data, list) and len(task_data) >= 4:
+                                completed = task_data[3] if len(task_data) > 3 else False
+                                if completed:
+                                    logging.info(f"🎉 Task completed! {reducer_name}")
+                        except Exception as e:
+                            logging.debug(f"Error parsing task insert: {e}")
+
+                    self._refresh_tasks()
+
+        except Exception as e:
+            logging.error(f"Error handling tasks transaction: {e}")
 
     def _parse_crafting_data(self, data_str):
         """
@@ -410,6 +469,40 @@ class DataService:
                 logging.info(f"Sent crafting update: {len(fresh_crafting_data)} operations")
         except Exception as e:
             logging.error(f"Error refreshing crafting: {e}")
+
+    def _refresh_tasks(self):
+        """Refresh and send tasks data to UI."""
+        try:
+            if self.traveler_tasks_service:
+                # Get old data for completion detection
+                old_data = self.traveler_tasks_service.get_current_tasks_data_for_gui()
+
+                # Get fresh data
+                fresh_tasks_data = self.traveler_tasks_service.get_all_tasks_data_grouped()
+
+                # Detect completions for notifications
+                completed_tasks = self.traveler_tasks_service.detect_task_completions(old_data, fresh_tasks_data)
+
+                # Send update to UI
+                changes = {"completed_tasks": completed_tasks} if completed_tasks else {}
+                self.data_queue.put(
+                    {
+                        "type": "tasks_update",
+                        "data": fresh_tasks_data,
+                        "changes": changes,
+                        "source": "live_update",
+                        "timestamp": time.time(),
+                    }
+                )
+                logging.info(f"Sent tasks update: {len(fresh_tasks_data)} traveler groups")
+
+                # Log completions
+                if completed_tasks:
+                    for task in completed_tasks:
+                        logging.info(f"🎉 Task completed: {task['task_description']} for {task['traveler_name']}")
+
+        except Exception as e:
+            logging.error(f"Error refreshing tasks: {e}")
 
     def _refresh_claim_info(self):
         """Refresh and send claim info to UI."""
