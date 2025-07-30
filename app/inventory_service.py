@@ -23,12 +23,8 @@ class InventoryService:
             return []  # Return an empty list if there are no buildings
 
         # Generate a separate SELECT query for each building ID
-        logging.info(f"Generating inventory subscription queries for {len(building_ids)} buildings.")
-        return [f"SELECT * FROM inventory_state WHERE entity_id = '{bid}';" for bid in building_ids]
-
-    # In inventory_service.py
-
-    # In inventory_service.py
+        logging.info(f"Generating FIXED inventory subscription queries for {len(building_ids)} buildings.")
+        return [f"SELECT * FROM inventory_state WHERE owner_entity_id = '{bid}';" for bid in building_ids]
 
     def initialize_full_inventory(self):
         """

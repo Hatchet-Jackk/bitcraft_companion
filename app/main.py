@@ -192,6 +192,7 @@ class LoginWindow(ctk.CTk):
         """Handles cleanup when the window is closed."""
         self.data_service.stop()
         self.destroy()
+        self.quit()
 
 
 if __name__ == "__main__":

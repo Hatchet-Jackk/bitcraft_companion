@@ -22,6 +22,10 @@ class PassiveCraftingTab(ctk.CTkFrame):
         self.active_filters: Dict[str, set] = {}
         self.clicked_header = None
 
+        # Track expansion state for better user experience
+        self.auto_expand_on_first_load = False
+        self.has_had_first_load = False
+
         self._create_widgets()
         self._create_context_menu()
 
@@ -204,7 +208,7 @@ class PassiveCraftingTab(ctk.CTkFrame):
             self.all_data = []
 
         self.apply_filter()
-        logging.info(f"Passive crafting data updated: {len(self.all_data)} item groups")
+        logging.debug(f"Passive crafting data updated: {len(self.all_data)} item groups")
 
     def apply_filter(self):
         """Filters the master data list based on search and column filters."""
@@ -342,7 +346,17 @@ class PassiveCraftingTab(ctk.CTkFrame):
             self.tree.heading(header, text=text + filter_indicator)
 
     def render_table(self):
-        """Clears and re-populates the Treeview with item-based parent/operation child structure."""
+        """Renders the hierarchical crafting data with mandatory two-level expansion, preserving expansion state."""
+        # Save current expansion state before clearing (unless it's the first load)
+        is_first_load = not self.has_had_first_load
+
+        if self.has_had_first_load:
+            expanded_items = self._save_expansion_state()
+        else:
+            expanded_items = set()
+            self.has_had_first_load = True
+
+        # Clear the tree
         self.tree.delete(*self.tree.get_children())
 
         for row_data in self.filtered_data:
@@ -355,58 +369,137 @@ class PassiveCraftingTab(ctk.CTkFrame):
             building = row_data.get("building", "Unknown")
             operations = row_data.get("operations", [])
             is_expandable = row_data.get("is_expandable", False)
+            expansion_level = row_data.get("expansion_level", 0)
 
-            # Prepare main row values for the parent
+            # Create a unique identifier for this row to track expansion state
+            row_id = f"{item_name}|{tier}|{recipe}"
+
+            # Prepare main row values
             values = [item_name, str(tier), str(quantity), recipe, time_remaining, crafter, building]
 
-            # Determine the tag based on time remaining for color coding
-            tag = ""
-            if time_remaining == "READY":
-                tag = "ready"
-            elif time_remaining not in ["Empty", "Unknown", "Error", "N/A"]:
-                tag = "crafting"
+            # Determine tag based on time remaining
+            tag = self._get_time_tag(time_remaining)
+
+            if is_expandable and operations:
+                # Create expandable parent row
+                parent_id = self.tree.insert("", "end", values=values, tags=(tag,))
+
+                # Determine if this item should be expanded
+                should_expand = False
+                if is_first_load and self.auto_expand_on_first_load:
+                    # Auto-expand on first load
+                    should_expand = True
+                elif not is_first_load and row_id in expanded_items:
+                    # Previously expanded (only check this after first load)
+                    should_expand = True
+
+                # Process child operations
+                for child_data in operations:
+                    self._render_child_row(parent_id, child_data, 1, row_id, expanded_items, is_first_load)
+
+                # Apply expansion state
+                if should_expand:
+                    self.tree.item(parent_id, open=True)
             else:
-                tag = "empty"
+                # Non-expandable row or no operations
+                self.tree.insert("", "end", values=values, tags=(tag,))
 
-            # Insert the main item row
-            if is_expandable:
-                # Multiple operations - create expandable parent row
-                item_id = self.tree.insert("", "end", values=values, tags=(tag,))
+    def _save_expansion_state(self):
+        """Save the current expansion state of all tree items."""
+        expanded_items = set()
 
-                # Add child rows for each operation
-                for operation in operations:
-                    child_item_name = operation.get("item_name", item_name)
-                    child_tier = operation.get("tier", tier)
-                    child_quantity = operation.get("quantity", 0)
-                    child_recipe = operation.get("recipe", "Unknown Recipe")
-                    child_time = operation.get("time_remaining", "Unknown")
-                    child_crafter = operation.get("crafter", "Unknown")
-                    child_refinery = operation.get("refinery", "Unknown Refinery")
+        def check_item(item_id):
+            # Get the item's values to create identifier
+            values = self.tree.item(item_id, "values")
+            if values and len(values) >= 3:
+                # Create identifier from item, tier, recipe
+                item_identifier = f"{values[0]}|{values[1]}|{values[3]}"
 
-                    # FIXED: Building display - just show the refinery name, no crafter info
-                    child_building_display = child_refinery
+                # If this item is expanded, save its identifier
+                if self.tree.item(item_id, "open"):
+                    expanded_items.add(item_identifier)
 
-                    child_values = [
-                        f"  └─ {child_item_name}",  # Indented item name
-                        str(child_tier),
-                        str(child_quantity),
-                        child_recipe,
-                        child_time,
-                        child_crafter,  # Crafter in separate column
-                        child_building_display,  # Building without crafter info
-                    ]
+                # Check children recursively
+                for child_id in self.tree.get_children(item_id):
+                    check_item(child_id)
 
-                    # Determine child tag based on individual operation time
-                    child_tag = ""
-                    if child_time == "READY":
-                        child_tag = "ready"
-                    elif child_time not in ["Empty", "Unknown", "Error", "N/A"]:
-                        child_tag = "crafting"
-                    else:
-                        child_tag = "empty"
+        # Check all top-level items
+        for item_id in self.tree.get_children():
+            check_item(item_id)
 
-                    # Insert child with appropriate styling
-                    self.tree.insert(item_id, "end", text="", values=child_values, tags=("child", child_tag))
-            else:
-                # Single operation - create non-expandable row
-                item_id = self.tree.insert("", "end", text="", values=values, tags=(tag,), open=False)
+        return expanded_items
+
+    def _render_child_row(self, parent_id, child_data, level, parent_row_id=None, expanded_items=None, is_first_load=False):
+        """
+        Renders a child row, potentially with its own children for second-level expansion.
+
+        Args:
+            parent_id: The parent tree item ID
+            child_data: The child data dictionary
+            level: Expansion level (1 for first level, 2 for second level)
+            parent_row_id: The identifier of the parent row for expansion tracking
+            expanded_items: Set of previously expanded item identifiers
+            is_first_load: Whether this is the first time loading data
+        """
+        if expanded_items is None:
+            expanded_items = set()
+
+        # Extract child data
+        item_name = child_data.get("item", child_data.get("item_name", "Unknown Item"))
+        tier = child_data.get("tier", 0)
+        quantity = child_data.get("quantity", 0)
+        recipe = child_data.get("recipe", "Unknown Recipe")
+        time_remaining = child_data.get("time_remaining", "Unknown")
+        crafter = child_data.get("crafter", "Unknown")
+        building = child_data.get("building", child_data.get("refinery", "Unknown"))
+        is_expandable = child_data.get("is_expandable", False)
+        child_operations = child_data.get("operations", [])
+
+        # Create indentation based on level
+        indent = "  " + "  " * (level - 1) + "└─ "
+        indented_item_name = f"{indent}{item_name}"
+
+        # Create identifier for this child row for expansion tracking
+        child_row_id = f"{item_name}|{tier}|{recipe}|{crafter}"
+        if level > 1:
+            child_row_id += f"|{building}"
+
+        # Prepare child values
+        child_values = [indented_item_name, str(tier), str(quantity), recipe, time_remaining, crafter, building]
+
+        # Determine tag
+        child_tag = self._get_time_tag(time_remaining)
+
+        # Insert the child row
+        if is_expandable and child_operations:
+            # This child has its own children (second level expansion)
+            child_id = self.tree.insert(parent_id, "end", values=child_values, tags=("child", child_tag))
+
+            # Determine if this child should be expanded
+            should_expand_child = False
+            if is_first_load and self.auto_expand_on_first_load:
+                # Auto-expand on first load
+                should_expand_child = True
+            elif not is_first_load and child_row_id in expanded_items:
+                # Previously expanded
+                should_expand_child = True
+
+            # Add grandchildren (second level)
+            for grandchild_data in child_operations:
+                self._render_child_row(child_id, grandchild_data, level + 1, child_row_id, expanded_items, is_first_load)
+
+            # Apply expansion state for this child
+            if should_expand_child:
+                self.tree.item(child_id, open=True)
+        else:
+            # Leaf node - no further expansion
+            self.tree.insert(parent_id, "end", values=child_values, tags=("child", child_tag))
+
+    def _get_time_tag(self, time_remaining):
+        """Determines the appropriate tag for color coding based on time remaining."""
+        if time_remaining == "READY":
+            return "ready"
+        elif time_remaining not in ["Empty", "Unknown", "Error", "N/A"]:
+            return "crafting"
+        else:
+            return "empty"

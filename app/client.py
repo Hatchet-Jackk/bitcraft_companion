@@ -432,38 +432,9 @@ class BitCraft:
             else:
                 logging.warning("No WebSocket connection to close")
 
-    def _listen_for_subscription_updates(self, callback):
-        """A dedicated loop for listening to subscription messages."""
-        logging.info("Subscription listener thread started.")
-        try:
-            while not self._stop_subscription.is_set():
-                if not self.ws_connection:
-                    logging.warning("Subscription listener: WebSocket connection is closed.")
-                    break
-                try:
-                    # Use a timeout to allow the loop to check the stop event
-                    msg = self.ws_connection.recv(timeout=1.0)
-                    data = json.loads(msg)
-                    # This is a simplified parser. You'll need to adapt it to your actual message format.
-                    if "SubscriptionUpdate" in data:
-                        callback(data)  # Pass the raw update to the callback
-                except TimeoutError:
-                    continue  # No message received, loop again
-                except json.JSONDecodeError:
-                    logging.error(f"Failed to decode JSON from subscription message: {msg[:100]}...")
-                except Exception as e:
-                    # Handle connection drops or other errors
-                    logging.error(f"Error in subscription listener: {e}")
-                    break
-        finally:
-            logging.info("Subscription listener thread stopped.")
-
-    # In client.py
-
     def start_subscription_listener(self, queries: list[str], callback: callable):
         """
         Sends a subscription request and starts the background listener thread.
-        It no longer waits for an initial response itself.
         """
         with self.ws_lock:
             if not self.ws_connection:
@@ -476,16 +447,46 @@ class BitCraft:
 
             subscribe_message = {"Subscribe": {"request_id": 1, "query_strings": queries}}
 
-            # Send the request and immediately start the listener.
-            # The listener thread is now the ONLY one responsible for calling recv().
+            # Send the subscription request
             self.ws_connection.send(json.dumps(subscribe_message))
             logging.info(f"Sent subscription request for {len(queries)} queries.")
 
+            # Start the listener thread that will call the callback
             self.subscription_thread = threading.Thread(
                 target=self._listen_for_subscription_updates, args=(callback,), daemon=True
             )
             self.subscription_thread.start()
             logging.info("Subscription listener thread started.")
+
+    def _listen_for_subscription_updates(self, callback):
+        """A dedicated loop for listening to subscription messages."""
+        logging.info("Subscription listener thread started.")
+        try:
+            while not self._stop_subscription.is_set():
+                if not self.ws_connection:
+                    logging.warning("Subscription listener: WebSocket connection is closed.")
+                    break
+                try:
+                    # Use a timeout to allow the loop to check the stop event
+                    msg = self.ws_connection.recv(timeout=1.0)
+                    data = json.loads(msg)
+
+                    # Debug logging - you can remove this later
+                    logging.debug(f"Received WebSocket message type: {list(data.keys())}")
+
+                    # Call the DataService callback with the message
+                    callback(data)
+
+                except TimeoutError:
+                    continue  # No message received, loop again
+                except json.JSONDecodeError as e:
+                    logging.error(f"Failed to decode JSON from subscription message: {e}")
+                except Exception as e:
+                    # Handle connection drops or other errors
+                    logging.error(f"Error in subscription listener: {e}")
+                    break
+        finally:
+            logging.info("Subscription listener thread stopped.")
 
     def logout(self):
         try:

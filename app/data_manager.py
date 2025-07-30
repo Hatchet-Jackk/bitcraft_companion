@@ -1,3 +1,5 @@
+import ast
+import json
 import threading
 import queue
 import time
@@ -8,6 +10,8 @@ class DataService:
     """
     Manages the connection to the game client, handles data subscriptions,
     and passes data to the GUI via a thread-safe queue.
+
+    Simplified and focused on proper message parsing.
     """
 
     def __init__(self):
@@ -49,18 +53,23 @@ class DataService:
         self.service_thread.start()
 
     def stop(self):
-        """Signals the data fetching thread to stop."""
+        """Stop the data service and clean up resources."""
         logging.info("Stopping DataService...")
         self._stop_event.set()
+
+        # Stop the real-time timer
+        if self.passive_crafting_service:
+            self.passive_crafting_service.stop_real_time_timer()
+
         if self.client:
             self.client.close_websocket()
         if self.service_thread and self.service_thread.is_alive():
-            self.service_thread.join()  # Wait for the thread to finish
+            self.service_thread.join()
         logging.info("DataService stopped.")
 
     def _run(self, username, password, region, player_name):
-        """The main loop for the data service thread."""
-        logging.info("[DataService] Thread started.")
+        """Main loop for the data service thread."""
+        logging.info("[DataService] Thread started with enhanced message processing.")
 
         try:
             # 1. Authenticate
@@ -79,7 +88,7 @@ class DataService:
 
             self.data_queue.put({"type": "connection_status", "data": {"status": "connected"}})
 
-            # 3. Load all required reference data before initializing dependent classes
+            # 3. Load reference data
             logging.info("Loading reference data...")
             reference_tables = [
                 "resource_desc",
@@ -92,11 +101,11 @@ class DataService:
             ]
             reference_data = {table: self.client._load_reference_data(table) for table in reference_tables}
 
-            # 4. Instantiate classes with correct dependencies
+            # 4. Initialize services
             self.player = self.PlayerClass(username=player_name)
             self.claim = self.ClaimClass(client=self.client, reference_data=reference_data)
 
-            # 5. Fetch the Player's User ID
+            # 5. Get user and claim IDs
             user_id = self.client.fetch_user_id_by_username(player_name)
             if not user_id:
                 logging.error(f"[DataService] Could not retrieve user ID for {player_name}.")
@@ -104,110 +113,318 @@ class DataService:
                 return
             self.player.user_id = user_id
 
-            # 6. Use the user_id to get the Claim ID
             claim_id = self.claim.fetch_and_set_claim_id_by_user(user_id)
             if claim_id:
-                # Fetch initial claim info
                 claim_info = self.fetch_claim_info(claim_id)
                 self.data_queue.put({"type": "claim_info_update", "data": claim_info})
-                logging.info(f"Initial claim info sent to UI: {claim_info}")
 
-            # 7. Initialize Services
+            # 6. Initialize services
             self.inventory_service = self.InventoryServiceClass(bitcraft_client=self.client, claim_instance=self.claim)
             self.passive_crafting_service = self.PassiveCraftingServiceClass(
                 bitcraft_client=self.client, claim_instance=self.claim, reference_data=reference_data
             )
 
-            # 8. PERFORM INITIAL DATA FETCHES BEFORE SUBSCRIBING
-            # Initialize inventory data
+            # 7. Initial data loads
             self.inventory_service.initialize_full_inventory()
             initial_inventory = self.claim.get_inventory()
             self.data_queue.put({"type": "inventory_update", "data": initial_inventory})
-            logging.info("Initial inventory data has been sent to the UI.")
 
-            # Initialize crafting data
-            initial_crafting_data = self.passive_crafting_service.get_all_crafting_data()
-            self.data_queue.put({"type": "crafting_update", "data": initial_crafting_data})
-            logging.info("Initial crafting data has been sent to the UI.")
+            initial_crafting_data = self.passive_crafting_service.get_all_crafting_data_enhanced()
+            self.data_queue.put(
+                {
+                    "type": "crafting_update",
+                    "data": initial_crafting_data,
+                    "changes": {"initial_load": True},
+                    "timestamp": time.time(),
+                }
+            )
 
-            # 9. BUILD AND START SUBSCRIPTIONS FOR LIVE UPDATES
+            # Start real-time timer
+            self.passive_crafting_service.start_real_time_timer(self._handle_timer_update)
+
+            # 8. Set up subscriptions
             buildings_query = f"SELECT * FROM building_state WHERE claim_entity_id = '{claim_id}';"
             building_results = self.client.query(buildings_query)
             building_ids = [b["entity_id"] for b in building_results if "entity_id" in b] if building_results else []
 
             if building_ids:
-                # Get subscription queries for both services
                 inventory_queries = self.inventory_service.get_subscription_queries(building_ids)
                 passive_crafting_queries = self.passive_crafting_service.get_subscription_queries(building_ids)
-
-                # Combine all subscription queries
                 all_subscriptions = inventory_queries + passive_crafting_queries
 
-                # Add claim-level subscriptions
                 if claim_id:
-                    claim_subscription_queries = [
+                    claim_queries = [
                         f"SELECT * FROM claim_local_state WHERE entity_id = '{claim_id}';",
                         f"SELECT * FROM claim_state WHERE entity_id = '{claim_id}';",
                     ]
-                    all_subscriptions.extend(claim_subscription_queries)
+                    all_subscriptions.extend(claim_queries)
 
                 if all_subscriptions:
                     self.client.start_subscription_listener(all_subscriptions, self._handle_message)
                     logging.info(f"Started subscriptions for {len(all_subscriptions)} queries")
-            else:
-                logging.warning("No buildings found; skipping subscriptions.")
 
-            # Keep the thread alive to listen for subscription updates
+            # Keep thread alive
             while not self._stop_event.is_set():
                 time.sleep(1)
 
         except Exception as e:
-            logging.error(f"[DataService] An error occurred in the data thread: {e}", exc_info=True)
-            self.data_queue.put({"type": "error", "data": f"A connection error occurred: {e}"})
+            logging.error(f"[DataService] Error in data thread: {e}", exc_info=True)
+            self.data_queue.put({"type": "error", "data": f"Connection error: {e}"})
         finally:
+            if self.passive_crafting_service:
+                self.passive_crafting_service.stop_real_time_timer()
             if self.client:
                 self.client.close_websocket()
             logging.info("[DataService] Thread stopped and connection closed.")
 
-    def _handle_message(self, message):
-        """Enhanced callback to process inventory, crafting, and claim info messages."""
+    def _handle_timer_update(self, timer_data):
+        """Handle real-time timer updates from the crafting service"""
         try:
-            message_str = str(message)
+            self.data_queue.put(timer_data)
+            logging.debug("Real-time timer update sent to UI")
+        except Exception as e:
+            logging.error(f"Error handling timer update: {e}")
 
-            # Handle claim info updates
-            if "claim_local_state" in message_str or "claim_state" in message_str:
-                if self.claim and self.claim.claim_id:
-                    updated_claim_info = self.fetch_claim_info(self.claim.claim_id)
-                    self.data_queue.put({"type": "claim_info_update", "data": updated_claim_info})
-                    logging.debug("Claim info updated via subscription")
-
-            # Handle inventory updates
-            if "inventory_state" in message_str or "building_state" in message_str:
-                logging.debug("Processing inventory update from subscription...")
-                self.inventory_service.initialize_full_inventory()
-                fresh_inventory = self.claim.get_inventory()
-                self.data_queue.put({"type": "inventory_update", "data": fresh_inventory})
-
-            # Handle passive crafting updates
-            if "passive_craft_state" in message_str:
-                logging.debug("Processing crafting update from subscription...")
-                if self.passive_crafting_service.parse_crafting_update(message):
-                    fresh_crafting_data = self.passive_crafting_service.get_current_crafting_data_for_gui()
-                    self.data_queue.put({"type": "crafting_update", "data": fresh_crafting_data})
+    def _handle_message(self, message):
+        """
+        Main message handler - routes all SpacetimeDB message types.
+        """
+        try:
+            if "TransactionUpdate" in message:
+                self._process_transaction_update(message["TransactionUpdate"])
+            elif "SubscriptionUpdate" in message:
+                self._process_subscription_update(message["SubscriptionUpdate"])
+            elif "InitialSubscription" in message:
+                self._process_initial_subscription(message["InitialSubscription"])
+            else:
+                logging.debug(f"Unknown message type: {list(message.keys())}")
 
         except Exception as e:
-            logging.error(f"Error handling WebSocket message: {e}")
+            logging.error(f"Error in message handler: {e}")
+
+    def _process_transaction_update(self, transaction_data):
+        """
+        Process TransactionUpdate messages - LIVE real-time updates.
+        """
+        try:
+            status = transaction_data.get("status", {})
+            reducer_call = transaction_data.get("reducer_call", {})
+
+            # Check if transaction was successful
+            if "Committed" not in status:
+                return
+
+            reducer_name = reducer_call.get("reducer_name", "unknown")
+            timestamp_micros = transaction_data.get("timestamp", {}).get("__timestamp_micros_since_unix_epoch__", 0)
+            timestamp_seconds = timestamp_micros / 1_000_000 if timestamp_micros else 0
+
+            logging.info(f"LIVE TRANSACTION: {reducer_name}")
+
+            # Process table updates
+            tables = status.get("Committed", {}).get("tables", [])
+            for table_update in tables:
+                table_name = table_update.get("table_name", "")
+
+                if table_name == "passive_craft_state":
+                    self._handle_crafting_transaction(table_update, reducer_name, timestamp_seconds)
+                elif table_name == "inventory_state":
+                    self._handle_inventory_transaction(table_update, reducer_name, timestamp_seconds)
+                elif table_name in ["claim_local_state", "claim_state"]:
+                    self._handle_claim_transaction(table_update, reducer_name, timestamp_seconds)
+
+        except Exception as e:
+            logging.error(f"Error processing transaction update: {e}")
+
+    def _process_subscription_update(self, subscription_data):
+        """
+        Process SubscriptionUpdate messages - batch updates.
+        """
+        try:
+            database_update = subscription_data.get("database_update", {})
+            tables = database_update.get("tables", [])
+
+            logging.info(f"Processing SubscriptionUpdate with {len(tables)} table updates")
+
+            needs_inventory_update = False
+            needs_crafting_update = False
+            needs_claim_update = False
+
+            for table_update in tables:
+                table_name = table_update.get("table_name", "")
+
+                if table_name == "inventory_state":
+                    needs_inventory_update = True
+                elif table_name == "passive_craft_state":
+                    needs_crafting_update = True
+                elif table_name in ["claim_local_state", "claim_state"]:
+                    needs_claim_update = True
+
+            # Send consolidated updates
+            if needs_inventory_update:
+                self._refresh_inventory()
+            if needs_crafting_update:
+                self._refresh_crafting()
+            if needs_claim_update:
+                self._refresh_claim_info()
+
+        except Exception as e:
+            logging.error(f"Error processing subscription update: {e}")
+
+    def _process_initial_subscription(self, initial_data):
+        """Process InitialSubscription data."""
+        logging.info("Received InitialSubscription - current game state snapshot")
+
+    def _handle_crafting_transaction(self, table_update, reducer_name, timestamp):
+        """
+        Handle passive_craft_state transactions with proper parsing.
+        """
+        try:
+            updates = table_update.get("updates", [])
+
+            for update in updates:
+                deletes = update.get("deletes", [])
+                inserts = update.get("inserts", [])
+
+                # Process deletions (usually collections)
+                for delete_str in deletes:
+                    crafting_data = self._parse_crafting_data(delete_str)
+                    if crafting_data:
+                        self._log_crafting_action("COLLECTED", crafting_data, reducer_name)
+
+                # Process insertions (new crafting operations)
+                for insert_str in inserts:
+                    crafting_data = self._parse_crafting_data(insert_str)
+                    if crafting_data:
+                        self._log_crafting_action("STARTED", crafting_data, reducer_name)
+
+                # Refresh crafting data if any changes
+                if deletes or inserts:
+                    self._refresh_crafting()
+
+        except Exception as e:
+            logging.error(f"Error handling crafting transaction: {e}")
+
+    def _parse_crafting_data(self, data_str):
+        """
+        Parse crafting data from the SpacetimeDB format.
+        Format: [entity_id, owner_id, recipe_id, building_id, [timestamp], [status], [slot]]
+        """
+        try:
+            data = ast.literal_eval(data_str)
+            if not isinstance(data, list) or len(data) < 7:
+                return None
+
+            return {
+                "entity_id": data[0],
+                "owner_entity_id": data[1],
+                "recipe_id": data[2],
+                "building_entity_id": data[3],
+                "timestamp_micros": data[4][0] if data[4] and len(data[4]) > 0 else None,
+                "status": data[5] if len(data[5]) > 0 else [0, {}],
+                "slot": data[6],
+            }
+        except Exception as e:
+            logging.debug(f"Error parsing crafting data: {e}")
+            return None
+
+    def _log_crafting_action(self, action, crafting_data, reducer_name):
+        """Log crafting actions with meaningful information."""
+        try:
+            recipe_id = crafting_data["recipe_id"]
+            building_id = crafting_data["building_entity_id"]
+            status = crafting_data["status"]
+
+            # Get recipe name if available
+            recipe_name = f"Recipe {recipe_id}"
+            if self.passive_crafting_service and hasattr(self.passive_crafting_service, "crafting_recipes"):
+                recipe_info = self.passive_crafting_service.crafting_recipes.get(recipe_id, {})
+                recipe_name = recipe_info.get("name", recipe_name)
+                recipe_name = recipe_name.replace("{0}", "").strip()
+
+            # Get building name if available
+            building_name = f"Building {building_id}"
+            if self.claim and self.claim.buildings:
+                for category, buildings in self.claim.buildings.items():
+                    for building in buildings:
+                        if building.get("entity_id") == building_id:
+                            building_name = building.get("nickname") or building.get("name", building_name)
+                            break
+
+            status_code = status[0] if status and len(status) > 0 else 0
+            status_text = "READY" if status_code == 2 else "IN_PROGRESS" if status_code == 1 else "UNKNOWN"
+
+            logging.debug(f"{action}: {recipe_name} in {building_name} (Status: {status_text}) - {reducer_name}")
+
+        except Exception as e:
+            logging.debug(f"Error logging crafting action: {e}")
+
+    def _handle_inventory_transaction(self, table_update, reducer_name, timestamp):
+        """Handle inventory_state transactions."""
+        try:
+            updates = table_update.get("updates", [])
+            for update in updates:
+                inserts = update.get("inserts", [])
+                deletes = update.get("deletes", [])
+
+                if inserts or deletes:
+                    logging.debug(f"INVENTORY UPDATE: {len(inserts)} inserts, {len(deletes)} deletes - {reducer_name}")
+                    self._refresh_inventory()
+
+        except Exception as e:
+            logging.error(f"Error handling inventory transaction: {e}")
+
+    def _handle_claim_transaction(self, table_update, reducer_name, timestamp):
+        """Handle claim state transactions."""
+        try:
+            updates = table_update.get("updates", [])
+            for update in updates:
+                inserts = update.get("inserts", [])
+                if inserts:
+                    logging.debug(f"CLAIM UPDATE - {reducer_name}")
+                    self._refresh_claim_info()
+
+        except Exception as e:
+            logging.error(f"Error handling claim transaction: {e}")
+
+    def _refresh_inventory(self):
+        """Refresh and send inventory data to UI."""
+        try:
+            if self.inventory_service:
+                self.inventory_service.initialize_full_inventory()
+                fresh_inventory = self.claim.get_inventory()
+                self.data_queue.put(
+                    {"type": "inventory_update", "data": fresh_inventory, "source": "live_update", "timestamp": time.time()}
+                )
+                logging.info(f"Sent inventory update: {len(fresh_inventory)} item types")
+        except Exception as e:
+            logging.error(f"Error refreshing inventory: {e}")
+
+    def _refresh_crafting(self):
+        """Refresh and send crafting data to UI."""
+        try:
+            if self.passive_crafting_service:
+                fresh_crafting_data = self.passive_crafting_service.get_all_crafting_data_enhanced()
+                self.data_queue.put(
+                    {"type": "crafting_update", "data": fresh_crafting_data, "source": "live_update", "timestamp": time.time()}
+                )
+                logging.info(f"Sent crafting update: {len(fresh_crafting_data)} operations")
+        except Exception as e:
+            logging.error(f"Error refreshing crafting: {e}")
+
+    def _refresh_claim_info(self):
+        """Refresh and send claim info to UI."""
+        try:
+            if self.claim and self.claim.claim_id:
+                fresh_claim_info = self.fetch_claim_info(self.claim.claim_id)
+                self.data_queue.put(
+                    {"type": "claim_info_update", "data": fresh_claim_info, "source": "live_update", "timestamp": time.time()}
+                )
+                logging.info("Sent claim info update")
+        except Exception as e:
+            logging.error(f"Error refreshing claim info: {e}")
 
     def fetch_claim_info(self, claim_id):
-        """
-        Fetches comprehensive claim information including name, treasury, supplies, etc.
-
-        Args:
-            claim_id (str): The claim entity ID
-
-        Returns:
-            dict: Claim information ready for the UI
-        """
+        """Fetch comprehensive claim information."""
         try:
             claim_info = {
                 "name": "Unknown Claim",
@@ -216,7 +433,7 @@ class DataService:
                 "supplies_per_hour": 0,
             }
 
-            # Fetch claim local state (treasury, supplies, etc.)
+            # Fetch claim local state
             local_state_query = f"SELECT * FROM claim_local_state WHERE entity_id = '{claim_id}';"
             local_results = self.client.query(local_state_query)
 
@@ -224,22 +441,16 @@ class DataService:
                 local_data = local_results[0]
                 claim_info["treasury"] = local_data.get("treasury", 0)
                 claim_info["supplies"] = local_data.get("supplies", 0)
-
-                # Extract building maintenance rate for supplies calculation
                 building_maintenance = local_data.get("building_maintenance", 0.0)
-                # Convert per-second rate to per-hour (approximate)
                 claim_info["supplies_per_hour"] = building_maintenance * 3600 if building_maintenance > 0 else 0
 
-                logging.debug(f"Claim local state: Treasury={claim_info['treasury']}, Supplies={claim_info['supplies']}")
-
-            # Fetch claim state (name, owner, etc.)
+            # Fetch claim state
             claim_state_query = f"SELECT * FROM claim_state WHERE entity_id = '{claim_id}';"
             state_results = self.client.query(claim_state_query)
 
             if state_results and len(state_results) > 0:
                 state_data = state_results[0]
                 claim_info["name"] = state_data.get("name", "Unknown Claim")
-                logging.debug(f"Claim name: {claim_info['name']}")
 
             return claim_info
 
