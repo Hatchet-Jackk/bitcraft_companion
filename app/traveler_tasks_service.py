@@ -1,6 +1,5 @@
 import logging
-from typing import List, Dict, Any
-import json
+from typing import List, Dict
 
 from client import BitCraft
 from player import Player
@@ -45,7 +44,7 @@ class TravelerTasksService:
     def get_all_tasks_data_grouped(self) -> List[Dict]:
         """
         Fetches all traveler tasks for the current player and groups them by traveler.
-        Returns data formatted for GUI display with expandable traveler groups.
+        UPDATED: Now includes detailed required items for better UI processing.
         """
         if not self.player.user_id:
             logging.error("Cannot fetch tasks without player user_id")
@@ -109,17 +108,19 @@ class TravelerTasksService:
                 task_info = task_descriptions.get(task_id, {})
                 task_description = task_info.get("description", f"Task {task_id}")
 
-                # Process required items
+                # Process required items - both formats for compatibility
                 required_items_str = self._format_required_items(task_info.get("required_items", []))
+                required_items_detailed = self._format_required_items_detailed(task_info.get("required_items", []))
 
-                # Create task entry
+                # Create task entry with enhanced required items data
                 task_entry = {
                     "entity_id": entity_id,
                     "traveler_id": traveler_id,
                     "traveler_name": traveler_name,
                     "task_id": task_id,
                     "task_description": task_description,
-                    "required_items": required_items_str,
+                    "required_items": required_items_str,  # String format for backward compatibility
+                    "required_items_detailed": required_items_detailed,  # NEW: Detailed format for UI
                     "completed": completed,
                     "completion_status": "✅" if completed else "❌",
                 }
@@ -175,6 +176,8 @@ class TravelerTasksService:
     def _format_required_items(self, required_items: List) -> str:
         """
         Formats the required items list into a readable string.
+        This method is now used for backward compatibility, but the main processing
+        happens in the UI to split items into separate columns.
 
         Args:
             required_items: List of [item_id, quantity] pairs
@@ -206,6 +209,43 @@ class TravelerTasksService:
         except Exception as e:
             logging.error(f"Error formatting required items: {e}")
             return "Error formatting items"
+
+    def _format_required_items_detailed(self, required_items: List) -> List[Dict]:
+        """
+        NEW: Formats required items as a list of dictionaries for better UI processing.
+        UPDATED: Now includes item tags for filtering.
+
+        Args:
+            required_items: List of [item_id, quantity] pairs
+
+        Returns:
+            List of dictionaries with 'item_name', 'quantity', and 'tag' keys
+        """
+        if not required_items:
+            return [{"item_name": "No items required", "quantity": 0, "tag": ""}]
+
+        try:
+            detailed_items = []
+
+            for item_data in required_items:
+                if not isinstance(item_data, (list, tuple)) or len(item_data) < 2:
+                    continue
+
+                item_id = item_data[0]
+                quantity = item_data[1]
+
+                # Get item name and tag
+                item_info = self.item_descriptions.get(item_id, {})
+                item_name = item_info.get("name", f"Item {item_id}")
+                item_tag = item_info.get("tag", "")  # NEW: Get item tag
+
+                detailed_items.append({"item_name": item_name, "quantity": quantity, "tag": item_tag})  # NEW: Include tag
+
+            return detailed_items if detailed_items else [{"item_name": "Unknown items", "quantity": 0, "tag": ""}]
+
+        except Exception as e:
+            logging.error(f"Error formatting detailed required items: {e}")
+            return [{"item_name": "Error formatting items", "quantity": 0, "tag": ""}]
 
     def parse_task_update(self, db_update: dict) -> bool:
         """

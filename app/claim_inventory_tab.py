@@ -1,5 +1,4 @@
 import customtkinter as ctk
-import logging
 from tkinter import Menu, ttk
 from typing import List, Dict
 from filter_popup import FilterPopup

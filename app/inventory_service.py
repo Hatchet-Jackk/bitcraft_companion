@@ -1,7 +1,6 @@
 import logging
 from typing import List
 
-# Type hints for clarity
 from client import BitCraft
 from claim import Claim
 

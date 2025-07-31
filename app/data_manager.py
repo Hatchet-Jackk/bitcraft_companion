@@ -1,9 +1,9 @@
 import ast
-import json
 import threading
 import queue
 import time
 import logging
+from claim_manager import ClaimManager
 
 
 class DataService:
@@ -40,6 +40,8 @@ class DataService:
         self.inventory_service = None
         self.passive_crafting_service = None
         self.traveler_tasks_service = None
+        self.claim_manager = None
+        self.current_subscriptions = []
 
         self.data_queue = queue.Queue()
         self._stop_event = threading.Event()
@@ -67,6 +69,11 @@ class DataService:
             if self.passive_crafting_service:
                 logging.info("Stopping real-time timer...")
                 self.passive_crafting_service.stop_real_time_timer()
+
+            # Save final claim state to cache
+            if self.claim_manager:
+                logging.info("Saving claims cache...")
+                self.claim_manager._save_claims_cache()
 
             # Close WebSocket connection with timeout
             if self.client:
@@ -130,7 +137,7 @@ class DataService:
             self.player = self.PlayerClass(username=player_name)
             self.claim = self.ClaimClass(client=self.client, reference_data=reference_data)
 
-            # 5. Get user and claim IDs
+            # 5. Get user ID
             user_id = self.client.fetch_user_id_by_username(player_name)
             if not user_id:
                 logging.error(f"[DataService] Could not retrieve user ID for {player_name}.")
@@ -138,12 +145,39 @@ class DataService:
                 return
             self.player.user_id = user_id
 
-            claim_id = self.claim.fetch_and_set_claim_id_by_user(user_id)
-            if claim_id:
-                claim_info = self.fetch_claim_info(claim_id)
-                self.data_queue.put({"type": "claim_info_update", "data": claim_info})
+            # 6. UPDATED: Initialize claim manager and get all claims
+            self.claim_manager = ClaimManager(self.client)
 
-            # 6. Initialize services
+            # Fetch all claims for the user
+            all_claims = self.claim.fetch_all_claim_ids_by_user(user_id)
+            if not all_claims:
+                logging.error(f"[DataService] No claims found for user {player_name}.")
+                self.data_queue.put({"type": "error", "data": f"No claims found for player: {player_name}"})
+                return
+
+            # Set up claim manager with all claims
+            self.claim_manager.set_available_claims(all_claims)
+
+            # Send claims list to UI
+            self.data_queue.put(
+                {
+                    "type": "claims_list_update",
+                    "data": {"claims": all_claims, "current_claim_id": self.claim_manager.get_current_claim_id()},
+                }
+            )
+
+            # Switch to the default/last selected claim
+            default_claim_id = self.claim_manager.get_current_claim_id()
+            if not self.claim.switch_to_claim(default_claim_id):
+                logging.error(f"[DataService] Could not switch to default claim {default_claim_id}.")
+                self.data_queue.put({"type": "error", "data": f"Could not access default claim"})
+                return
+
+            # Get initial claim info
+            claim_info = self.claim.refresh_claim_info()
+            self.data_queue.put({"type": "claim_info_update", "data": claim_info})
+
+            # 7. Initialize other services AFTER claim is set
             self.inventory_service = self.InventoryServiceClass(bitcraft_client=self.client, claim_instance=self.claim)
             self.passive_crafting_service = self.PassiveCraftingServiceClass(
                 bitcraft_client=self.client, claim_instance=self.claim, reference_data=reference_data
@@ -152,7 +186,7 @@ class DataService:
                 bitcraft_client=self.client, player_instance=self.player, reference_data=reference_data
             )
 
-            # 7. Initial data loads
+            # 8. Initial data loads
             self.inventory_service.initialize_full_inventory()
             initial_inventory = self.claim.get_inventory()
             self.data_queue.put({"type": "inventory_update", "data": initial_inventory})
@@ -180,33 +214,8 @@ class DataService:
             # Start real-time timer
             self.passive_crafting_service.start_real_time_timer(self._handle_timer_update)
 
-            # 8. Set up subscriptions
-            buildings_query = f"SELECT * FROM building_state WHERE claim_entity_id = '{claim_id}';"
-            building_results = self.client.query(buildings_query)
-            building_ids = [b["entity_id"] for b in building_results if "entity_id" in b] if building_results else []
-
-            all_subscriptions = []
-
-            if building_ids:
-                inventory_queries = self.inventory_service.get_subscription_queries(building_ids)
-                passive_crafting_queries = self.passive_crafting_service.get_subscription_queries(building_ids)
-                all_subscriptions.extend(inventory_queries)
-                all_subscriptions.extend(passive_crafting_queries)
-
-            # Add task subscriptions
-            task_queries = self.traveler_tasks_service.get_subscription_queries()
-            all_subscriptions.extend(task_queries)
-
-            if claim_id:
-                claim_queries = [
-                    f"SELECT * FROM claim_local_state WHERE entity_id = '{claim_id}';",
-                    f"SELECT * FROM claim_state WHERE entity_id = '{claim_id}';",
-                ]
-                all_subscriptions.extend(claim_queries)
-
-            if all_subscriptions:
-                self.client.start_subscription_listener(all_subscriptions, self._handle_message)
-                logging.info(f"Started subscriptions for {len(all_subscriptions)} queries")
+            # 9. Set up subscriptions for the current claim
+            self._setup_subscriptions_for_current_claim()
 
             # Keep thread alive
             while not self._stop_event.is_set():
@@ -589,3 +598,263 @@ class DataService:
         except Exception as e:
             logging.error(f"Error fetching claim info: {e}")
             return {"name": "Error Loading", "treasury": 0, "supplies": 0, "tile_count": 0, "supplies_per_hour": 0}
+
+    def switch_claim(self, new_claim_id: str):
+        """
+        Switches to a different claim. This method is called from the UI.
+
+        Args:
+            new_claim_id: The claim ID to switch to
+        """
+        if not self.claim_manager or not self.client:
+            logging.error("Cannot switch claims - claim manager or client not initialized")
+            return
+
+        # Find the claim details
+        target_claim = self.claim_manager.get_claim_by_id(new_claim_id)
+        if not target_claim:
+            logging.error(f"Cannot find claim {new_claim_id} in available claims")
+            self.data_queue.put({"type": "error", "data": f"Claim not found: {new_claim_id}"})
+            return
+
+        # Start the switch process in a background thread
+        import threading
+
+        switch_thread = threading.Thread(
+            target=self._perform_claim_switch, args=(new_claim_id, target_claim["claim_name"]), daemon=True
+        )
+        switch_thread.start()
+
+    def _perform_claim_switch(self, new_claim_id: str, claim_name: str):
+        """
+        Performs the actual claim switching process in a background thread.
+
+        Args:
+            new_claim_id: The claim ID to switch to
+            claim_name: The claim name for UI feedback
+        """
+        try:
+            logging.info(f"Starting claim switch to: {claim_name} ({new_claim_id})")
+
+            # Notify UI that switching has started
+            self.data_queue.put(
+                {
+                    "type": "claim_switching",
+                    "data": {"status": "loading", "claim_name": claim_name, "message": f"Switching to {claim_name}..."},
+                }
+            )
+
+            # Clear any pending messages to prevent confusion
+            self._handle_message_queue_during_switch()
+
+            # Step 1: Stop current subscriptions
+            logging.info("Stopping current subscriptions...")
+            self._stop_current_subscriptions()
+
+            # Step 2: Stop real-time timer
+            if self.passive_crafting_service:
+                logging.info("Stopping real-time timer for claim switch")
+                self.passive_crafting_service.stop_real_time_timer()
+
+            # Step 3: Switch claim in claim manager
+            logging.info("Updating claim manager...")
+            if not self.claim_manager.switch_to_claim(new_claim_id):
+                raise Exception(f"Failed to switch to claim {new_claim_id} in claim manager")
+
+            # Step 4: Switch claim in claim instance
+            logging.info("Switching claim instance...")
+            if not self.claim.switch_to_claim(new_claim_id):
+                raise Exception(f"Failed to switch claim instance to {new_claim_id}")
+
+            # Step 5: Re-initialize services with new claim data
+            logging.info("Re-initializing services for new claim...")
+
+            # Update UI with progress
+            self.data_queue.put(
+                {
+                    "type": "claim_switching",
+                    "data": {"status": "loading", "claim_name": claim_name, "message": f"Loading {claim_name} data..."},
+                }
+            )
+
+            # Refresh claim info first
+            claim_info = self.claim.refresh_claim_info()
+            self.data_queue.put({"type": "claim_info_update", "data": claim_info})
+
+            # Re-initialize inventory
+            self.inventory_service.initialize_full_inventory()
+            fresh_inventory = self.claim.get_inventory()
+            self.data_queue.put({"type": "inventory_update", "data": fresh_inventory, "source": "claim_switch"})
+
+            # Re-initialize crafting data
+            fresh_crafting_data = self.passive_crafting_service.get_all_crafting_data_enhanced()
+            self.data_queue.put({"type": "crafting_update", "data": fresh_crafting_data, "source": "claim_switch"})
+
+            # Re-initialize tasks data
+            fresh_tasks_data = self.traveler_tasks_service.get_all_tasks_data_grouped()
+            self.data_queue.put({"type": "tasks_update", "data": fresh_tasks_data, "source": "claim_switch"})
+
+            # Step 6: Set up new subscriptions
+            logging.info("Setting up new subscriptions...")
+            self._setup_subscriptions_for_current_claim()
+
+            # Step 7: Restart real-time timer
+            if self.passive_crafting_service:
+                logging.info("Restarting real-time timer...")
+                self.passive_crafting_service.start_real_time_timer(self._handle_timer_update)
+
+            # Step 8: Update claim manager cache
+            self.claim_manager.update_claim_cache(new_claim_id, claim_info)
+
+            # Step 9: Notify UI that switch is complete
+            self.data_queue.put(
+                {
+                    "type": "claim_switched",
+                    "data": {"status": "success", "claim_id": new_claim_id, "claim_name": claim_name, "claim_info": claim_info},
+                }
+            )
+
+            logging.info(f"Successfully switched to claim: {claim_name}")
+
+        except Exception as e:
+            logging.error(f"Error during claim switch: {e}")
+            self.data_queue.put({"type": "error", "data": f"Failed to switch to {claim_name}: {str(e)}"})
+
+            # Try to recover by restarting services for current claim
+            try:
+                logging.info("Attempting to recover from claim switch error...")
+                self._setup_subscriptions_for_current_claim()
+                if self.passive_crafting_service:
+                    self.passive_crafting_service.start_real_time_timer(self._handle_timer_update)
+                logging.info("Recovery successful")
+            except Exception as recovery_error:
+                logging.error(f"Failed to recover after claim switch error: {recovery_error}")
+
+    def _stop_current_subscriptions(self):
+        """Stops all current WebSocket subscriptions."""
+        try:
+            if self.client and self.client.ws_connection:
+                logging.info("Stopping current subscriptions for claim switch")
+                # Close current connection to stop all subscriptions
+                self.client.close_websocket()
+
+                # Re-establish connection
+                self.client.connect_websocket()
+
+            self.current_subscriptions = []
+
+        except Exception as e:
+            logging.error(f"Error stopping subscriptions: {e}")
+
+    def _setup_subscriptions_for_current_claim(self):
+        """Sets up subscriptions for the currently active claim."""
+        try:
+            if not self.claim.claim_id:
+                logging.warning("No claim ID available for subscriptions")
+                return
+
+            # Get buildings for the current claim
+            buildings_query = f"SELECT * FROM building_state WHERE claim_entity_id = '{self.claim.claim_id}';"
+            building_results = self.client.query(buildings_query)
+            building_ids = [b["entity_id"] for b in building_results if "entity_id" in b] if building_results else []
+
+            all_subscriptions = []
+
+            # Add inventory and crafting subscriptions if we have buildings
+            if building_ids:
+                inventory_queries = self.inventory_service.get_subscription_queries(building_ids)
+                passive_crafting_queries = self.passive_crafting_service.get_subscription_queries(building_ids)
+                all_subscriptions.extend(inventory_queries)
+                all_subscriptions.extend(passive_crafting_queries)
+
+            # Add task subscriptions (player-specific, not claim-specific)
+            task_queries = self.traveler_tasks_service.get_subscription_queries()
+            all_subscriptions.extend(task_queries)
+
+            # Add claim-specific subscriptions
+            claim_queries = [
+                f"SELECT * FROM claim_local_state WHERE entity_id = '{self.claim.claim_id}';",
+                f"SELECT * FROM claim_state WHERE entity_id = '{self.claim.claim_id}';",
+            ]
+            all_subscriptions.extend(claim_queries)
+
+            # Start subscriptions
+            if all_subscriptions:
+                self.client.start_subscription_listener(all_subscriptions, self._handle_message)
+                self.current_subscriptions = all_subscriptions
+                logging.info(f"Started {len(all_subscriptions)} subscriptions for claim {self.claim.claim_id}")
+
+        except Exception as e:
+            logging.error(f"Error setting up subscriptions: {e}")
+
+    def get_current_claim_info(self) -> dict:
+        """Returns current claim information for UI updates."""
+        if self.claim_manager and self.claim:
+            current_claim = self.claim_manager.get_current_claim()
+            if current_claim:
+                return {
+                    "claim_id": current_claim["claim_id"],
+                    "claim_name": current_claim["claim_name"],
+                    "treasury": self.claim.treasury,
+                    "supplies": self.claim.supplies,
+                    "tile_count": self.claim.size,
+                    "available_claims": self.claim_manager.get_all_claims(),
+                }
+        return {}
+
+    def stop_updated(self):
+        """Updated stop method with claim manager cleanup."""
+        logging.info("Stopping DataService...")
+
+        try:
+            # Set stop event first
+            self._stop_event.set()
+
+            # Stop the real-time timer with timeout
+            if self.passive_crafting_service:
+                logging.info("Stopping real-time timer...")
+                self.passive_crafting_service.stop_real_time_timer()
+
+            # Save final claim state to cache
+            if self.claim_manager:
+                logging.info("Saving claims cache...")
+                self.claim_manager._save_claims_cache()
+
+            # Close WebSocket connection with timeout
+            if self.client:
+                logging.info("Closing WebSocket connection...")
+                try:
+                    self.client.close_websocket()
+                except Exception as e:
+                    logging.warning(f"Error closing WebSocket: {e}")
+
+            # Wait for service thread to finish with timeout
+            if self.service_thread and self.service_thread.is_alive():
+                logging.info("Waiting for service thread to finish...")
+                self.service_thread.join(timeout=2.0)
+
+                if self.service_thread.is_alive():
+                    logging.warning("Service thread did not finish within timeout")
+                else:
+                    logging.info("Service thread finished cleanly")
+
+        except Exception as e:
+            logging.error(f"Error during DataService shutdown: {e}")
+        finally:
+            logging.info("DataService stopped.")
+
+    def _handle_message_queue_during_switch(self):
+        """Process any pending messages during claim switch to prevent UI freezing."""
+        try:
+            # Process up to 10 pending messages to keep UI responsive
+            for _ in range(10):
+                if not self.data_queue.empty():
+                    # Don't actually process, just clear old messages
+                    try:
+                        self.data_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                else:
+                    break
+        except Exception as e:
+            logging.debug(f"Error clearing message queue: {e}")

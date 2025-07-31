@@ -1,12 +1,10 @@
 from typing import Dict, List, Any
-import json
 import logging
 from typing import List, Dict
 import re
 import time
 import ast
 import threading
-from datetime import datetime, timedelta
 
 from client import BitCraft
 from claim import Claim

@@ -1,8 +1,3 @@
-"""
-Main entry point for the Bitcraft Companion application.
-Handles the login process and launches the main application window.
-"""
-
 import sys
 import customtkinter as ctk
 import queue
@@ -12,7 +7,6 @@ from tkinter import messagebox
 from data_manager import DataService
 from main_window import MainWindow
 
-# --- Configuration ---
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
