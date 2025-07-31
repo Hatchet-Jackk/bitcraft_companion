@@ -12,8 +12,8 @@ class TravelerTasksTab(ctk.CTkFrame):
         super().__init__(master, fg_color="transparent")
         self.app = app
 
-        # Updated headers - split Required Items and add Tag column
-        self.headers = ["Traveler", "Task", "Required Item", "Quantity", "Tag", "Complete"]
+        # UPDATED headers - added Tier column between Required Item and Quantity
+        self.headers = ["Traveler", "Task", "Required Item", "Tier", "Quantity", "Tag", "Complete"]
         self.all_data: List[Dict] = []
         self.filtered_data: List[Dict] = []
 
@@ -102,13 +102,14 @@ class TravelerTasksTab(ctk.CTkFrame):
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        # Updated column widths - shrink Task, add Tag column
+        # UPDATED column widths - added Tier column with 50px width
         column_widths = {
-            "Traveler": 80,  # Fixed width just for the header text
-            "Task": 280,  # Reduced from 350 to make room
+            "Traveler": 80,
+            "Task": 260,
             "Required Item": 180,  # Same as before
+            "Tier": 50,
             "Quantity": 80,  # Same as before
-            "Tag": 100,  # New column for item tags
+            "Tag": 100,  # Same as before
             "Complete": 90,  # Same as before
         }
 
@@ -119,6 +120,9 @@ class TravelerTasksTab(ctk.CTkFrame):
             # Make Traveler column non-stretchable (fixed width)
             if header == "Traveler":
                 self.tree.column(header, width=width, minwidth=width, stretch=False, anchor="w")
+            elif header == "Tier":
+                # Make Tier column fixed width and center-aligned
+                self.tree.column(header, width=width, minwidth=width, stretch=False, anchor="center")
             else:
                 self.tree.column(header, width=width, minwidth=50, anchor="w")
 
@@ -177,6 +181,16 @@ class TravelerTasksTab(ctk.CTkFrame):
                     if required_item and required_item != "No items required":
                         unique_items.add(required_item)
             return sorted(list(unique_items))
+        elif header.lower() == "tier":
+            # Extract unique tier values from all tasks
+            unique_tiers = set()
+            for row in self.all_data:
+                operations = row.get("operations", [])
+                for operation in operations:
+                    tier = operation.get("tier", 0)
+                    if tier > 0:  # Only include non-zero tiers
+                        unique_tiers.add(str(tier))
+            return sorted(list(unique_tiers), key=lambda x: int(x) if x.isdigit() else 0)
         elif header.lower() == "quantity":
             # Extract unique quantities
             unique_quantities = set()
@@ -205,7 +219,8 @@ class TravelerTasksTab(ctk.CTkFrame):
         if not self.all_data:
             return
 
-        if header.lower() in ["traveler", "complete", "required item", "quantity", "tag"]:
+        # UPDATED: Added "tier" to the special handling list
+        if header.lower() in ["traveler", "complete", "required item", "tier", "quantity", "tag"]:
             unique_values = self._get_filter_data_for_column(header)
             filter_data = [{f"{header.lower().replace(' ', '_')}_display": val} for val in unique_values]
             current_selection = self.active_filters.get(header, set(unique_values))
@@ -234,7 +249,7 @@ class TravelerTasksTab(ctk.CTkFrame):
     def update_data(self, new_data):
         """Receives new tasks data and processes it for the new column structure."""
         if isinstance(new_data, list):
-            # Process the data to split required items into separate columns
+            # Process the data to split required items into separate columns including tier
             processed_data = self._process_tasks_for_split_columns(new_data)
             self.all_data = processed_data
         else:
@@ -245,9 +260,8 @@ class TravelerTasksTab(ctk.CTkFrame):
 
     def _process_tasks_for_split_columns(self, raw_data):
         """
-        Processes raw task data to split required items into separate item and quantity fields.
-        Creates multiple rows for tasks with multiple required items.
-        UPDATED: Uses detailed required items data when available.
+        Processes raw task data to split required items into separate item, tier, and quantity fields.
+        UPDATED: Now includes tier information in the processing.
         """
         processed_data = []
 
@@ -260,35 +274,37 @@ class TravelerTasksTab(ctk.CTkFrame):
             traveler_id = traveler_group.get("traveler_id", "")
             operations = traveler_group.get("operations", [])
 
-            # Process each task to handle multiple required items
+            # Process each task to handle multiple required items with tier support
             processed_operations = []
 
             for task in operations:
                 task_description = task.get("task_description", "Unknown Task")
                 completion_status_task = task.get("completion_status", "❌")
 
-                # NEW: Use detailed required items if available, fallback to string parsing
+                # Use detailed required items if available, fallback to string parsing
                 required_items_detailed = task.get("required_items_detailed", [])
 
                 if required_items_detailed:
-                    # Use the detailed format (preferred)
+                    # Use the detailed format (preferred) - now includes tier
                     for item_data in required_items_detailed:
                         item_name = item_data.get("item_name", "Unknown Item")
+                        item_tier = item_data.get("tier", 0)
                         quantity = item_data.get("quantity", 1)
-                        tag = item_data.get("tag", "")  # NEW: Get tag from detailed data
+                        tag = item_data.get("tag", "")
 
                         processed_operations.append(
                             {
                                 "task_description": task_description,
                                 "required_item": item_name,
+                                "tier": item_tier,
                                 "quantity": str(quantity) if quantity > 0 else "",
-                                "tag": tag,  # NEW: Include tag
+                                "tag": tag,
                                 "completion_status": completion_status_task,
                                 **task,  # Include all original task data
                             }
                         )
                 else:
-                    # Fallback to string parsing (backward compatibility)
+                    # Fallback to string parsing (backward compatibility) - tier will be 0
                     required_items_str = task.get("required_items", "")
 
                     if required_items_str and required_items_str != "No items required":
@@ -307,11 +323,12 @@ class TravelerTasksTab(ctk.CTkFrame):
                                 item_name = item_str
                                 quantity = 1
 
-                            # Create a row for each required item
+                            # Create a row for each required item (tier will be 0 for fallback)
                             processed_operations.append(
                                 {
                                     "task_description": task_description,
                                     "required_item": item_name.strip(),
+                                    "tier": 0,  # Fallback parsing doesn't have tier info
                                     "quantity": str(quantity),
                                     "tag": "",  # Fallback parsing doesn't have tag info
                                     "completion_status": completion_status_task,
@@ -324,6 +341,7 @@ class TravelerTasksTab(ctk.CTkFrame):
                             {
                                 "task_description": task_description,
                                 "required_item": "No items required",
+                                "tier": 0,  # No tier for empty requirements
                                 "quantity": "",
                                 "tag": "",
                                 "completion_status": completion_status_task,
@@ -336,6 +354,7 @@ class TravelerTasksTab(ctk.CTkFrame):
                 "traveler": traveler_name,
                 "task": task_summary,
                 "required_item": "",  # Empty for parent row
+                "tier": "",  # Empty for parent row
                 "quantity": "",  # Empty for parent row
                 "tag": "",  # Empty for parent row
                 "complete": completion_status,
@@ -352,31 +371,132 @@ class TravelerTasksTab(ctk.CTkFrame):
         return processed_data
 
     def apply_filter(self):
-        """Filters the master data list based on search and column filters."""
+        """
+        Filters the master data list based on search and column filters.
+        ENHANCED: Now properly filters individual tasks within traveler groups.
+        """
         search_term = self.app.search_var.get().lower()
-        temp_data = self.all_data[:]
+        temp_data = []
 
-        if self.active_filters:
-            for header, values in self.active_filters.items():
-                if header.lower() == "traveler":
-                    temp_data = [row for row in temp_data if self._traveler_matches_filter(row, values)]
-                elif header.lower() == "complete":
-                    temp_data = [row for row in temp_data if str(row.get("complete", "")) in values]
-                elif header.lower() == "required item":
-                    temp_data = [row for row in temp_data if self._required_item_matches_filter(row, values)]
-                elif header.lower() == "quantity":
-                    temp_data = [row for row in temp_data if self._quantity_matches_filter(row, values)]
-                elif header.lower() == "tag":
-                    temp_data = [row for row in temp_data if self._tag_matches_filter(row, values)]
+        for row in self.all_data:
+            # Start with a copy of the traveler group
+            filtered_row = row.copy()
+            original_operations = row.get("operations", [])
+
+            # Filter individual operations (tasks) based on active filters
+            filtered_operations = []
+
+            for operation in original_operations:
+                operation_matches = True
+
+                # Apply column filters to individual operations
+                if self.active_filters:
+                    for header, values in self.active_filters.items():
+                        if header.lower() == "required item":
+                            required_item = operation.get("required_item", "")
+                            if required_item not in values:
+                                operation_matches = False
+                                break
+                        elif header.lower() == "tier":
+                            tier = str(operation.get("tier", 0))
+                            if tier not in values:
+                                operation_matches = False
+                                break
+                        elif header.lower() == "quantity":
+                            quantity = str(operation.get("quantity", ""))
+                            if quantity not in values:
+                                operation_matches = False
+                                break
+                        elif header.lower() == "tag":
+                            tag = operation.get("tag", "")
+                            if tag not in values:
+                                operation_matches = False
+                                break
+                        elif header.lower() == "complete":
+                            completion_status = operation.get("completion_status", "")
+                            if completion_status not in values:
+                                operation_matches = False
+                                break
+
+                # Apply search filter to individual operations
+                if operation_matches and search_term:
+                    if not self._operation_matches_search(operation, search_term):
+                        operation_matches = False
+
+                # If operation matches all filters, include it
+                if operation_matches:
+                    filtered_operations.append(operation)
+
+            # Apply traveler-level filters
+            traveler_matches = True
+            if self.active_filters:
+                for header, values in self.active_filters.items():
+                    if header.lower() == "traveler":
+                        if not self._traveler_matches_filter(row, values):
+                            traveler_matches = False
+                            break
+                    elif header.lower() == "complete" and not filtered_operations:
+                        # If filtering by completion status and no operations match, check traveler completion
+                        if str(row.get("complete", "")) not in values:
+                            traveler_matches = False
+                            break
+
+            # Apply search to traveler level
+            if traveler_matches and search_term and not filtered_operations:
+                # If no operations matched search, check if traveler info matches
+                main_fields = ["traveler", "task", "complete"]
+                traveler_search_matches = False
+                for field in main_fields:
+                    if search_term in str(row.get(field, "")).lower():
+                        traveler_search_matches = True
+                        break
+                if not traveler_search_matches:
+                    traveler_matches = False
+
+            # Include traveler group if it matches and has matching operations (or no operation-level filters)
+            if traveler_matches:
+                # If we have operation-level filters, only include if some operations match
+                operation_level_filters = any(
+                    header.lower() in ["required item", "tier", "quantity", "tag"] for header in self.active_filters.keys()
+                )
+
+                if operation_level_filters:
+                    if filtered_operations:
+                        # Update the operations list and completion counts
+                        filtered_row["operations"] = filtered_operations
+
+                        # Recalculate completion counts based on filtered operations
+                        completed_count = sum(1 for op in filtered_operations if op.get("completion_status") == "✅")
+                        total_count = len(filtered_operations)
+
+                        filtered_row["completed_count"] = completed_count
+                        filtered_row["total_count"] = total_count
+                        filtered_row["task"] = f"{completed_count} of {total_count} completed"
+                        filtered_row["complete"] = "✅" if completed_count == total_count else "❌"
+
+                        temp_data.append(filtered_row)
                 else:
-                    field_name = header.lower().replace(" ", "_")
-                    temp_data = [row for row in temp_data if str(row.get(field_name, "")) in values]
-
-        if search_term:
-            temp_data = [row for row in temp_data if self._row_matches_search(row, search_term)]
+                    # No operation-level filters, include as-is (but still apply search to operations)
+                    if search_term and filtered_operations != original_operations:
+                        filtered_row["operations"] = filtered_operations
+                        completed_count = sum(1 for op in filtered_operations if op.get("completion_status") == "✅")
+                        total_count = len(filtered_operations)
+                        filtered_row["completed_count"] = completed_count
+                        filtered_row["total_count"] = total_count
+                        filtered_row["task"] = f"{completed_count} of {total_count} completed"
+                        filtered_row["complete"] = "✅" if completed_count == total_count else "❌"
+                    temp_data.append(filtered_row)
 
         self.filtered_data = temp_data
         self.sort_by(self.sort_column, self.sort_reverse)
+
+    def _operation_matches_search(self, operation, search_term):
+        """Checks if an individual operation matches the search term."""
+        operation_fields = ["task_description", "required_item", "tier", "quantity", "tag", "completion_status"]
+        for field in operation_fields:
+            if search_term in str(operation.get(field, "")).lower():
+                return True
+        return False
 
     def _traveler_matches_filter(self, row, selected_values):
         """Checks if a row matches the traveler filter."""
@@ -390,6 +510,15 @@ class TravelerTasksTab(ctk.CTkFrame):
         for operation in operations:
             required_item = operation.get("required_item", "")
             if required_item in selected_values:
+                return True
+        return False
+
+    def _tier_matches_filter(self, row, selected_values):
+        """NEW: Checks if a row matches the tier filter."""
+        operations = row.get("operations", [])
+        for operation in operations:
+            tier = str(operation.get("tier", 0))
+            if tier in selected_values:
                 return True
         return False
 
@@ -419,10 +548,10 @@ class TravelerTasksTab(ctk.CTkFrame):
             if search_term in str(row.get(field, "")).lower():
                 return True
 
-        # Check individual task data
+        # Check individual task data (now includes tier)
         operations = row.get("operations", [])
         for operation in operations:
-            operation_fields = ["task_description", "required_item", "quantity", "tag", "completion_status"]
+            operation_fields = ["task_description", "required_item", "tier", "quantity", "tag", "completion_status"]
             for field in operation_fields:
                 if search_term in str(operation.get(field, "")).lower():
                     return True
@@ -454,6 +583,17 @@ class TravelerTasksTab(ctk.CTkFrame):
                 return 0 if status == "✅" else 1
 
             self.filtered_data.sort(key=completion_sort_key, reverse=self.sort_reverse)
+        elif sort_key == "tier":
+
+            def tier_sort_key(x):
+                operations = x.get("operations", [])
+                if operations:
+                    # Use the first operation's tier for sorting the parent
+                    tier = operations[0].get("tier", 0)
+                    return int(tier) if isinstance(tier, (int, str)) and str(tier).isdigit() else 0
+                return 0
+
+            self.filtered_data.sort(key=tier_sort_key, reverse=self.sort_reverse)
         elif sort_key == "quantity":
             # Sort by numeric quantity (from child operations)
             def quantity_sort_key(x):
@@ -523,8 +663,8 @@ class TravelerTasksTab(ctk.CTkFrame):
             # Create a stable identifier for expansion tracking
             expansion_key = f"traveler_{traveler_id}_{traveler_name}"
 
-            # Prepare main row values - empty for Required Item, Quantity, and Tag columns
-            values = [traveler_name, task_summary, "", "", "", completion_status]
+            # UPDATED: Prepare main row values - empty for Required Item, Tier, Quantity, and Tag columns
+            values = [traveler_name, task_summary, "", "", "", "", completion_status]
 
             # Determine tag based on completion status
             if completion_status == "✅":
@@ -585,15 +725,16 @@ class TravelerTasksTab(ctk.CTkFrame):
         logging.debug(f"Saved expansion state for {len(self.expansion_state)} travelers")
 
     def _render_task_row(self, parent_id, task_data):
-        """Renders an individual task as a child row with split required item data and tag."""
+        """UPDATED: Renders an individual task as a child row with tier support."""
         task_description = task_data.get("task_description", "Unknown Task")
         required_item = task_data.get("required_item", "")
+        tier = task_data.get("tier", 0)
         quantity = task_data.get("quantity", "")
         tag = task_data.get("tag", "")
         completion_status = task_data.get("completion_status", "❌")
 
-        # Prepare child values - empty traveler name, split required items with tag
-        child_values = ["", task_description, required_item, quantity, tag, completion_status]
+        # UPDATED: Prepare child values - empty traveler name, includes tier
+        child_values = ["", task_description, required_item, str(tier) if tier > 0 else "", quantity, tag, completion_status]
 
         # Determine child tag
         if completion_status == "✅":

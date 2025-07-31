@@ -5,6 +5,7 @@ import logging
 from tkinter import messagebox
 from typing import Dict
 import os
+import threading
 from PIL import Image
 
 from data_manager import DataService
@@ -12,22 +13,78 @@ from claim_info_header import ClaimInfoHeader
 from claim_inventory_tab import ClaimInventoryTab
 from passive_crafting_tab import PassiveCraftingTab
 from traveler_tasks_tab import TravelerTasksTab
+from active_crafting_tab import ActiveCraftingTab
+
+
+class ShutdownDialog(ctk.CTkToplevel):
+    """A small dialog shown during application shutdown to indicate progress."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("Closing BitCraft Companion")
+        self.geometry("350x120")
+        self.resizable(False, False)
+
+        # Make it modal and stay on top
+        self.transient(parent)
+        self.grab_set()
+        self.attributes("-topmost", True)
+
+        # Center on screen
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() // 2) - (350 // 2)
+        y = (self.winfo_screenheight() // 2) - (120 // 2)
+        self.geometry(f"350x120+{x}+{y}")
+
+        # Remove window controls (user can't close this manually)
+        self.protocol("WM_DELETE_WINDOW", lambda: None)
+
+        # Create content
+        main_frame = ctk.CTkFrame(self)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        # Status label
+        self.status_label = ctk.CTkLabel(main_frame, text="Closing application...", font=ctk.CTkFont(size=14, weight="bold"))
+        self.status_label.pack(pady=(10, 5))
+
+        # Progress label
+        self.progress_label = ctk.CTkLabel(
+            main_frame, text="Stopping services and saving data", font=ctk.CTkFont(size=11), text_color="#888888"
+        )
+        self.progress_label.pack(pady=(0, 10))
+
+        # Progress bar (indeterminate)
+        self.progress_bar = ctk.CTkProgressBar(main_frame, mode="indeterminate")
+        self.progress_bar.pack(fill="x", padx=20)
+        self.progress_bar.start()
+
+    def update_status(self, message: str):
+        """Update the progress message."""
+        try:
+            self.progress_label.configure(text=message)
+            self.update()
+        except:
+            pass
 
 
 class MainWindow(ctk.CTk):
-    """Main application window with modular tab system and real-time timer support."""
+    """Main application window with modular tab system and responsive shutdown."""
 
     def __init__(self, data_service: DataService):
         super().__init__()
         self.title("Bitcraft Companion")
         self.geometry("900x600")
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(3, weight=1)  # Updated to row 3 for content area
+        self.grid_rowconfigure(3, weight=1)
 
         self.data_service = data_service
         self.tabs: Dict[str, ctk.CTkFrame] = {}
         self.tab_buttons: Dict[str, ctk.CTkButton] = {}
         self.active_tab_name = None
+
+        # Shutdown tracking
+        self.is_shutting_down = False
+        self.shutdown_dialog = None
 
         # Create the claim info header
         self.claim_info = ClaimInfoHeader(self, self)
@@ -42,7 +99,7 @@ class MainWindow(ctk.CTk):
 
         # Track loading state
         self.is_loading = True
-        self.expected_data_types = {"inventory", "crafting", "tasks", "claim_info"}
+        self.expected_data_types = {"inventory", "crafting", "active_crafting", "tasks", "claim_info"}
         self.received_data_types = set()
 
         # Create tab content area with border/outline
@@ -56,7 +113,6 @@ class MainWindow(ctk.CTk):
 
         # Initialize tabs and UI
         self._create_tabs()
-
         self._create_tab_buttons()
         self.show_tab("Claim Inventory")
 
@@ -181,6 +237,7 @@ class MainWindow(ctk.CTk):
         tab_classes = {
             "Claim Inventory": ClaimInventoryTab,
             "Passive Crafting": PassiveCraftingTab,
+            "Active Crafting": ActiveCraftingTab,
             "Traveler's Tasks": TravelerTasksTab,
         }
 
@@ -281,7 +338,16 @@ class MainWindow(ctk.CTk):
                             self.received_data_types.add("crafting")
                             self._check_all_data_loaded()
 
-                # NEW: Handle real-time timer updates
+                elif msg_type == "active_crafting_update":
+                    if "Active Crafting" in self.tabs:
+                        self.tabs["Active Crafting"].update_data(msg_data)
+                        logging.debug("Active crafting data updated in UI")
+
+                        # Track that we've received active crafting data
+                        if self.is_loading:
+                            self.received_data_types.add("active_crafting")
+                            self._check_all_data_loaded()
+
                 elif msg_type == "timer_update":
                     if "Passive Crafting" in self.tabs:
                         # Update the crafting tab with new timer data
@@ -435,37 +501,88 @@ class MainWindow(ctk.CTk):
             logging.error(f"Error showing completion notification: {e}")
 
     def on_closing(self):
-        """Handles cleanup when the window is closed."""
+        """
+        ENHANCED: Responsive shutdown with immediate UI feedback.
+        Shows shutdown dialog immediately while cleanup happens in background.
+        """
+        if self.is_shutting_down:
+            return  # Already shutting down
+
         logging.info("[MainWindow] Closing application...")
+        self.is_shutting_down = True
 
         try:
-            # Stop the data service first - this is critical
-            if hasattr(self, "data_service") and self.data_service:
-                logging.info("[MainWindow] Stopping data service...")
-                self.data_service.stop()
+            # STEP 1: Immediately hide main window and show shutdown dialog
+            self.withdraw()  # Hide main window instantly
 
-                # Give it a moment to clean up
-                import time
+            # Show shutdown dialog
+            self.shutdown_dialog = ShutdownDialog(self)
 
-                time.sleep(0.5)
+            # STEP 2: Start background shutdown process
+            def background_shutdown():
+                try:
+                    # Update dialog
+                    self.shutdown_dialog.update_status("Stopping real-time services...")
 
+                    # Stop the data service
+                    if hasattr(self, "data_service") and self.data_service:
+                        logging.info("[MainWindow] Stopping data service...")
+                        self.data_service.stop()
+
+                    self.shutdown_dialog.update_status("Saving data...")
+
+                    # Give services a moment to clean up
+                    import time
+
+                    time.sleep(0.2)
+
+                    self.shutdown_dialog.update_status("Finalizing shutdown...")
+
+                    # Schedule UI cleanup on main thread
+                    self.after(0, self._finish_shutdown)
+
+                except Exception as e:
+                    logging.error(f"[MainWindow] Error during background shutdown: {e}")
+                    # Still try to finish shutdown
+                    self.after(0, self._finish_shutdown)
+
+            # Start background shutdown in a separate thread
+            shutdown_thread = threading.Thread(target=background_shutdown, daemon=True)
+            shutdown_thread.start()
+
+        except Exception as e:
+            logging.error(f"[MainWindow] Error starting shutdown: {e}")
+            # Fallback to immediate shutdown
+            self._finish_shutdown()
+
+    def _finish_shutdown(self):
+        """Complete the shutdown process on the main thread."""
+        try:
+            logging.info("[MainWindow] Finalizing application shutdown...")
+
+            # Close shutdown dialog
+            if self.shutdown_dialog:
+                try:
+                    self.shutdown_dialog.destroy()
+                except:
+                    pass
+
+            # Destroy main window
             logging.info("[MainWindow] Destroying window...")
             self.destroy()
 
         except Exception as e:
-            logging.error(f"[MainWindow] Error during shutdown: {e}")
-            # Force destroy even if there's an error
+            logging.error(f"[MainWindow] Error during final shutdown: {e}")
             try:
                 self.destroy()
             except:
                 pass
         finally:
-            # Ensure we quit the application
+            # Ensure we exit
             try:
                 self.quit()
             except:
                 pass
-
             sys.exit(0)
 
     def switch_to_claim(self, claim_id: str):
@@ -523,15 +640,15 @@ class MainWindow(ctk.CTk):
         Clears data from all tabs to show empty state during claim switching.
         """
         try:
-            # Clear inventory tab
             if "Claim Inventory" in self.tabs:
                 self.tabs["Claim Inventory"].update_data({})
 
-            # Clear crafting tab
             if "Passive Crafting" in self.tabs:
                 self.tabs["Passive Crafting"].update_data([])
 
-            # Clear tasks tab
+            if "Active Crafting" in self.tabs:
+                self.tabs["Active Crafting"].update_data([])
+
             if "Traveler's Tasks" in self.tabs:
                 self.tabs["Traveler's Tasks"].update_data([])
 
@@ -555,10 +672,6 @@ class MainWindow(ctk.CTk):
                 # Update header with new claim info first
                 self.claim_info.handle_claim_switch_complete(claim_id, claim_name)
                 self.claim_info.update_claim_data(claim_info)
-
-                # Hide loading overlay (this will be handled by incoming data updates)
-                # Don't hide loading yet - let the data updates trigger the hide
-                # self.hide_loading()
 
                 # Re-enable tab buttons
                 self._set_tab_buttons_state("normal")
@@ -619,7 +732,6 @@ class MainWindow(ctk.CTk):
         except Exception as e:
             logging.error(f"Error handling claims list update: {e}")
 
-    # REPLACE the existing process_data_queue method with this fixed version
     def process_data_queue(self):
         """Enhanced data queue processing that handles claim switching messages."""
         try:
@@ -654,6 +766,16 @@ class MainWindow(ctk.CTk):
                             self.received_data_types.add("crafting")
                             self._check_all_data_loaded()
 
+                elif msg_type == "active_crafting_update":
+                    if "Active Crafting" in self.tabs:
+                        self.tabs["Active Crafting"].update_data(msg_data)
+                        logging.debug("Active crafting data updated in UI")
+
+                        # Track that we've received active crafting data
+                        if self.is_loading:
+                            self.received_data_types.add("active_crafting")
+                            self._check_all_data_loaded()
+
                 elif msg_type == "timer_update":
                     if "Passive Crafting" in self.tabs:
                         self.tabs["Passive Crafting"].update_data(msg_data)
@@ -684,7 +806,6 @@ class MainWindow(ctk.CTk):
                         self.received_data_types.add("claim_info")
                         self._check_all_data_loaded()
 
-                # NEW: Handle claim switching messages
                 elif msg_type == "claim_switching":
                     self._handle_claim_switching_message(msg_data)
 
@@ -754,7 +875,6 @@ class MainWindow(ctk.CTk):
         self.is_loading = True
         self.received_data_types = set()
 
-    # Add method to get current claim info for debugging
     def get_current_claim_info(self) -> dict:
         """Returns current claim information for debugging."""
         if hasattr(self.data_service, "get_current_claim_info"):

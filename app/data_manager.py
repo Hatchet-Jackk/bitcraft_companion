@@ -22,6 +22,7 @@ class DataService:
         from inventory_service import InventoryService
         from passive_crafting_service import PassiveCraftingService
         from traveler_tasks_service import TravelerTasksService
+        from active_crafting_service import ActiveCraftingService
 
         # Store the classes themselves
         self.BitCraftClass = BitCraft
@@ -30,6 +31,7 @@ class DataService:
         self.InventoryServiceClass = InventoryService
         self.PassiveCraftingServiceClass = PassiveCraftingService
         self.TravelerTasksServiceClass = TravelerTasksService
+        self.ActiveCraftingServiceClass = ActiveCraftingService
 
         # Instantiate the client immediately to load saved user data
         self.client = self.BitCraftClass()
@@ -40,6 +42,7 @@ class DataService:
         self.inventory_service = None
         self.passive_crafting_service = None
         self.traveler_tasks_service = None
+        self.active_crafting_service = None
         self.claim_manager = None
         self.current_subscriptions = []
 
@@ -69,6 +72,10 @@ class DataService:
             if self.passive_crafting_service:
                 logging.info("Stopping real-time timer...")
                 self.passive_crafting_service.stop_real_time_timer()
+
+            if self.active_crafting_service:
+                logging.info("Stopping active crafting progress tracking...")
+                self.active_crafting_service.stop_progress_tracking()
 
             # Save final claim state to cache
             if self.claim_manager:
@@ -180,10 +187,19 @@ class DataService:
             # 7. Initialize other services AFTER claim is set
             self.inventory_service = self.InventoryServiceClass(bitcraft_client=self.client, claim_instance=self.claim)
             self.passive_crafting_service = self.PassiveCraftingServiceClass(
-                bitcraft_client=self.client, claim_instance=self.claim, reference_data=reference_data
+                bitcraft_client=self.client,
+                claim_instance=self.claim,
+                reference_data=reference_data,
             )
             self.traveler_tasks_service = self.TravelerTasksServiceClass(
-                bitcraft_client=self.client, player_instance=self.player, reference_data=reference_data
+                bitcraft_client=self.client,
+                player_instance=self.player,
+                reference_data=reference_data,
+            )
+            self.active_crafting_service = self.ActiveCraftingServiceClass(
+                bitcraft_client=self.client,
+                claim_instance=self.claim,
+                reference_data=reference_data,
             )
 
             # 8. Initial data loads
@@ -211,8 +227,12 @@ class DataService:
                 }
             )
 
+            initial_active_crafting_data = self.active_crafting_service.get_all_active_crafting_data_enhanced()
+            self.data_queue.put({"type": "active_crafting_update", "data": initial_active_crafting_data})
+
             # Start real-time timer
             self.passive_crafting_service.start_real_time_timer(self._handle_timer_update)
+            self.active_crafting_service.start_progress_tracking(self._handle_timer_update)
 
             # 9. Set up subscriptions for the current claim
             self._setup_subscriptions_for_current_claim()
@@ -257,9 +277,7 @@ class DataService:
             logging.error(f"Error in message handler: {e}")
 
     def _process_transaction_update(self, transaction_data):
-        """
-        Process TransactionUpdate messages - LIVE real-time updates.
-        """
+        """Process TransactionUpdate messages - LIVE real-time updates."""
         try:
             status = transaction_data.get("status", {})
             reducer_call = transaction_data.get("reducer_call", {})
@@ -285,16 +303,16 @@ class DataService:
                     self._handle_inventory_transaction(table_update, reducer_name, timestamp_seconds)
                 elif table_name in ["claim_local_state", "claim_state"]:
                     self._handle_claim_transaction(table_update, reducer_name, timestamp_seconds)
-                elif table_name == "traveler_task_state":  # FIX: ADD TASKS HANDLING
+                elif table_name == "traveler_task_state":
                     self._handle_tasks_transaction(table_update, reducer_name, timestamp_seconds)
+                elif table_name == "progressive_action_state":  # NEW: Handle progressive actions
+                    self._handle_progressive_action_transaction(table_update, reducer_name, timestamp_seconds)
 
         except Exception as e:
             logging.error(f"Error processing transaction update: {e}")
 
     def _process_subscription_update(self, subscription_data):
-        """
-        Process SubscriptionUpdate messages - batch updates.
-        """
+        """Process SubscriptionUpdate messages - batch updates."""
         try:
             database_update = subscription_data.get("database_update", {})
             tables = database_update.get("tables", [])
@@ -305,6 +323,7 @@ class DataService:
             needs_crafting_update = False
             needs_claim_update = False
             needs_tasks_update = False
+            needs_active_crafting_update = False
 
             for table_update in tables:
                 table_name = table_update.get("table_name", "")
@@ -315,8 +334,10 @@ class DataService:
                     needs_crafting_update = True
                 elif table_name in ["claim_local_state", "claim_state"]:
                     needs_claim_update = True
-                elif table_name == "traveler_task_state":  # FIX: ADD TASKS HANDLING
+                elif table_name == "traveler_task_state":
                     needs_tasks_update = True
+                elif table_name == "progressive_action_state":  # NEW: Handle progressive actions
+                    needs_active_crafting_update = True
 
             # Send consolidated updates
             if needs_inventory_update:
@@ -325,8 +346,10 @@ class DataService:
                 self._refresh_crafting()
             if needs_claim_update:
                 self._refresh_claim_info()
-            if needs_tasks_update:  # FIX: ADD TASKS REFRESH
+            if needs_tasks_update:
                 self._refresh_tasks()
+            if needs_active_crafting_update:
+                self._refresh_active_crafting()
 
         except Exception as e:
             logging.error(f"Error processing subscription update: {e}")
@@ -690,6 +713,10 @@ class DataService:
             fresh_crafting_data = self.passive_crafting_service.get_all_crafting_data_enhanced()
             self.data_queue.put({"type": "crafting_update", "data": fresh_crafting_data, "source": "claim_switch"})
 
+            # Re-initialize active crafting data
+            fresh_active_crafting_data = self.active_crafting_service.get_all_active_crafting_data_enhanced()
+            self.data_queue.put({"type": "active_crafting_update", "data": fresh_active_crafting_data, "source": "claim_switch"})
+
             # Re-initialize tasks data
             fresh_tasks_data = self.traveler_tasks_service.get_all_tasks_data_grouped()
             self.data_queue.put({"type": "tasks_update", "data": fresh_tasks_data, "source": "claim_switch"})
@@ -702,6 +729,10 @@ class DataService:
             if self.passive_crafting_service:
                 logging.info("Restarting real-time timer...")
                 self.passive_crafting_service.start_real_time_timer(self._handle_timer_update)
+
+            if self.active_crafting_service:
+                logging.info("Restarting active crafting progress tracking...")
+                self.active_crafting_service.start_progress_tracking(self._handle_timer_update)
 
             # Step 8: Update claim manager cache
             self.claim_manager.update_claim_cache(new_claim_id, claim_info)
@@ -764,8 +795,10 @@ class DataService:
             if building_ids:
                 inventory_queries = self.inventory_service.get_subscription_queries(building_ids)
                 passive_crafting_queries = self.passive_crafting_service.get_subscription_queries(building_ids)
+                active_crafting_queries = self.active_crafting_service.get_subscription_queries(building_ids)
                 all_subscriptions.extend(inventory_queries)
                 all_subscriptions.extend(passive_crafting_queries)
+                all_subscriptions.extend(active_crafting_queries)
 
             # Add task subscriptions (player-specific, not claim-specific)
             task_queries = self.traveler_tasks_service.get_subscription_queries()
@@ -858,3 +891,64 @@ class DataService:
                     break
         except Exception as e:
             logging.debug(f"Error clearing message queue: {e}")
+
+    def _handle_active_crafting_transaction(self, table_update, reducer_name, timestamp):
+        """Handle active_craft_state transactions."""
+        try:
+            updates = table_update.get("updates", [])
+
+            for update in updates:
+                inserts = update.get("inserts", [])
+                deletes = update.get("deletes", [])
+
+                if inserts or deletes:
+                    logging.debug(f"ACTIVE CRAFTING UPDATE: {len(inserts)} inserts, {len(deletes)} deletes - {reducer_name}")
+                    self._refresh_active_crafting()
+
+        except Exception as e:
+            logging.error(f"Error handling active crafting transaction: {e}")
+
+    def _refresh_active_crafting(self):
+        """Refresh and send active crafting data to UI."""
+        try:
+            if self.active_crafting_service:
+                fresh_active_crafting_data = self.active_crafting_service.get_all_active_crafting_data_enhanced()
+                self.data_queue.put(
+                    {
+                        "type": "active_crafting_update",
+                        "data": fresh_active_crafting_data,
+                        "source": "live_update",
+                        "timestamp": time.time(),
+                    }
+                )
+                logging.debug(f"Sent active crafting update: {len(fresh_active_crafting_data)} operations")
+        except Exception as e:
+            logging.error(f"Error refreshing active crafting: {e}")
+
+    def _handle_progressive_action_transaction(self, table_update, reducer_name, timestamp):
+        """Handle progressive_action_state transactions (active crafting)."""
+        try:
+            updates = table_update.get("updates", [])
+
+            for update in updates:
+                inserts = update.get("inserts", [])
+                deletes = update.get("deletes", [])
+
+                if inserts or deletes:
+                    logging.debug(f"PROGRESSIVE ACTION UPDATE: {len(inserts)} inserts, {len(deletes)} deletes - {reducer_name}")
+
+                    # Log the progressive action data for debugging
+                    for insert in inserts:
+                        if isinstance(insert, dict):
+                            progress = insert.get("progress", 0)
+                            recipe_id = insert.get("recipe_id", 0)
+                            craft_count = insert.get("craft_count", 0)
+                            function_type = insert.get("function_type", 0)
+                            logging.info(
+                                f"Progressive Action: Recipe {recipe_id}, Progress {progress}, Count {craft_count}, Type {function_type}"
+                            )
+
+                    self._refresh_active_crafting()
+
+        except Exception as e:
+            logging.error(f"Error handling progressive action transaction: {e}")

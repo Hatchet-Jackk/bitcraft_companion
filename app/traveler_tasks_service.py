@@ -44,7 +44,6 @@ class TravelerTasksService:
     def get_all_tasks_data_grouped(self) -> List[Dict]:
         """
         Fetches all traveler tasks for the current player and groups them by traveler.
-        UPDATED: Now includes detailed required items for better UI processing.
         """
         if not self.player.user_id:
             logging.error("Cannot fetch tasks without player user_id")
@@ -120,7 +119,7 @@ class TravelerTasksService:
                     "task_id": task_id,
                     "task_description": task_description,
                     "required_items": required_items_str,  # String format for backward compatibility
-                    "required_items_detailed": required_items_detailed,  # NEW: Detailed format for UI
+                    "required_items_detailed": required_items_detailed,  # Detailed format for UI
                     "completed": completed,
                     "completion_status": "✅" if completed else "❌",
                 }
@@ -212,17 +211,15 @@ class TravelerTasksService:
 
     def _format_required_items_detailed(self, required_items: List) -> List[Dict]:
         """
-        NEW: Formats required items as a list of dictionaries for better UI processing.
-        UPDATED: Now includes item tags for filtering.
-
+        Formats the required items into a detailed list with item names, tiers, and tags.
         Args:
             required_items: List of [item_id, quantity] pairs
 
         Returns:
-            List of dictionaries with 'item_name', 'quantity', and 'tag' keys
+            List of dictionaries with 'item_name', 'tier', 'quantity', and 'tag' keys
         """
         if not required_items:
-            return [{"item_name": "No items required", "quantity": 0, "tag": ""}]
+            return [{"item_name": "No items required", "tier": 0, "quantity": 0, "tag": ""}]
 
         try:
             detailed_items = []
@@ -234,18 +231,21 @@ class TravelerTasksService:
                 item_id = item_data[0]
                 quantity = item_data[1]
 
-                # Get item name and tag
+                # Get item information including tier
                 item_info = self.item_descriptions.get(item_id, {})
                 item_name = item_info.get("name", f"Item {item_id}")
-                item_tag = item_info.get("tag", "")  # NEW: Get item tag
+                item_tier = item_info.get("tier", 0)  # NEW: Get item tier
+                item_tag = item_info.get("tag", "")
 
-                detailed_items.append({"item_name": item_name, "quantity": quantity, "tag": item_tag})  # NEW: Include tag
+                detailed_items.append(
+                    {"item_name": item_name, "tier": item_tier, "quantity": quantity, "tag": item_tag}  # NEW: Include tier
+                )
 
-            return detailed_items if detailed_items else [{"item_name": "Unknown items", "quantity": 0, "tag": ""}]
+            return detailed_items if detailed_items else [{"item_name": "Unknown items", "tier": 0, "quantity": 0, "tag": ""}]
 
         except Exception as e:
             logging.error(f"Error formatting detailed required items: {e}")
-            return [{"item_name": "Error formatting items", "quantity": 0, "tag": ""}]
+            return [{"item_name": "Error formatting items", "tier": 0, "quantity": 0, "tag": ""}]
 
     def parse_task_update(self, db_update: dict) -> bool:
         """

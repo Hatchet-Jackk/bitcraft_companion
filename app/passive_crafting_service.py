@@ -126,7 +126,7 @@ class PassiveCraftingService:
                     # Log completions
                     if new_time_remaining == "READY" and old_time_remaining != "READY":
                         recipe_id = operation.get("recipe_id")
-                        logging.info(f"🎉 Timer detected completion: Recipe {recipe_id}")
+                        logging.debug(f"Timer detected completion: Recipe {recipe_id}")
 
                 updated_operations.append(operation)
 
