@@ -397,8 +397,8 @@ class BitCraft:
             if not self.ws_uri:
                 raise RuntimeError("WebSocket URI is not set. Call set_websocket_uri() first.")
             if self.ws_connection:
-                logging.warning("WebSocket connection already exists. Closing existing connection.")
-                self.close_websocket()
+                logging.info("WebSocket connection already exists. Reusing existing connection.")
+                return
             try:
                 self.ws_connection = connect(
                     self.ws_uri,
@@ -450,6 +450,7 @@ class BitCraft:
     def start_subscription_listener(self, queries: list[str], callback: callable):
         """
         Sends a subscription request and starts the background listener thread.
+        Replaces any existing subscriptions.
         """
         with self.ws_lock:
             if not self.ws_connection:
@@ -458,13 +459,18 @@ class BitCraft:
                 logging.warning("No queries provided for subscription.")
                 return
 
+            # Stop existing subscription thread if running (but don't send unsubscribe)
+            if self.subscription_thread and self.subscription_thread.is_alive():
+                logging.info("Stopping existing subscription thread...")
+                self._stop_subscription.set()
+                self.subscription_thread.join(timeout=1.0)
+
             self._stop_subscription.clear()
 
+            # Send new subscription request (this should replace any existing subscriptions)
             subscribe_message = {"Subscribe": {"request_id": 1, "query_strings": queries}}
-
-            # Send the subscription request
             self.ws_connection.send(json.dumps(subscribe_message))
-            logging.info(f"Sent subscription request for {len(queries)} queries.")
+            logging.info(f"Sent subscription request for {len(queries)} queries (replaces any existing subscriptions).")
 
             # Start the listener thread that will call the callback
             self.subscription_thread = threading.Thread(
@@ -472,6 +478,37 @@ class BitCraft:
             )
             self.subscription_thread.start()
             logging.info("Subscription listener thread started.")
+
+    def stop_subscriptions(self):
+        """
+        Stops current subscriptions without closing the WebSocket connection.
+        """
+        with self.ws_lock:
+            if not self.ws_connection:
+                logging.warning("No WebSocket connection to stop subscriptions on.")
+                return
+
+            try:
+                # Just stop the subscription listener thread, don't send unsubscribe message
+                logging.info("Stopping subscription thread...")
+
+                # Stop the subscription listener thread
+                self._stop_subscription.set()
+
+                # Wait for subscription thread to finish
+                if self.subscription_thread and self.subscription_thread.is_alive():
+                    logging.info("Waiting for subscription thread to finish...")
+                    self.subscription_thread.join(timeout=2.0)
+
+                    if self.subscription_thread.is_alive():
+                        logging.warning("Subscription thread did not finish within timeout")
+
+                self.subscription_thread = None
+                logging.info("Subscriptions stopped successfully.")
+
+            except Exception as e:
+                logging.error(f"Error stopping subscriptions: {e}")
+                raise
 
     def _listen_for_subscription_updates(self, callback):
         """A dedicated loop for listening to subscription messages."""

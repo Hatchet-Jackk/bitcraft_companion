@@ -670,9 +670,10 @@ class DataService:
             # Clear any pending messages to prevent confusion
             self._handle_message_queue_during_switch()
 
-            # Step 1: Stop current subscriptions
-            logging.info("Stopping current subscriptions...")
-            self._stop_current_subscriptions()
+            # Step 1: Stop subscriptions temporarily to avoid threading conflicts during queries
+            logging.info("Temporarily stopping subscriptions for claim switch...")
+            if self.client and self.client.ws_connection:
+                self.client.stop_subscriptions()
 
             # Step 2: Stop real-time timer
             if self.passive_crafting_service:
@@ -760,22 +761,6 @@ class DataService:
                 logging.info("Recovery successful")
             except Exception as recovery_error:
                 logging.error(f"Failed to recover after claim switch error: {recovery_error}")
-
-    def _stop_current_subscriptions(self):
-        """Stops all current WebSocket subscriptions."""
-        try:
-            if self.client and self.client.ws_connection:
-                logging.info("Stopping current subscriptions for claim switch")
-                # Close current connection to stop all subscriptions
-                self.client.close_websocket()
-
-                # Re-establish connection
-                self.client.connect_websocket()
-
-            self.current_subscriptions = []
-
-        except Exception as e:
-            logging.error(f"Error stopping subscriptions: {e}")
 
     def _setup_subscriptions_for_current_claim(self):
         """Sets up subscriptions for the currently active claim."""
