@@ -71,6 +71,50 @@ class TravelerTasksTab(ctk.CTkFrame):
             lightcolor="#1e2124",
             height=12,
         )
+        
+        # Configure state-specific scrollbar colors to prevent grey appearance when inactive
+        style.map(
+            self.v_scrollbar_style,
+            background=[
+                ("active", "#1e2124"),      # Hover state
+                ("pressed", "#1e2124"),     # Click/drag state  
+                ("disabled", "#1e2124"),    # No scroll needed state
+                ("!active", "#1e2124")      # Normal state
+            ],
+            troughcolor=[
+                ("active", "#2a2d2e"),
+                ("pressed", "#2a2d2e"), 
+                ("disabled", "#2a2d2e"),
+                ("!active", "#2a2d2e")
+            ],
+            arrowcolor=[
+                ("active", "#666"),
+                ("pressed", "#666"),
+                ("disabled", "#666"), 
+                ("!active", "#666")
+            ]
+        )
+        style.map(
+            self.h_scrollbar_style,
+            background=[
+                ("active", "#1e2124"),
+                ("pressed", "#1e2124"),
+                ("disabled", "#1e2124"),
+                ("!active", "#1e2124")
+            ],
+            troughcolor=[
+                ("active", "#2a2d2e"),
+                ("pressed", "#2a2d2e"),
+                ("disabled", "#2a2d2e"),
+                ("!active", "#2a2d2e")
+            ],
+            arrowcolor=[
+                ("active", "#666"),
+                ("pressed", "#666"),
+                ("disabled", "#666"),
+                ("!active", "#666")
+            ]
+        )
 
         # Configure headers - CONSISTENT WITH OTHER TABS
         style.configure(
@@ -138,19 +182,41 @@ class TravelerTasksTab(ctk.CTkFrame):
         self.tree.column("#0", width=20, minwidth=20, stretch=False, anchor="center")
         self.tree.heading("#0", text="", anchor="w")
 
+        # Configure event debouncing for better resize performance
+        self.resize_timer = None
+        self.cached_total_width = None
+        
         # Bind events
         self.tree.bind("<Button-3>", self.show_header_context_menu)
         self.tree.bind("<Configure>", self.on_tree_configure)
 
     def on_tree_configure(self, event):
-        """Manages horizontal scrollbar visibility based on content width."""
-        total_width = sum(self.tree.column(col, "width") for col in ["#0"] + list(self.headers))
-        widget_width = self.tree.winfo_width()
+        """Manages horizontal scrollbar visibility with debouncing for smooth resize."""
+        # Cancel previous timer if it exists
+        if self.resize_timer:
+            self.after_cancel(self.resize_timer)
+        
+        # Schedule the actual configure handling with debouncing
+        self.resize_timer = self.after(150, self._handle_tree_configure)
 
-        if total_width > widget_width:
-            self.hsb.grid(row=1, column=0, sticky="ew")
-        else:
-            self.hsb.grid_remove()
+    def _handle_tree_configure(self):
+        """Actual handler for tree configure events."""
+        try:
+            total_width = sum(self.tree.column(col, "width") for col in ["#0"] + list(self.headers))
+            widget_width = self.tree.winfo_width()
+            
+            # Only update if width actually changed to avoid unnecessary operations
+            if self.cached_total_width != total_width:
+                self.cached_total_width = total_width
+                
+                if total_width > widget_width:
+                    self.hsb.grid(row=1, column=0, sticky="ew")
+                else:
+                    self.hsb.grid_remove()
+        except Exception as e:
+            logging.error(f"Error in tree configure handler: {e}")
+        finally:
+            self.resize_timer = None
 
     def _create_context_menu(self):
         """Creates the right-click menu for column headers."""

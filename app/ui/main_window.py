@@ -75,6 +75,12 @@ class MainWindow(ctk.CTk):
         super().__init__()
         self.title("Bitcraft Companion")
         self.geometry("900x600")
+
+        # Set minimum window size to prevent UI elements from becoming inaccessible
+        # Width: 300px (dropdown) + 120px (refresh) + 100px (export) + 80px (logout) + 70px (quit) + 80px (padding) = 750px
+        # Height: 80px (header) + 45px (tabs) + 50px (search) + 300px (content) + 45px (margins) = 520px
+        self.minsize(775, 520)
+
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(3, weight=1)
 
@@ -86,6 +92,10 @@ class MainWindow(ctk.CTk):
         # Shutdown tracking
         self.is_shutting_down = False
         self.shutdown_dialog = None
+
+        # Resize performance optimization
+        self.is_resizing = False
+        self.resize_timer = None
 
         # Create the claim info header
         self.claim_info = ClaimInfoHeader(self, self)
@@ -123,9 +133,34 @@ class MainWindow(ctk.CTk):
         self.show_loading()
         self._set_tab_buttons_state("disabled")
 
-        # Start data processing with enhanced timer support
+        # Start data processing with enhanced timer support and resize detection
         self.after(100, self.process_data_queue)
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
+        self.bind("<Configure>", self._on_window_configure)
+
+    def _on_window_configure(self, event):
+        """Handles window configure events to detect resize operations for performance optimization."""
+        # Only handle configure events for the main window itself
+        if event.widget != self:
+            return
+
+        # Cancel previous resize timer
+        if self.resize_timer:
+            self.after_cancel(self.resize_timer)
+
+        # Mark as resizing and schedule resize completion detection
+        if not self.is_resizing:
+            self.is_resizing = True
+            logging.debug("Window resize started - optimizing performance")
+
+        # Schedule resize completion detection
+        self.resize_timer = self.after(300, self._on_resize_complete)
+
+    def _on_resize_complete(self):
+        """Called when resize operation appears to be complete."""
+        self.is_resizing = False
+        self.resize_timer = None
+        logging.debug("Window resize completed - resuming normal performance")
 
     def _set_tab_buttons_state(self, state: str):
         """Enable or disable all tab buttons."""
@@ -230,14 +265,17 @@ class MainWindow(ctk.CTk):
             return
 
         try:
-            dot_patterns = ["●○○", "●●○", "●●●", "○●●", "○○●", "○○○"]
-            if hasattr(self, "loading_indicator"):
-                pattern = dot_patterns[self.loading_animation_state % len(dot_patterns)]
-                self.loading_indicator.configure(text=pattern)
-                self.loading_animation_state += 1
+            # Skip animation updates during resize for better performance
+            if not self.is_resizing:
+                dot_patterns = ["●○○", "●●○", "●●●", "○●●", "○○●", "○○○"]
+                if hasattr(self, "loading_indicator"):
+                    pattern = dot_patterns[self.loading_animation_state % len(dot_patterns)]
+                    self.loading_indicator.configure(text=pattern)
+                    self.loading_animation_state += 1
 
-            # Schedule next animation frame
-            self.after(300, self._animate_loading_dots)
+            # Adaptive animation frequency: slower during resize
+            interval = 600 if self.is_resizing else 300
+            self.after(interval, self._animate_loading_dots)
         except Exception as e:
             logging.error(f"Error in loading animation: {e}")
 
@@ -808,8 +846,9 @@ class MainWindow(ctk.CTk):
         except Exception as e:
             logging.error(f"Error processing data queue: {e}")
         finally:
-            # Check for updates every 100ms for smooth real-time timer updates
-            self.after(100, self.process_data_queue)
+            # Adaptive update frequency: slower during resize for better performance
+            interval = 250 if self.is_resizing else 100
+            self.after(interval, self.process_data_queue)
 
     def show_loading_with_message(self, message: str):
         """

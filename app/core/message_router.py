@@ -134,3 +134,14 @@ class MessageRouter:
 
         except Exception as e:
             logging.error(f"Error processing initial subscription: {e}")
+
+    def clear_all_processor_caches(self):
+        """Clear caches in all processors to ensure fresh data on refresh."""
+        try:
+            for processor in self.processors:
+                if hasattr(processor, 'clear_cache'):
+                    processor.clear_cache()
+                    logging.debug(f"Cleared cache for {processor.__class__.__name__}")
+            logging.info(f"Cleared caches for {len(self.processors)} processors")
+        except Exception as e:
+            logging.error(f"Error clearing processor caches: {e}")

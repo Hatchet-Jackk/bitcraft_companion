@@ -417,6 +417,33 @@ class DataService:
             })
             return False
 
+    def refresh_current_claim_data(self):
+        """Refresh all data for the current claim by restarting subscriptions."""
+        try:
+            if not self.claim or not self.claim.claim_id:
+                logging.warning("No current claim available for data refresh")
+                return False
+                
+            if not self.player or not self.player.user_id:
+                logging.warning("No user ID available for data refresh")
+                return False
+                
+            logging.info(f"Refreshing data for current claim: {self.claim.claim_id}")
+            
+            # Clear all processor caches to ensure fresh data
+            if hasattr(self, 'message_router') and self.message_router:
+                self.message_router.clear_all_processor_caches()
+            
+            # Restart subscriptions for current claim (this will fetch all fresh data)
+            self._setup_subscriptions_for_current_claim()
+            
+            logging.info("Current claim data refresh completed successfully")
+            return True
+            
+        except Exception as e:
+            logging.error(f"Error refreshing current claim data: {e}")
+            return False
+
     def refresh_claims_list(self):
         """Refresh the list of available claims for the current user."""
         try:

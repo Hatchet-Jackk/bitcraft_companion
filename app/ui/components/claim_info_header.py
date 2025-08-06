@@ -121,11 +121,11 @@ class ClaimInfoHeader(ctk.CTkFrame):
         # Add refresh button
         self.refresh_button = ctk.CTkButton(
             dropdown_frame,
-            text="Refresh Claims",
+            text="Refresh Data",
             width=120,
             height=40,
             font=ctk.CTkFont(size=12),
-            command=self._refresh_claims,
+            command=self._refresh_current_claim,
             fg_color=("#404040", "#505050"),
             hover_color=("#5a5a5a", "#707070"),
             text_color="#ffffff",
@@ -135,7 +135,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
         self.refresh_button.grid(row=0, column=1, sticky="w", padx=(2, 12))
 
         # Add tooltip to refresh button
-        self._add_tooltip(self.refresh_button, "Updates the claims list when joining a new claim mid-game")
+        self._add_tooltip(self.refresh_button, "Refreshes all data for the current claim - helpful if tables appear corrupted or incomplete")
 
         # Add export button
         self.export_button = ctk.CTkButton(
@@ -385,31 +385,31 @@ class ClaimInfoHeader(ctk.CTkFrame):
         """Manually refresh the supplies run out calculation (for periodic updates)."""
         self._update_supplies_runout()
 
-    def _refresh_claims(self):
-        """Refresh the list of available claims."""
+    def _refresh_current_claim(self):
+        """Refresh all data for the current claim."""
         try:
-            # Disable refresh button during refresh
-            self.refresh_button.configure(state="disabled", text="⟳")
+            # Disable refresh button during refresh with loading indicator
+            self.refresh_button.configure(state="disabled", text="⟳ Refreshing...")
 
-            # Request claims refresh from the data service
+            # Request current claim data refresh from the data service
             if hasattr(self.app, "data_service") and self.app.data_service:
-                success = self.app.data_service.refresh_claims_list()
+                success = self.app.data_service.refresh_current_claim_data()
                 if success:
-                    logging.info("Claims list refresh requested")
+                    logging.info("Current claim data refresh requested")
                 else:
-                    logging.warning("Claims refresh failed")
+                    logging.warning("Current claim data refresh failed")
             else:
-                logging.error("Data service not available for claims refresh")
+                logging.error("Data service not available for claim data refresh")
 
         except Exception as e:
-            logging.error(f"Error refreshing claims: {e}")
+            logging.error(f"Error refreshing current claim data: {e}")
         finally:
             # Re-enable refresh button after a short delay
-            self.after(1000, self._reset_refresh_button)
+            self.after(1500, self._reset_refresh_button)
 
     def _reset_refresh_button(self):
         """Reset the refresh button to its normal state."""
-        self.refresh_button.configure(state="normal", text="🔄")
+        self.refresh_button.configure(state="normal", text="Refresh Data")
 
     def update_available_claims(self, claims_list: list, current_claim_id: str = None):
         """
