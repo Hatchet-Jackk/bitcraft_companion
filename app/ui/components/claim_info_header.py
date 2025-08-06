@@ -7,6 +7,7 @@ import openpyxl
 from openpyxl.styles import Font, Alignment
 from datetime import datetime
 import os
+from app.ui.components.settings_window import SettingsWindow
 
 
 class ClaimInfoHeader(ctk.CTkFrame):
@@ -119,41 +120,24 @@ class ClaimInfoHeader(ctk.CTkFrame):
         )
         self.claim_dropdown.grid(row=0, column=0, sticky="w", padx=(0, 10))
 
-        # Add refresh button
-        self.refresh_button = ctk.CTkButton(
+        # Add settings button
+        self.settings_button = ctk.CTkButton(
             dropdown_frame,
-            text="Refresh Data",
-            width=120,
+            text="Settings",
+            width=100,
             height=40,
             font=ctk.CTkFont(size=12),
-            command=self._refresh_current_claim,
+            command=self._open_settings,
             fg_color=("#404040", "#505050"),
             hover_color=("#5a5a5a", "#707070"),
             text_color="#ffffff",
             corner_radius=8,
             border_width=0,
         )
-        self.refresh_button.grid(row=0, column=1, sticky="w", padx=(2, 12))
+        self.settings_button.grid(row=0, column=1, sticky="w", padx=(2, 12))
 
-        # Add tooltip to refresh button
-        self._add_tooltip(
-            self.refresh_button, "Refreshes all data for the current claim - helpful if tables appear corrupted or incomplete"
-        )
-
-        # Add export button
-        self.export_button = ctk.CTkButton(
-            dropdown_frame,
-            text="Export Data",
-            width=100,
-            height=40,
-            font=ctk.CTkFont(size=12),
-            command=self._export_data,
-            fg_color=("#2E7D32", "#388E3C"),
-            hover_color=("#1B5E20", "#2E7D32"),
-            text_color="#ffffff",
-            corner_radius=8,
-        )
-        self.export_button.grid(row=0, column=2, sticky="w", padx=(0, 10))
+        # Add tooltip to settings button
+        self._add_tooltip(self.settings_button, "Open settings window to manage app preferences and data operations")
 
         # Add logout button
         self.logout_button = ctk.CTkButton(
@@ -168,7 +152,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
             text_color="#ffffff",
             corner_radius=8,
         )
-        self.logout_button.grid(row=0, column=3, sticky="w", padx=(0, 10))
+        self.logout_button.grid(row=0, column=2, sticky="w", padx=(0, 10))
 
         # Add quit button
         self.quit_button = ctk.CTkButton(
@@ -183,7 +167,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
             text_color="#ffffff",
             corner_radius=8,
         )
-        self.quit_button.grid(row=0, column=4, sticky="w")
+        self.quit_button.grid(row=0, column=3, sticky="w")
 
         # Create info row with treasury, supplies, and supplies run out
         info_frame = ctk.CTkFrame(claim_frame, fg_color="transparent")
@@ -388,31 +372,22 @@ class ClaimInfoHeader(ctk.CTkFrame):
         """Manually refresh the supplies run out calculation (for periodic updates)."""
         self._update_supplies_runout()
 
-    def _refresh_current_claim(self):
-        """Refresh all data for the current claim."""
+    def _open_settings(self):
+        """Opens the settings window."""
         try:
-            # Disable refresh button during refresh with loading indicator
-            self.refresh_button.configure(state="disabled", text="⟳ Refreshing...")
+            # Create and show the settings window
+            settings_window = SettingsWindow(self.app, self.app)
 
-            # Request current claim data refresh from the data service
-            if hasattr(self.app, "data_service") and self.app.data_service:
-                success = self.app.data_service.refresh_current_claim_data()
-                if success:
-                    logging.info("Current claim data refresh requested")
-                else:
-                    logging.warning("Current claim data refresh failed")
-            else:
-                logging.error("Data service not available for claim data refresh")
+            logging.info("Settings window opened from header")
 
         except Exception as e:
-            logging.error(f"Error refreshing current claim data: {e}")
-        finally:
-            # Re-enable refresh button after a short delay
-            self.after(1500, self._reset_refresh_button)
+            logging.error(f"Error opening settings window: {e}")
+            messagebox.showerror("Settings Error", f"Failed to open settings:\n{str(e)}")
 
     def _reset_refresh_button(self):
         """Reset the refresh button to its normal state."""
-        self.refresh_button.configure(state="normal", text="Refresh Data")
+        # This method is no longer needed since refresh button was removed
+        pass
 
     def update_available_claims(self, claims_list: list, current_claim_id: str = None):
         """

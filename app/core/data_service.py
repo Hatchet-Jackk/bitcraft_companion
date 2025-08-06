@@ -11,6 +11,7 @@ import time
 import logging
 from .message_router import MessageRouter
 from .processors import InventoryProcessor, CraftingProcessor, TasksProcessor, ClaimsProcessor, ActiveCraftingProcessor
+from ..services.notification_service import NotificationService
 
 
 class DataService:
@@ -54,6 +55,10 @@ class DataService:
         self.claim_manager = None
         self.current_subscriptions = []
 
+        # Notification service (needs main app reference)
+        self.notification_service = None
+        self.main_app = None
+
         # NEW: Message router and processors
         self.message_router = None
         self.processors = []
@@ -61,6 +66,11 @@ class DataService:
         self.data_queue = queue.Queue()
         self._stop_event = threading.Event()
         self.service_thread = None
+    
+    def set_main_app(self, main_app):
+        """Set the main app reference and initialize notification service."""
+        self.main_app = main_app
+        self.notification_service = NotificationService(main_app)
 
     def start(self, username, password, region, player_name):
         """Starts the data fetching thread with user credentials."""
@@ -239,6 +249,7 @@ class DataService:
                 "passive_crafting_service": passive_crafting_service,
                 "traveler_tasks_service": traveler_tasks_service,
                 "active_crafting_service": active_crafting_service,
+                "data_service": self,
             }
 
             self.processors = [

@@ -77,14 +77,17 @@ class MainWindow(ctk.CTk):
         self.geometry("900x600")
 
         # Set minimum window size to prevent UI elements from becoming inaccessible
-        # Width: 300px (dropdown) + 120px (refresh) + 100px (export) + 80px (logout) + 70px (quit) + 80px (padding) = 750px
+        # Width: 300px (dropdown) + 100px (settings) + 80px (logout) + 70px (quit) + 80px (padding) = 630px
         # Height: 80px (header) + 45px (tabs) + 50px (search) + 300px (content) + 45px (margins) = 520px
-        self.minsize(775, 520)
+        self.minsize(650, 520)
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(3, weight=1)
 
         self.data_service = data_service
+        
+        # Initialize notification service with this app instance
+        self.data_service.set_main_app(self)
         self.tabs: Dict[str, ctk.CTkFrame] = {}
         self.tab_buttons: Dict[str, ctk.CTkButton] = {}
         self.active_tab_name = None

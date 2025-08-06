@@ -99,6 +99,10 @@ class ActiveCraftingProcessor(BaseProcessor):
 
                             delete_data = delete_operations[entity_id]
                             recipe_id = delete_data.get("recipe_id", 0)
+                            
+                            # Trigger notification for active craft completion
+                            self._trigger_active_craft_notification(recipe_id)
+                            
                             has_active_crafting_changes = True
 
                 # For other table types, do full refresh if we have changes
@@ -722,3 +726,33 @@ class ActiveCraftingProcessor(BaseProcessor):
 
         if hasattr(self, "_claim_members"):
             self._claim_members.clear()
+    
+    def _trigger_active_craft_notification(self, recipe_id: int):
+        """
+        Trigger an active craft completion notification.
+        
+        Args:
+            recipe_id: Recipe ID of the completed item
+        """
+        try:
+            # Get item name from recipe ID
+            item_name = f"Recipe {recipe_id}"
+            
+            # Try to get recipe name from reference data
+            if self.reference_data:
+                recipes = self.reference_data.get("recipe_desc", [])
+                for recipe in recipes:
+                    if recipe.get("id") == recipe_id:
+                        item_name = recipe.get("name", item_name)
+                        # Clean up the item name (remove {0} placeholders)
+                        item_name = item_name.replace("{0}", "").strip()
+                        break
+            
+            # Access notification service through data service
+            if hasattr(self, 'services') and self.services:
+                data_service = self.services.get('data_service')
+                if data_service and hasattr(data_service, 'notification_service'):
+                    data_service.notification_service.show_active_craft_notification(item_name)
+                    
+        except Exception as e:
+            logging.error(f"Error triggering active craft notification: {e}")

@@ -196,7 +196,7 @@ class CraftingProcessor(BaseProcessor):
 
     def _log_crafting_action(self, action, crafting_data, reducer_name):
         """
-        Log crafting actions with meaningful information.
+        Log crafting actions with meaningful information and trigger notifications for completions.
 
         Extracted from DataService._log_crafting_action()
         """
@@ -225,8 +225,31 @@ class CraftingProcessor(BaseProcessor):
             status_code = status[0] if status and len(status) > 0 else 0
             status_text = "READY" if status_code == 2 else "IN_PROGRESS" if status_code == 1 else "UNKNOWN"
 
+            # Trigger notification for passive craft completions
+            if action == "COLLECTED":
+                self._trigger_passive_craft_notification(recipe_name)
+
+            logging.info(f"Passive craft {action}: {recipe_name} at {building_name} ({status_text})")
+
         except Exception as e:
             logging.warning(f"Error logging crafting action: {e}")
+    
+    def _trigger_passive_craft_notification(self, item_name: str):
+        """
+        Trigger a passive craft completion notification.
+        
+        Args:
+            item_name: Name of the completed item
+        """
+        try:
+            # Access notification service through data service
+            if hasattr(self, 'services') and self.services:
+                data_service = self.services.get('data_service')
+                if data_service and hasattr(data_service, 'notification_service'):
+                    data_service.notification_service.show_passive_craft_notification(item_name)
+                    
+        except Exception as e:
+            logging.error(f"Error triggering passive craft notification: {e}")
 
     def _refresh_crafting(self):
         """
