@@ -786,20 +786,24 @@ class ClaimInfoHeader(ctk.CTkFrame):
                 cell.font = Font(bold=True)
                 cell.alignment = Alignment(horizontal="center")
 
-            # Write data
-            for row_idx, row_data in enumerate(data, 2):
-                for col_idx, header in enumerate(headers, 1):
-                    # Get value based on header name (convert to lowercase and replace spaces with underscores)
-                    header_key = header.lower().replace(" ", "_").replace("'", "")
+            # Handle special case for Claim Inventory - expand containers into separate rows
+            if tab_name == "Claim Inventory" and "Containers" in headers:
+                self._write_inventory_data_expanded(sheet, headers, data)
+            else:
+                # Write data normally for other tabs
+                for row_idx, row_data in enumerate(data, 2):
+                    for col_idx, header in enumerate(headers, 1):
+                        # Get value based on header name (convert to lowercase and replace spaces with underscores)
+                        header_key = header.lower().replace(" ", "_").replace("'", "")
 
-                    # Handle special cases for different tab structures
-                    if tab_name == "Traveler's Tasks":
-                        value = self._get_traveler_task_value(row_data, header)
-                    else:
-                        value = row_data.get(header_key, row_data.get(header.lower(), ""))
+                        # Handle special cases for different tab structures
+                        if tab_name == "Traveler's Tasks":
+                            value = self._get_traveler_task_value(row_data, header)
+                        else:
+                            value = row_data.get(header_key, row_data.get(header.lower(), ""))
 
-                    # Convert to string for Excel
-                    sheet.cell(row=row_idx, column=col_idx, value=str(value))
+                        # Convert to string for Excel
+                        sheet.cell(row=row_idx, column=col_idx, value=str(value))
 
             # Auto-adjust column widths
             for column in sheet.columns:
@@ -816,6 +820,54 @@ class ClaimInfoHeader(ctk.CTkFrame):
 
         except Exception as e:
             logging.error(f"Error creating Excel sheet for {tab_name}: {e}")
+
+    def _write_inventory_data_expanded(self, sheet, headers, data):
+        """Writes inventory data with containers expanded into separate rows."""
+        try:
+            row_idx = 2  # Start after headers
+
+            for row_data in data:
+                containers = row_data.get("containers", {})
+
+                # If no containers or single container, write as single row
+                if len(containers) <= 1:
+                    for col_idx, header in enumerate(headers, 1):
+                        header_key = header.lower().replace(" ", "_").replace("'", "")
+
+                        if header == "Containers":
+                            # For single container, show just the container name
+                            value = next(iter(containers.keys()), "N/A") if containers else "N/A"
+                        elif header == "Quantity":
+                            # For single container, show the container's quantity
+                            value = (
+                                next(iter(containers.values()), row_data.get("quantity", 0))
+                                if containers
+                                else row_data.get("quantity", 0)
+                            )
+                        else:
+                            value = row_data.get(header_key, row_data.get(header.lower(), ""))
+
+                        sheet.cell(row=row_idx, column=col_idx, value=str(value))
+                    row_idx += 1
+                else:
+                    # Multiple containers - create separate row for each container
+                    for container_name, container_quantity in containers.items():
+                        for col_idx, header in enumerate(headers, 1):
+                            header_key = header.lower().replace(" ", "_").replace("'", "")
+
+                            if header == "Containers":
+                                value = container_name
+                            elif header == "Quantity":
+                                value = container_quantity
+                            else:
+                                # Use the same item data for all other fields
+                                value = row_data.get(header_key, row_data.get(header.lower(), ""))
+
+                            sheet.cell(row=row_idx, column=col_idx, value=str(value))
+                        row_idx += 1
+
+        except Exception as e:
+            logging.error(f"Error writing expanded inventory data: {e}")
 
     def _get_traveler_task_value(self, row_data, header):
         """Gets the correct value for traveler tasks data structure."""
