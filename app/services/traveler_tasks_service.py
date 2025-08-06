@@ -1,8 +1,8 @@
 import logging
 from typing import List, Dict
 
-from client import BitCraft
-from player import Player
+from ..client.bitcraft_client import BitCraft
+from ..models.player import Player
 
 
 class TravelerTasksService:

@@ -1,7 +1,7 @@
 import customtkinter as ctk
 from tkinter import Menu, ttk
 from typing import List, Dict
-from filter_popup import FilterPopup
+from app.ui.components.filter_popup import FilterPopup
 
 
 class ClaimInventoryTab(ctk.CTkFrame):
@@ -184,7 +184,7 @@ class ClaimInventoryTab(ctk.CTkFrame):
                     {
                         "name": item_name,
                         "tier": item_info.get("tier", 0),
-                        "quantity": item_info.get("quantity", 0),
+                        "quantity": item_info.get("total_quantity", 0),
                         "tag": item_info.get("tag", ""),
                         "containers": item_info.get("containers", {}),
                     }

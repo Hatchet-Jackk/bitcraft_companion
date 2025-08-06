@@ -2,8 +2,8 @@ import time
 from typing import Dict, List
 import logging
 import threading
-from client import BitCraft
-from claim import Claim
+from ..client.bitcraft_client import BitCraft
+from ..models.claim import Claim
 
 
 class ActiveCraftingService:
@@ -60,7 +60,6 @@ class ActiveCraftingService:
             return []
 
         try:
-            logging.debug("Fetching all progressive action (active crafting) data for claim")
 
             # Get claim members for filtering
             claim_members_query = f"SELECT * FROM claim_member_state WHERE claim_entity_id = '{self.claim.claim_id}';"
@@ -133,7 +132,6 @@ class ActiveCraftingService:
                     if crafting_entry:
                         active_crafting_operations.append(crafting_entry)
 
-            logging.debug(f"Fetched progressive action data for {len(active_crafting_operations)} individual operations")
             return active_crafting_operations
 
         except Exception as e:
@@ -149,9 +147,6 @@ class ActiveCraftingService:
             current_progress = action_state.get("progress", 0)
             craft_count = action_state.get("craft_count", 1)
             function_type = action_state.get("function_type")
-
-            # Debug: Show what fields are actually available
-            logging.debug(f"Available fields in action_state: {list(action_state.keys())}")
 
             # Determine accept_help by checking public_progressive_action_state
             accept_help = False
@@ -169,7 +164,6 @@ class ActiveCraftingService:
                     )
                     if key in public_keys:
                         accept_help = True
-                        logging.debug(f"accept_help determined by public_progressive_action_state: {accept_help}")
             except Exception as e:
                 logging.warning(f"Error checking public_progressive_action_state for accept_help: {e}")
 
@@ -178,7 +172,6 @@ class ActiveCraftingService:
             for field_name in ["preparation", "preparing", "is_preparing"]:
                 if field_name in action_state:
                     preparation = bool(action_state[field_name])
-                    logging.debug(f"Found preparation field '{field_name}': {preparation}")
                     break
 
             lock_expiration = action_state.get("lock_expiration", {})

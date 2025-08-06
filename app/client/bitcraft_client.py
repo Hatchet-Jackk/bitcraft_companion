@@ -14,6 +14,8 @@ from websockets import Subprotocol
 from websockets.sync.client import connect, ClientConnection
 from websockets.exceptions import ConnectionClosed
 
+from ..core.data_paths import get_user_data_path, get_bundled_data_path
+
 
 class BitCraft:
     """BitCraft API client for WebSocket database queries and authentication."""
@@ -23,10 +25,10 @@ class BitCraft:
     AUTH_API_BASE_URL = "https://api.bitcraftonline.com/authentication"
 
     def _get_data_directory(self):
-        if getattr(sys, "frozen", False):
-            return os.path.dirname(sys.executable)
-        else:
-            return os.path.dirname(__file__)
+        """DEPRECATED: Use get_user_data_path() or get_bundled_data_path() instead."""
+        from ..core.data_paths import get_user_data_directory
+
+        return get_user_data_directory()
 
     def __init__(self):
         self.host = os.getenv("BITCRAFT_SPACETIME_HOST", "bitcraft-early-access.spacetimedb.com")
@@ -74,7 +76,6 @@ class BitCraft:
 
             try:
                 self.ws_connection.send(json.dumps(subscribe_message))
-                logging.debug(f"Sent query: {query_string}")
 
                 # Use the internal method to listen for the specific response
                 return list(self._receive_one_off_query(message_id))
@@ -170,7 +171,7 @@ class BitCraft:
 
     def _load_reference_data(self, table: str) -> list[dict] | None:
         if table == "player_data":
-            file_path = os.path.join(self._get_data_directory(), "player_data.json")
+            file_path = get_user_data_path("player_data.json")
             try:
                 with open(file_path, "r") as f:
                     return json.load(f)
@@ -178,7 +179,7 @@ class BitCraft:
                 logging.error(f"Error loading player_data.json: {e}")
                 return None
 
-        db_path = os.path.join(os.path.dirname(__file__), "data", "data.db")
+        db_path = get_bundled_data_path("data.db")
         try:
             conn = sqlite3.connect(db_path)
             conn.row_factory = sqlite3.Row
@@ -188,10 +189,11 @@ class BitCraft:
             result = [dict(row) for row in rows]
             for row in result:
                 for field, value in row.items():
-                    if isinstance(value, str):
+                    if isinstance(value, str) and value.strip():  # Only try to parse non-empty strings
                         try:
                             row[field] = json.loads(value)
-                        except Exception:
+                        except (json.JSONDecodeError, ValueError):
+                            # Leave as string if JSON parsing fails
                             pass
             conn.close()
             return result
@@ -199,8 +201,38 @@ class BitCraft:
             logging.error(f"Error loading reference data from DB for table {table}: {e}")
             return None
 
+    def load_full_reference_data(self) -> dict:
+        """
+        Loads all required reference data tables into a single dictionary.
+
+        Returns:
+            dict: Dictionary containing all reference data tables
+        """
+        reference_tables = [
+            "resource_desc",
+            "item_desc",
+            "cargo_desc",
+            "building_desc",
+            "type_desc_ids",
+            "building_types",
+            "crafting_recipe_desc",
+            "claim_tile_cost",
+            "traveler_desc",
+        ]
+
+        reference_data = {}
+        for table in reference_tables:
+            data = self._load_reference_data(table)
+            if data is not None:
+                reference_data[table] = data
+            else:
+                logging.warning(f"Failed to load reference data for table: {table}")
+
+        logging.info(f"Loaded reference data for {len(reference_data)} tables")
+        return reference_data
+
     def update_user_data_file(self, key: str, value: str):
-        file_path = os.path.join(self._get_data_directory(), "player_data.json")
+        file_path = get_user_data_path("player_data.json")
         data = {}
         try:
             with open(file_path, "r") as f:
@@ -221,7 +253,7 @@ class BitCraft:
 
     def load_user_data_from_file(self):
         try:
-            with open(os.path.join(self._get_data_directory(), "player_data.json"), "r") as f:
+            with open(get_user_data_path("player_data.json"), "r") as f:
                 data = json.load(f)
                 self.email = data.get("email")
                 self.region = data.get("region")
@@ -522,6 +554,8 @@ class BitCraft:
                     # Use a timeout to allow the loop to check the stop event
                     msg = self.ws_connection.recv(timeout=1.0)
                     data = json.loads(msg)
+                    # with open("debug_ws_subscription_queries_messages.json", "a") as f:
+                    #     f.write(f"{json.dumps(data)}\n")
 
                     # Debug logging - you can remove this later
                     logging.debug(f"Received WebSocket message type: {list(data.keys())}")

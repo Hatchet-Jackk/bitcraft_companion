@@ -8,12 +8,12 @@ import os
 import threading
 from PIL import Image
 
-from data_manager import DataService
-from claim_info_header import ClaimInfoHeader
-from claim_inventory_tab import ClaimInventoryTab
-from passive_crafting_tab import PassiveCraftingTab
-from traveler_tasks_tab import TravelerTasksTab
-from active_crafting_tab import ActiveCraftingTab
+from app.core.data_service import DataService
+from app.ui.components.claim_info_header import ClaimInfoHeader
+from app.ui.tabs.claim_inventory_tab import ClaimInventoryTab
+from app.ui.tabs.passive_crafting_tab import PassiveCraftingTab
+from app.ui.tabs.traveler_tasks_tab import TravelerTasksTab
+from app.ui.tabs.active_crafting_tab import ActiveCraftingTab
 
 
 class ShutdownDialog(ctk.CTkToplevel):
@@ -304,100 +304,6 @@ class MainWindow(ctk.CTk):
             logging.info(f"All initial data loaded: {self.received_data_types}")
             self.hide_loading()
 
-    def process_data_queue(self):
-        """Enhanced data queue processing that handles timer updates and task updates."""
-        try:
-            while not self.data_service.data_queue.empty():
-                message = self.data_service.data_queue.get_nowait()
-                msg_type = message.get("type")
-                msg_data = message.get("data")
-
-                if msg_type == "inventory_update":
-                    if "Claim Inventory" in self.tabs:
-                        self.tabs["Claim Inventory"].update_data(msg_data)
-                        logging.debug("Inventory data updated in UI")
-
-                        # Track that we've received inventory data
-                        if self.is_loading:
-                            self.received_data_types.add("inventory")
-                            self._check_all_data_loaded()
-
-                elif msg_type == "crafting_update":
-                    if "Passive Crafting" in self.tabs:
-                        self.tabs["Passive Crafting"].update_data(msg_data)
-
-                        # Check for completion celebrations
-                        changes = message.get("changes", {})
-                        if changes.get("crafting_completed"):
-                            self._celebrate_completions(changes["crafting_completed"])
-
-                        logging.debug("Crafting data updated in UI")
-
-                        # Track that we've received crafting data
-                        if self.is_loading:
-                            self.received_data_types.add("crafting")
-                            self._check_all_data_loaded()
-
-                elif msg_type == "active_crafting_update":
-                    if "Active Crafting" in self.tabs:
-                        self.tabs["Active Crafting"].update_data(msg_data)
-                        logging.debug("Active crafting data updated in UI")
-
-                        # Track that we've received active crafting data
-                        if self.is_loading:
-                            self.received_data_types.add("active_crafting")
-                            self._check_all_data_loaded()
-
-                elif msg_type == "timer_update":
-                    if "Passive Crafting" in self.tabs:
-                        # Update the crafting tab with new timer data
-                        self.tabs["Passive Crafting"].update_data(msg_data)
-                        logging.debug("Timer data updated in UI")
-
-                elif msg_type == "tasks_update":
-                    if "Traveler's Tasks" in self.tabs:
-                        self.tabs["Traveler's Tasks"].update_data(msg_data)
-
-                        # Check for task completions
-                        changes = message.get("changes", {})
-                        if changes.get("completed_tasks"):
-                            self._celebrate_task_completions(changes["completed_tasks"])
-
-                        logging.debug("Tasks data updated in UI")
-
-                        # Track that we've received tasks data
-                        if self.is_loading:
-                            self.received_data_types.add("tasks")
-                            self._check_all_data_loaded()
-
-                elif msg_type == "claim_info_update":
-                    self.claim_info.update_claim_data(msg_data)
-                    logging.debug("Claim info updated in UI")
-
-                    # Track that we've received claim info data
-                    if self.is_loading:
-                        self.received_data_types.add("claim_info")
-                        self._check_all_data_loaded()
-
-                elif msg_type == "error":
-                    messagebox.showerror("Error", msg_data)
-                    logging.error(f"Error message displayed: {msg_data}")
-
-                    # Hide loading on error
-                    if self.is_loading:
-                        self.hide_loading()
-
-                else:
-                    logging.warning(f"Unknown message type received: {msg_type}")
-
-        except queue.Empty:
-            pass
-        except Exception as e:
-            logging.error(f"Error processing data queue: {e}")
-        finally:
-            # Check for updates every 100ms for smooth real-time timer updates
-            self.after(100, self.process_data_queue)
-
     def _celebrate_task_completions(self, completed_tasks):
         """
         Celebrate completed tasks with visual feedback.
@@ -529,6 +435,11 @@ class MainWindow(ctk.CTk):
                         logging.info("[MainWindow] Stopping data service...")
                         self.data_service.stop()
 
+                    # Stop task refresh timer
+                    if hasattr(self, "claim_info") and self.claim_info:
+                        logging.info("[MainWindow] Stopping task refresh timer...")
+                        self.claim_info.stop_task_refresh_timer()
+
                     self.shutdown_dialog.update_status("Saving data...")
 
                     # Give services a moment to clean up
@@ -652,8 +563,6 @@ class MainWindow(ctk.CTk):
             if "Traveler's Tasks" in self.tabs:
                 self.tabs["Traveler's Tasks"].update_data([])
 
-            logging.debug("Cleared all tab data for claim switch")
-
         except Exception as e:
             logging.error(f"Error clearing tab data: {e}")
 
@@ -732,6 +641,24 @@ class MainWindow(ctk.CTk):
         except Exception as e:
             logging.error(f"Error handling claims list update: {e}")
 
+    def _handle_player_state_update(self, msg_data):
+        """
+        Handles the player_state_update message from TasksProcessor.
+        Updates the task refresh countdown in the claim info header.
+
+        Args:
+            msg_data: Message data containing player state information
+        """
+        try:
+            traveler_tasks_expiration = msg_data.get("traveler_tasks_expiration", 0)
+
+            if traveler_tasks_expiration > 0:
+                # Update the claim info header with the expiration time
+                self.claim_info.update_task_refresh_expiration(traveler_tasks_expiration)
+
+        except Exception as e:
+            logging.error(f"Error handling player state update: {e}")
+
     def process_data_queue(self):
         """Enhanced data queue processing that handles claim switching messages."""
         try:
@@ -743,7 +670,6 @@ class MainWindow(ctk.CTk):
                 if msg_type == "inventory_update":
                     if "Claim Inventory" in self.tabs:
                         self.tabs["Claim Inventory"].update_data(msg_data)
-                        logging.debug("Inventory data updated in UI")
 
                         # Track that we've received inventory data
                         if self.is_loading:
@@ -759,8 +685,6 @@ class MainWindow(ctk.CTk):
                         if changes.get("crafting_completed"):
                             self._celebrate_completions(changes["crafting_completed"])
 
-                        logging.debug("Crafting data updated in UI")
-
                         # Track that we've received crafting data
                         if self.is_loading:
                             self.received_data_types.add("crafting")
@@ -769,7 +693,6 @@ class MainWindow(ctk.CTk):
                 elif msg_type == "active_crafting_update":
                     if "Active Crafting" in self.tabs:
                         self.tabs["Active Crafting"].update_data(msg_data)
-                        logging.debug("Active crafting data updated in UI")
 
                         # Track that we've received active crafting data
                         if self.is_loading:
@@ -779,7 +702,11 @@ class MainWindow(ctk.CTk):
                 elif msg_type == "timer_update":
                     if "Passive Crafting" in self.tabs:
                         self.tabs["Passive Crafting"].update_data(msg_data)
-                        logging.debug("Timer data updated in UI")
+
+                elif msg_type == "crafting_timer_update":
+                    if "Passive Crafting" in self.tabs:
+                        # Lightweight timer update - only update time values
+                        self.tabs["Passive Crafting"].update_timer_only(msg_data or {})
 
                 elif msg_type == "tasks_update":
                     if "Traveler's Tasks" in self.tabs:
@@ -790,8 +717,6 @@ class MainWindow(ctk.CTk):
                         if changes.get("completed_tasks"):
                             self._celebrate_task_completions(changes["completed_tasks"])
 
-                        logging.debug("Tasks data updated in UI")
-
                         # Track that we've received tasks data
                         if self.is_loading:
                             self.received_data_types.add("tasks")
@@ -799,7 +724,6 @@ class MainWindow(ctk.CTk):
 
                 elif msg_type == "claim_info_update":
                     self.claim_info.update_claim_data(msg_data)
-                    logging.debug("Claim info updated in UI")
 
                     # Track that we've received claim info data
                     if self.is_loading:
@@ -814,6 +738,9 @@ class MainWindow(ctk.CTk):
 
                 elif msg_type == "claims_list_update":
                     self._handle_claims_list_update(msg_data)
+
+                elif msg_type == "player_state_update":
+                    self._handle_player_state_update(msg_data)
 
                 elif msg_type == "error":
                     messagebox.showerror("Error", msg_data)
@@ -867,8 +794,7 @@ class MainWindow(ctk.CTk):
             if not self.claim_info.claim_switching:
                 logging.info(f"All initial data loaded: {self.received_data_types}")
                 self.hide_loading()
-            else:
-                logging.debug("Data loaded but still switching claims, keeping loading overlay")
+            # else:
 
     def _reset_loading_state_for_switch(self):
         """Resets loading state for a new claim switch."""

@@ -3,23 +3,25 @@ import time
 from typing import List, Dict, Optional
 
 
-class ClaimManager:
+class ClaimService:
     """
     Manages multiple claims for a player, handles claim switching,
     and provides claim data caching and persistence.
     """
 
-    def __init__(self, client):
+    def __init__(self, client, query_service):
         """
-        Initialize the ClaimManager with a BitCraft client for data operations.
+        Initialize the ClaimService with a BitCraft client for data operations.
 
         Args:
             client: BitCraft client instance for making queries
         """
         self.client = client
+        self.query_service = query_service
         self.available_claims: List[Dict] = []
         self.current_claim_id: Optional[str] = None
         self.current_claim_index: int = 0
+        self.claims_list = []
 
     def fetch_all_user_claims(self, user_id: str) -> List[Dict]:
         """
@@ -36,11 +38,7 @@ class ClaimManager:
             return []
 
         try:
-            # Get all claim memberships for this user
-            sanitized_user_id = str(user_id).replace("'", "''")
-            claims_query = f"SELECT * FROM claim_member_state WHERE player_entity_id = '{sanitized_user_id}';"
-
-            claim_memberships = self.client.query(claims_query)
+            claim_memberships = self.query_service.get_user_claims(user_id)
             if not claim_memberships:
                 logging.warning(f"No claim memberships found for user {user_id}")
                 return []
@@ -48,14 +46,14 @@ class ClaimManager:
             # Get detailed info for each claim
             claims_list = []
             for membership in claim_memberships:
-                claim_id = membership.get("claim_entity_id")
-                if not claim_id:
+                claim_entity_id = membership.get("claim_entity_id")
+                if not claim_entity_id:
                     continue
 
                 # Get claim name and details
-                claim_info = self._fetch_claim_details(claim_id)
-                if claim_info:
-                    claims_list.append(claim_info)
+                claim_details = self._fetch_claim_details(claim_entity_id)
+                if claim_details:
+                    claims_list.append(claim_details)
 
             logging.info(f"Found {len(claims_list)} claims for user {user_id}")
             return claims_list
@@ -63,6 +61,26 @@ class ClaimManager:
         except Exception as e:
             logging.error(f"Error fetching user claims: {e}")
             return []
+
+    def refresh_user_claims(self, user_id: str) -> List[Dict]:
+        """
+        Refreshes the list of claims for a user and updates the available claims.
+
+        Args:
+            user_id: The player's entity ID
+
+        Returns:
+            Updated list of claim dictionaries
+        """
+        try:
+            updated_claims = self.fetch_all_user_claims(user_id)
+            if updated_claims:
+                self.set_available_claims(updated_claims)
+                logging.info(f"Refreshed claims list: {len(updated_claims)} claims found")
+            return updated_claims
+        except Exception as e:
+            logging.error(f"Error refreshing user claims: {e}")
+            return self.available_claims  # Return current claims on error
 
     def _fetch_claim_details(self, claim_id: str) -> Optional[Dict]:
         """
@@ -74,40 +92,18 @@ class ClaimManager:
         Returns:
             Dictionary with claim details or None if not found
         """
+        claim_data = {}
         try:
-            # Get claim state for name
-            state_query = f"SELECT * FROM claim_state WHERE entity_id = '{claim_id}';"
-            state_results = self.client.query(state_query)
+            claim_local_state = self.query_service.get_claim_local_state(claim_id)
+            claim_data.update(claim_local_state)
 
-            # Get claim local state for treasury/supplies
-            local_query = f"SELECT * FROM claim_local_state WHERE entity_id = '{claim_id}';"
-            local_results = self.client.query(local_query)
+            claim_state = self.query_service.get_claim_state(claim_id)
+            claim_data.update(claim_state)
 
-            claim_info = {
-                "claim_id": claim_id,
-                "claim_name": "Unknown Claim",
-                "treasury": 0,
-                "supplies": 0,
-                "tile_count": 0,
-                "last_accessed": time.time(),
-            }
-
-            # Extract claim name
-            if state_results and len(state_results) > 0:
-                claim_info["claim_name"] = state_results[0].get("name", "Unknown Claim")
-
-            # Extract treasury, supplies, tile count
-            if local_results and len(local_results) > 0:
-                local_data = local_results[0]
-                claim_info["treasury"] = local_data.get("treasury", 0)
-                claim_info["supplies"] = local_data.get("supplies", 0)
-                claim_info["tile_count"] = local_data.get("num_tiles", 0)
-
-            return claim_info
-
+            return claim_data
         except Exception as e:
             logging.error(f"Error fetching details for claim {claim_id}: {e}")
-            return None
+            return {}
 
     def set_available_claims(self, claims_list: List[Dict]):
         """
@@ -127,17 +123,17 @@ class ClaimManager:
             if last_selected:
                 # Find the claim in our current list
                 for i, claim in enumerate(self.available_claims):
-                    if claim["claim_id"] == last_selected:
+                    if claim["entity_id"] == last_selected:
                         self.current_claim_id = last_selected
                         self.current_claim_index = i
-                        logging.info(f"Restored last selected claim: {claim['claim_name']}")
+                        logging.info(f"Restored last selected claim: {claim['name']}")
                         return
 
         # Default to first claim if no cached selection
         if self.available_claims:
-            self.current_claim_id = self.available_claims[0]["claim_id"]
+            self.current_claim_id = self.available_claims[0]["entity_id"]
             self.current_claim_index = 0
-            logging.info(f"Defaulted to first claim: {self.available_claims[0]['claim_name']}")
+            logging.info(f"Defaulted to first claim: {self.available_claims[0]['name']}")
 
     def get_all_claims(self) -> List[Dict]:
         """Returns the full list of available claims."""
@@ -147,13 +143,25 @@ class ClaimManager:
         """Returns the currently selected claim info."""
         if self.current_claim_id and self.available_claims:
             for claim in self.available_claims:
-                if claim["claim_id"] == self.current_claim_id:
+                if claim["entity_id"] == self.current_claim_id:
                     return claim
         return None
 
     def get_current_claim_id(self) -> Optional[str]:
         """Returns the currently selected claim ID."""
         return self.current_claim_id
+
+    def set_current_claim(self, claim_id: str) -> bool:
+        """
+        Sets the current claim (alias for switch_to_claim for API compatibility).
+        
+        Args:
+            claim_id: The claim ID to set as current
+            
+        Returns:
+            True if switch was successful, False otherwise
+        """
+        return self.switch_to_claim(claim_id)
 
     def switch_to_claim(self, claim_id: str) -> bool:
         """
@@ -167,7 +175,7 @@ class ClaimManager:
         """
         # Find the claim in our available list
         for i, claim in enumerate(self.available_claims):
-            if claim["claim_id"] == claim_id:
+            if claim["entity_id"] == claim_id:
                 self.current_claim_id = claim_id
                 self.current_claim_index = i
 
@@ -177,7 +185,7 @@ class ClaimManager:
                 # Save to cache
                 self._save_claims_cache()
 
-                logging.info(f"Switched to claim: {claim['claim_name']}")
+                logging.info(f"Switched to claim: {claim['name']}")
                 return True
 
         logging.error(f"Cannot switch to claim {claim_id} - not found in available claims")
@@ -194,7 +202,7 @@ class ClaimManager:
             Claim dictionary or None if not found
         """
         for claim in self.available_claims:
-            if claim["claim_id"] == claim_id:
+            if claim["entity_id"] == claim_id:
                 return claim
         return None
 
@@ -207,7 +215,7 @@ class ClaimManager:
             updated_info: Dictionary with updated claim data
         """
         for claim in self.available_claims:
-            if claim["claim_id"] == claim_id:
+            if claim["entity_id"] == claim_id:
                 claim.update(updated_info)
                 claim["last_accessed"] = time.time()
                 self._save_claims_cache()
@@ -220,11 +228,11 @@ class ClaimManager:
         Args:
             claim_id: The claim ID to remove
         """
-        self.available_claims = [c for c in self.available_claims if c["claim_id"] != claim_id]
+        self.available_claims = [c for c in self.available_claims if c["entity_id"] != claim_id]
 
         # If we removed the current claim, switch to the first available
         if self.current_claim_id == claim_id and self.available_claims:
-            self.switch_to_claim(self.available_claims[0]["claim_id"])
+            self.switch_to_claim(self.available_claims[0]["entity_id"])
         elif not self.available_claims:
             self.current_claim_id = None
             self.current_claim_index = 0
@@ -242,7 +250,6 @@ class ClaimManager:
             }
 
             self.client.update_user_data_file("claims", claims_cache)
-            logging.debug("Claims cache saved successfully")
 
         except Exception as e:
             logging.error(f"Error saving claims cache: {e}")

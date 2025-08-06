@@ -6,8 +6,8 @@ import time
 import ast
 import threading
 
-from client import BitCraft
-from claim import Claim
+from ..client.bitcraft_client import BitCraft
+from ..models.claim import Claim
 
 
 class PassiveCraftingService:
@@ -53,6 +53,7 @@ class PassiveCraftingService:
         Args:
             ui_update_callback: Function to call when timers need UI update
         """
+
         if self.timer_thread and self.timer_thread.is_alive():
             logging.warning("Timer thread already running")
             return
@@ -91,12 +92,14 @@ class PassiveCraftingService:
 
     def _timer_loop(self):
         """Background thread that updates timers every second."""
+        timer_count = 0
         while not self.timer_stop_event.is_set():
             try:
                 current_time = time.time()
 
                 # Only update every second to avoid excessive UI updates
                 if current_time - self.last_timer_update >= 1.0:
+                    timer_count += 1
                     self._update_all_timers()
                     self.last_timer_update = current_time
 
@@ -118,6 +121,8 @@ class PassiveCraftingService:
                 new_time_remaining = self._calculate_current_time_remaining(operation)
                 old_time_remaining = operation.get("time_remaining", "")
 
+                recipe_id = operation.get("recipe_id", "unknown")
+
                 # Check if status changed (e.g., from "5m 30s" to "READY")
                 if new_time_remaining != old_time_remaining:
                     operation["time_remaining"] = new_time_remaining
@@ -125,8 +130,7 @@ class PassiveCraftingService:
 
                     # Log completions
                     if new_time_remaining == "READY" and old_time_remaining != "READY":
-                        recipe_id = operation.get("recipe_id")
-                        logging.debug(f"Timer detected completion: Recipe {recipe_id}")
+                        logging.warning(f"Timer detected completion: Recipe {recipe_id}")
 
                 updated_operations.append(operation)
 
@@ -168,11 +172,26 @@ class PassiveCraftingService:
             recipe = self.crafting_recipes[recipe_id]
             duration_seconds = recipe.get("time_requirement", 0)
 
+            # Get timestamp - handle multiple formats
             timestamp_data = raw_craft_state.get("timestamp")
-            if not timestamp_data:
-                return "In Progress"
+            timestamp_micros = None
 
-            timestamp_micros = timestamp_data.get("__timestamp_micros_since_unix_epoch__")
+            if timestamp_data:
+                # Handle nested format from subscription data
+                timestamp_micros = timestamp_data.get("__timestamp_micros_since_unix_epoch__")
+
+            if not timestamp_micros:
+                # Handle direct format from processor data
+                timestamp_micros = raw_craft_state.get("timestamp_micros")
+                if isinstance(timestamp_micros, list) and len(timestamp_micros) > 0:
+                    timestamp_micros = timestamp_micros[0]
+
+            # Check timestamp on operation itself (from processor incremental updates)
+            if not timestamp_micros:
+                timestamp_micros = operation.get("timestamp_micros")
+                if isinstance(timestamp_micros, list) and len(timestamp_micros) > 0:
+                    timestamp_micros = timestamp_micros[0]
+
             if not timestamp_micros:
                 return "In Progress"
 
@@ -190,6 +209,32 @@ class PassiveCraftingService:
         except Exception as e:
             logging.error(f"Error calculating timer: {e}")
             return "Error"
+
+    def get_crafting_data_from_processor(self, processor_operations):
+        """
+        Get formatted crafting data from processor operations.
+        This method allows the processor to pass data directly to the service
+        instead of the service querying the database.
+
+        Args:
+            processor_operations: List of crafting operations from the processor
+
+        Returns:
+            List of formatted crafting data for UI
+        """
+        try:
+            # Store the processor operations for timer updates
+            self.raw_crafting_operations = processor_operations
+
+            # Format and group the data for UI
+            grouped_data = self._group_crafting_data_by_item_name_enhanced(processor_operations)
+            self.current_crafting_data = grouped_data
+
+            return grouped_data
+
+        except Exception as e:
+            logging.error(f"Error processing crafting data from processor: {e}")
+            return []
 
     def get_subscription_queries(self, building_ids: List[str]) -> List[str]:
         """Returns a list of SQL query strings for subscribing to passive crafting updates."""
@@ -303,7 +348,6 @@ class PassiveCraftingService:
 
                     # FILTER OUT NON-CLAIM MEMBERS
                     if owner_entity_id not in claim_member_ids:
-                        logging.debug(f"Skipping crafting operation by non-claim member: {owner_entity_id}")
                         continue
 
                     crafting_entry = self._format_crafting_entry_item_focused_enhanced(craft_state, building_info, user_lookup)
@@ -362,7 +406,7 @@ class PassiveCraftingService:
             group = item_groups[item_key]
             group["operations"].append(operation)
             group["all_crafters"].add(operation.get("crafter", "Unknown"))
-            group["all_buildings"].add(operation.get("refinery", "Unknown"))
+            group["all_buildings"].add(operation.get("building", "Unknown"))
 
         # Step 2: Process each item group to create hierarchical structure
         grouped_data = []
@@ -416,7 +460,7 @@ class PassiveCraftingService:
                 for crafter, crafter_ops in crafter_groups.items():
                     crafter_total = sum(op.get("quantity", 0) for op in crafter_ops)
                     crafter_completed = sum(op.get("quantity", 0) for op in crafter_ops if op.get("time_remaining") == "READY")
-                    crafter_buildings = set(op.get("refinery", "Unknown") for op in crafter_ops)
+                    crafter_buildings = set(op.get("building", "Unknown") for op in crafter_ops)
 
                     # Find max time for this crafter
                     crafter_incomplete = [op for op in crafter_ops if op.get("time_remaining") != "READY"]
@@ -449,7 +493,7 @@ class PassiveCraftingService:
                     if len(crafter_buildings) > 1:
                         building_groups = {}
                         for operation in crafter_ops:
-                            building = operation.get("refinery", "Unknown")
+                            building = operation.get("building", "Unknown")
                             if building not in building_groups:
                                 building_groups[building] = []
                             building_groups[building].append(operation)
@@ -502,7 +546,7 @@ class PassiveCraftingService:
                     # Group by building for the single crafter
                     building_groups = {}
                     for operation in operations:
-                        building = operation.get("refinery", "Unknown")
+                        building = operation.get("building", "Unknown")
                         if building not in building_groups:
                             building_groups[building] = []
                         building_groups[building].append(operation)
@@ -549,29 +593,25 @@ class PassiveCraftingService:
             grouped_data.append(top_level_entry)
 
         # Debug logging to see the structure
-        logging.debug(f"Created {len(grouped_data)} top-level groups with hierarchical structure:")
         for i, group in enumerate(grouped_data):
             crafter_info = group.get("crafter", "")
             building_info = group.get("building", "")
             expansion_info = f" (expandable: {group.get('is_expandable', False)})"
-            logging.debug(f"  Group {i+1}: {group.get('item', '')} - {crafter_info} - {building_info}{expansion_info}")
 
             operations = group.get("operations", [])
             if operations:
                 for j, op in enumerate(operations):
                     op_crafter = op.get("crafter", "")
-                    op_building = op.get("building", op.get("refinery", ""))
+                    op_building = op.get("building", op.get("building", ""))
                     op_expandable = op.get("is_expandable", False)
                     op_level = op.get("expansion_level", 1)
-                    logging.debug(f"    Child {j+1} (L{op_level}): {op_crafter} - {op_building} (expandable: {op_expandable})")
 
                     # Check for grandchildren
                     grandchildren = op.get("operations", [])
                     if grandchildren:
                         for k, gc in enumerate(grandchildren):
-                            gc_building = gc.get("building", gc.get("refinery", ""))
+                            gc_building = gc.get("building", gc.get("building", ""))
                             gc_level = gc.get("expansion_level", 2)
-                            logging.debug(f"      Grandchild {k+1} (L{gc_level}): {gc_building}")
 
         return grouped_data
 
@@ -605,7 +645,7 @@ class PassiveCraftingService:
                 total_seconds += int(seconds_match.group(1))
 
         except Exception as e:
-            logging.debug(f"Error parsing time string '{time_str}': {e}")
+            logging.warning(f"Error parsing time string '{time_str}': {e}")
             return 999999
 
         return total_seconds
@@ -618,7 +658,7 @@ class PassiveCraftingService:
             return False
 
         crafters = set(op.get("crafter", "") for op in operations)
-        buildings = set(op.get("refinery", "") for op in operations)
+        buildings = set(op.get("building", "") for op in operations)
 
         # Different if more than one unique crafter OR more than one unique building
         return len(crafters) > 1 or len(buildings) > 1
@@ -668,7 +708,7 @@ class PassiveCraftingService:
                             crafted_item_tier = item_info.get("tier", 0)
 
             except Exception as e:
-                logging.debug(f"Error processing crafted_item_stacks: {e}")
+                logging.warning(f"Error processing crafted_item_stacks: {e}")
 
             # Get crafter name
             crafter_name = user_lookup.get(owner_entity_id, f"User {owner_entity_id}")
@@ -676,12 +716,12 @@ class PassiveCraftingService:
             # USE NEW DATABASE STATUS READING (no timer calculations!)
             status_display = self.get_crafting_status_from_db(craft_state)
 
-            # Create refinery display name (building + crafter info)
-            refinery_display = building_info["display_name"]
+            # Create building display name (building + crafter info)
+            building_display = building_info["display_name"]
             if building_info["nickname"]:
-                refinery_display = f"{building_info['nickname']}"
+                building_display = f"{building_info['nickname']}"
             else:
-                refinery_display = building_info["building_name"]
+                building_display = building_info["building_name"]
 
             return {
                 "item_name": crafted_item_name,
@@ -690,8 +730,8 @@ class PassiveCraftingService:
                 "recipe": recipe_name,
                 "time_remaining": status_display,  # This is now status, not calculated time!
                 "crafter": crafter_name,
-                "refinery": refinery_display,
-                "refinery_full": building_info["building_name"],  # For filtering
+                "building": building_display,
+                "building_full": building_info["building_name"],  # For filtering
                 "is_empty": False,
             }
 
@@ -753,11 +793,11 @@ class PassiveCraftingService:
                     return self._get_estimated_time_for_display(crafting_entry)
                 else:
                     # Unknown status code
-                    logging.debug(f"Unknown crafting status code: {status_code}")
+                    logging.warning(f"Unknown crafting status code: {status_code}")
                     return "Unknown"
             else:
                 # No valid status found
-                logging.debug("No valid status found in crafting entry")
+                logging.warning("No valid status found in crafting entry")
                 return "Unknown"
 
         except Exception as e:
@@ -784,15 +824,22 @@ class PassiveCraftingService:
             recipe = self.crafting_recipes[recipe_id]
             duration_seconds = recipe.get("time_requirement", 0)
 
-            # Get timestamp from the crafting entry
+            # Get timestamp from the crafting entry - handle multiple formats
             timestamp_data = crafting_entry.get("timestamp")
-            if not timestamp_data:
-                # No timestamp - show generic progress with recipe duration
-                return f"~{self._format_duration_for_display(duration_seconds)}"
+            timestamp_micros = None
 
-            # Extract timestamp from the nested structure
-            timestamp_micros = timestamp_data.get("__timestamp_micros_since_unix_epoch__")
+            if timestamp_data:
+                # Handle nested format from subscription data
+                timestamp_micros = timestamp_data.get("__timestamp_micros_since_unix_epoch__")
+
             if not timestamp_micros:
+                # Handle direct format from processor data
+                timestamp_micros = crafting_entry.get("timestamp_micros")
+                if isinstance(timestamp_micros, list) and len(timestamp_micros) > 0:
+                    timestamp_micros = timestamp_micros[0]
+
+            if not timestamp_micros:
+                # No timestamp - show generic progress with recipe duration
                 return f"~{self._format_duration_for_display(duration_seconds)}"
 
             # Calculate estimated remaining time (for display only!)
@@ -800,6 +847,9 @@ class PassiveCraftingService:
             current_time = time.time()
             elapsed_time = current_time - start_time
             remaining_time = duration_seconds - elapsed_time
+
+            # Debug logging for service time calculation
+            recipe_id = crafting_entry.get("recipe_id", "unknown")
 
             if remaining_time <= 0:
                 # This shouldn't happen if status is still [1, {}], but just in case
@@ -893,7 +943,6 @@ class PassiveCraftingService:
 
             # Check if this update contains passive crafting data
             if "passive_craft_state" not in update_str:
-                logging.debug("Subscription update doesn't contain crafting data, skipping parsing")
                 return changes
 
             # Parse the subscription update structure
@@ -938,7 +987,7 @@ class PassiveCraftingService:
             elif "TransactionUpdate" in db_update:
                 database_update = db_update["TransactionUpdate"].get("database_update", {})
             else:
-                logging.debug("Unknown update structure format")
+                logging.warning("Unknown update structure format")
                 return None
 
             tables = database_update.get("tables", [])

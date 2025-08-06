@@ -1,8 +1,8 @@
 import logging
 from typing import List
 
-from client import BitCraft
-from claim import Claim
+from ..client.bitcraft_client import BitCraft
+from ..models.claim import Claim
 
 
 class InventoryService:

@@ -25,6 +25,8 @@ class ClaimInfoHeader(ctk.CTkFrame):
         self.tile_count = 0
         self.supplies_per_hour = 0
         self.time_remaining = "Calculating..."
+        self.traveler_tasks_expiration = 0
+        self.task_refresh_time = "Unknown"
 
         # Load tile cost data from the app's data service
         self.tile_cost_lookup = {}
@@ -86,9 +88,13 @@ class ClaimInfoHeader(ctk.CTkFrame):
         claim_frame = ctk.CTkFrame(self, fg_color="transparent")
         claim_frame.grid(row=0, column=0, sticky="w", padx=15, pady=10)
 
+        # Create frame for dropdown and refresh button
+        dropdown_frame = ctk.CTkFrame(claim_frame, fg_color="transparent")
+        dropdown_frame.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 12))
+
         # IMPROVED: Use CTkOptionMenu instead of custom dropdown
         self.claim_dropdown = ctk.CTkOptionMenu(
-            claim_frame,
+            dropdown_frame,
             values=["Loading..."],
             command=self._on_claim_selected,
             font=ctk.CTkFont(size=16, weight="bold"),
@@ -105,7 +111,22 @@ class ClaimInfoHeader(ctk.CTkFrame):
             height=40,
             width=300,
         )
-        self.claim_dropdown.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 12))
+        self.claim_dropdown.grid(row=0, column=0, sticky="w", padx=(0, 10))
+
+        # Add refresh button
+        self.refresh_button = ctk.CTkButton(
+            dropdown_frame,
+            text="🔄",
+            width=40,
+            height=40,
+            font=ctk.CTkFont(size=16),
+            command=self._refresh_claims,
+            fg_color=("#404040", "#505050"),
+            hover_color=("#505050", "#606060"),
+            text_color="#ffffff",
+            corner_radius=8,
+        )
+        self.refresh_button.grid(row=0, column=1, sticky="w")
 
         # Create info row with treasury, supplies, and supplies run out
         info_frame = ctk.CTkFrame(claim_frame, fg_color="transparent")
@@ -123,11 +144,19 @@ class ClaimInfoHeader(ctk.CTkFrame):
 
         # Supplies Run Out with icon
         supplies_runout_frame = self._create_enhanced_info_item(info_frame, "⏱️ Depletes In", "Calculating...", "#FF9800")
-        supplies_runout_frame.grid(row=0, column=2)
+        supplies_runout_frame.grid(row=0, column=2, padx=(0, 20))
         self.supplies_runout_label = supplies_runout_frame.winfo_children()[1]
 
         # Add tooltip to supplies run out label
         self._add_tooltip(self.supplies_runout_label, "This value is approximate and may not exactly match in-game.")
+
+        # Task Refresh with icon
+        task_refresh_frame = self._create_enhanced_info_item(info_frame, "🔄 Task Refresh", "Unknown", "#9C27B0")
+        task_refresh_frame.grid(row=0, column=3)
+        self.task_refresh_label = task_refresh_frame.winfo_children()[1]
+
+        # Add tooltip to task refresh label
+        self._add_tooltip(self.task_refresh_label, "Time until traveler tasks refresh with new assignments.")
 
     def _create_enhanced_info_item(self, parent, label_text, value_text, color):
         """Creates an enhanced label-value pair with better styling."""
@@ -181,10 +210,11 @@ class ClaimInfoHeader(ctk.CTkFrame):
         if self.claim_switching:
             return
 
-        # Find the claim ID from the selected name
+        # Find the claim ID from the selected name (handle both key formats)
         for claim in self.available_claims:
-            if claim["claim_name"] == selected_claim_name:
-                claim_id = claim["claim_id"]
+            claim_name = claim.get("claim_name") or claim.get("name")
+            if claim_name == selected_claim_name:
+                claim_id = claim.get("claim_id") or claim.get("entity_id")
 
                 # Only switch if it's different from current
                 if claim_id != self.current_claim_id:
@@ -224,12 +254,6 @@ class ClaimInfoHeader(ctk.CTkFrame):
 
             # Calculate and update supplies run out time
             self._update_supplies_runout()
-
-            logging.debug(
-                f"Claim header updated: {self.claim_name}, Treasury: {self.treasury}, "
-                f"Supplies: {self.supplies}, Tiles: {self.tile_count}, "
-                f"Consumption: {self.supplies_per_hour:.4f}/hour"
-            )
 
         except Exception as e:
             logging.error(f"Error updating claim data in header: {e}")
@@ -278,6 +302,32 @@ class ClaimInfoHeader(ctk.CTkFrame):
         """Manually refresh the supplies run out calculation (for periodic updates)."""
         self._update_supplies_runout()
 
+    def _refresh_claims(self):
+        """Refresh the list of available claims."""
+        try:
+            # Disable refresh button during refresh
+            self.refresh_button.configure(state="disabled", text="⟳")
+
+            # Request claims refresh from the data service
+            if hasattr(self.app, "data_service") and self.app.data_service:
+                success = self.app.data_service.refresh_claims_list()
+                if success:
+                    logging.info("Claims list refresh requested")
+                else:
+                    logging.warning("Claims refresh failed")
+            else:
+                logging.error("Data service not available for claims refresh")
+
+        except Exception as e:
+            logging.error(f"Error refreshing claims: {e}")
+        finally:
+            # Re-enable refresh button after a short delay
+            self.after(1000, self._reset_refresh_button)
+
+    def _reset_refresh_button(self):
+        """Reset the refresh button to its normal state."""
+        self.refresh_button.configure(state="normal", text="🔄")
+
     def update_available_claims(self, claims_list: list, current_claim_id: str = None):
         """
         Updates the list of available claims using CTkOptionMenu.
@@ -286,19 +336,20 @@ class ClaimInfoHeader(ctk.CTkFrame):
         if current_claim_id:
             self.current_claim_id = current_claim_id
 
-        # Extract claim names for the dropdown
-        claim_names = [claim["claim_name"] for claim in claims_list]
+        # Extract claim names for the dropdown (handle both key formats)
+        claim_names = [claim.get("claim_name") or claim.get("name", "Unknown Claim") for claim in claims_list]
 
         # Update dropdown state and values based on available claims
         if len(claims_list) > 1:
             # Multiple claims - enable dropdown
             self.claim_dropdown.configure(values=claim_names, state="normal")
 
-            # Set current selection
+            # Set current selection (handle both key formats)
             current_claim_name = None
             for claim in claims_list:
-                if claim["claim_id"] == current_claim_id:
-                    current_claim_name = claim["claim_name"]
+                claim_entity_id = claim.get("entity_id") or claim.get("claim_id")
+                if claim_entity_id == current_claim_id:
+                    current_claim_name = claim.get("claim_name") or claim.get("name")
                     break
 
             if current_claim_name:
@@ -308,10 +359,11 @@ class ClaimInfoHeader(ctk.CTkFrame):
         elif len(claims_list) == 1:
             # Single claim - show name but disable interaction
             single_claim = claims_list[0]
-            self.claim_dropdown.configure(values=[single_claim["claim_name"]], state="disabled")
-            self.claim_dropdown.set(single_claim["claim_name"])
-            self.current_claim_id = single_claim["claim_id"]
-            self.claim_name = single_claim["claim_name"]
+            claim_name = single_claim.get("claim_name") or single_claim.get("name", "Unknown Claim")
+            self.claim_dropdown.configure(values=[claim_name], state="disabled")
+            self.claim_dropdown.set(claim_name)
+            self.current_claim_id = single_claim.get("entity_id") or single_claim.get("claim_id")
+            self.claim_name = claim_name
 
         else:
             # No claims - show error state
@@ -323,10 +375,12 @@ class ClaimInfoHeader(ctk.CTkFrame):
     def _update_dropdown_selection(self):
         """Updates the dropdown to show the current claim name."""
         if self.available_claims and not self.claim_switching:
-            # Find current claim name and update dropdown
+            # Find current claim name and update dropdown (handle both key formats)
             for claim in self.available_claims:
-                if claim["claim_id"] == self.current_claim_id:
-                    self.claim_dropdown.set(claim["claim_name"])
+                claim_entity_id = claim.get("entity_id") or claim.get("claim_id")
+                if claim_entity_id == self.current_claim_id:
+                    claim_name = claim.get("claim_name") or claim.get("name")
+                    self.claim_dropdown.set(claim_name)
                     break
 
     def set_claim_switching(self, switching: bool, message: str = ""):
@@ -344,7 +398,6 @@ class ClaimInfoHeader(ctk.CTkFrame):
             if hasattr(self.app, "show_loading_with_message"):
                 self.app.show_loading_with_message(message)
 
-            logging.debug(f"Claim switching started: {message}")
         else:
             # Re-enable dropdown and restore normal state
             if len(self.available_claims) > 1:
@@ -358,8 +411,6 @@ class ClaimInfoHeader(ctk.CTkFrame):
 
             # Restore proper selection
             self._update_dropdown_selection()
-
-            logging.debug("Claim switching completed")
 
     def handle_claim_switch_complete(self, claim_id: str, claim_name: str):
         """
@@ -410,7 +461,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
             if current_claim_id:
                 current_claim = None
                 for claim in claims_list:
-                    if claim["claim_id"] == current_claim_id:
+                    if claim["entity_id"] == current_claim_id:
                         current_claim = claim
                         break
 
@@ -418,7 +469,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
                     # Update header with initial claim data
                     self.update_claim_data(
                         {
-                            "name": current_claim["claim_name"],
+                            "name": current_claim["name"],
                             "treasury": current_claim.get("treasury", 0),
                             "supplies": current_claim.get("supplies", 0),
                             "tile_count": current_claim.get("tile_count", 0),
@@ -429,3 +480,138 @@ class ClaimInfoHeader(ctk.CTkFrame):
 
         except Exception as e:
             logging.error(f"Error initializing header with claims: {e}")
+
+    def update_task_refresh_expiration(self, expiration_time: int):
+        """
+        Updates the traveler tasks expiration time and starts countdown.
+
+        Args:
+            expiration_time: Seconds since Unix epoch when tasks refresh
+        """
+        try:
+            # Reset ready state detection when new expiration time comes in
+            if hasattr(self, "_ready_state_detected"):
+                self._ready_state_detected = False
+
+            self.traveler_tasks_expiration = expiration_time
+            self._update_task_refresh_countdown()
+
+            # Start periodic updates if not already running
+            if not hasattr(self, "_task_refresh_timer_running"):
+                self._task_refresh_timer_running = True
+                self._schedule_task_refresh_update()
+
+        except Exception as e:
+            logging.error(f"Error updating task refresh expiration: {e}")
+
+    def _update_task_refresh_countdown(self):
+        """Calculates and updates the task refresh countdown."""
+        try:
+            if self.traveler_tasks_expiration <= 0:
+                self.task_refresh_time = "Unknown"
+                color = "#cccccc"
+            else:
+                # The traveler_tasks_expiration is in SECONDS, not microseconds
+                import time
+
+                current_time_seconds = time.time()
+                time_diff_seconds = self.traveler_tasks_expiration - current_time_seconds
+
+                if time_diff_seconds <= 0:
+                    # Tasks should refresh now or have refreshed
+                    self.task_refresh_time = "Ready"
+                    color = "#4CAF50"  # Green for ready
+
+                    # Check if we need to request fresh data (only once when transitioning to Ready)
+                    if not hasattr(self, "_ready_state_detected") or not self._ready_state_detected:
+                        self._ready_state_detected = True
+                        self._request_fresh_player_state()
+                else:
+                    # Calculate time components
+                    total_seconds = int(time_diff_seconds)
+                    days = total_seconds // 86400
+                    hours = (total_seconds % 86400) // 3600
+                    minutes = (total_seconds % 3600) // 60
+                    seconds = total_seconds % 60
+
+                    # Format display based on time remaining
+                    if total_seconds < 60:  # less than 1 minute
+                        self.task_refresh_time = f"{seconds}s"
+                        color = "#FF5722"  # Red for very soon
+                    elif total_seconds < 3600:  # less than 1 hour
+                        self.task_refresh_time = f"{minutes}m {seconds}s"
+                        color = "#FF9800"  # Orange for soon
+                    elif days == 0:  # same day
+                        self.task_refresh_time = f"{hours}h {minutes}m"
+                        color = "#FFC107"  # Amber for today
+                    else:  # more than a day
+                        self.task_refresh_time = f"{days}d {hours}h"
+                        color = "#9C27B0"  # Purple for future
+
+            # Update the label with appropriate color
+            self.task_refresh_label.configure(text=self.task_refresh_time, text_color=color)
+
+        except Exception as e:
+            logging.error(f"Error calculating task refresh countdown: {e}")
+            self.task_refresh_time = "Error"
+            self.task_refresh_label.configure(text=self.task_refresh_time, text_color="#f44336")
+
+    def _schedule_task_refresh_update(self):
+        """Schedules the next task refresh countdown update."""
+        try:
+            # Update every second for accurate countdown
+            self.after(1000, self._periodic_task_refresh_update)
+        except Exception as e:
+            logging.error(f"Error scheduling task refresh update: {e}")
+
+    def _periodic_task_refresh_update(self):
+        """Periodic update method for task refresh countdown."""
+        try:
+            if hasattr(self, "_task_refresh_timer_running") and self._task_refresh_timer_running:
+                self._update_task_refresh_countdown()
+                self._schedule_task_refresh_update()
+        except Exception as e:
+            logging.error(f"Error in periodic task refresh update: {e}")
+
+    def stop_task_refresh_timer(self):
+        """Stops the task refresh countdown timer."""
+        try:
+            if hasattr(self, "_task_refresh_timer_running"):
+                self._task_refresh_timer_running = False
+        except Exception as e:
+            logging.error(f"Error stopping task refresh timer: {e}")
+
+    def _request_fresh_player_state(self):
+        """
+        Request fresh player_state data to get updated traveler_tasks_expiration.
+        This is called when the timer hits 0 to detect task refresh.
+        """
+        try:
+            # Access the data service through the main app to request fresh data
+            if hasattr(self.app, "data_service") and self.app.data_service:
+                # For now, just log that we would request fresh data
+                # In the future, we could add a method to the data service to re-query player_state
+
+                # As a fallback, schedule a check in 30 seconds to see if data has updated
+                self.after(30000, self._check_for_updated_expiration)
+            else:
+                logging.warning("Cannot request fresh player state - no data service available")
+        except Exception as e:
+            logging.error(f"Error requesting fresh player state: {e}")
+
+    def _check_for_updated_expiration(self):
+        """
+        Check if the expiration time has been updated (indicating tasks refreshed).
+        This is a fallback method when we can't directly request fresh data.
+        """
+        try:
+            # This will be called 30 seconds after hitting "Ready"
+            # If we're still showing "Ready" and the timer hasn't been updated,
+            # we might need to reset our ready state detection to try again
+            if hasattr(self, "_ready_state_detected") and self._ready_state_detected:
+                current_time = time.time()
+                if self.traveler_tasks_expiration > 0 and self.traveler_tasks_expiration <= current_time:
+                    # Still in Ready state - reset detection so it can trigger again
+                    self._ready_state_detected = False
+        except Exception as e:
+            logging.error(f"Error checking for updated expiration: {e}")

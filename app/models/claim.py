@@ -80,7 +80,6 @@ class Claim:
         """
         Processes and categorizes building data for the claim.
         """
-        logging.debug("Processing and categorizing buildings for the claim.")
         self.buildings = {}
 
         # Create dictionaries for faster lookups
@@ -143,7 +142,6 @@ class Claim:
                 try:
                     inv_data = slot[1][1]
                     if not isinstance(inv_data, list) or len(inv_data) < 2:
-                        logging.debug(f"Invalid inventory slot data format (expected list of at least 2): {slot}")
                         continue
                     item_id = inv_data[0]
                     quantity = inv_data[1]
@@ -168,7 +166,6 @@ class Claim:
                         collection[item_name]["containers"][container_name] += quantity
 
                 except (IndexError, TypeError, ValueError) as e:
-                    logging.debug(f"Skipping malformed inventory slot: {slot}. Reason: {e}")
                     continue
 
         return collection
@@ -252,7 +249,6 @@ class Claim:
                     if coord_results:
                         claim_details["tile_count"] = len(coord_results)
 
-            logging.debug(f"Fetched details for claim {claim_id}: {claim_details['claim_name']}")
             return claim_details
 
         except Exception as e:
@@ -304,7 +300,6 @@ class Claim:
         Clears all current claim data in preparation for switching claims.
         Resets buildings, inventory, and other claim-specific state.
         """
-        logging.debug("Clearing existing claim data for claim switch")
 
         # Reset claim state attributes
         self.claim_name = None
@@ -339,7 +334,6 @@ class Claim:
                 self.supplies = updated_details["supplies"]
                 self.size = updated_details["tile_count"]
 
-                logging.debug(f"Refreshed claim info for {self.claim_name}")
                 return {
                     "name": self.claim_name,
                     "treasury": self.treasury,
@@ -354,3 +348,30 @@ class Claim:
         except Exception as e:
             logging.error(f"Error refreshing claim info: {e}")
             return {}
+
+    def update_from_subscription_data(self, table_name, table_data):
+        """
+        Update claim attributes from subscription data.
+        This method should be called by processors when subscription data arrives.
+
+        Args:
+            table_name: Name of the table (e.g., 'claim_state', 'claim_local_state')
+            table_data: The subscription data for this table
+        """
+        try:
+            if table_name == "claim_state" and table_data:
+                for row in table_data:
+                    if row.get("entity_id") == self.claim_id:
+                        self.claim_name = row.get("name", self.claim_name)
+
+            elif table_name == "claim_local_state" and table_data:
+                for row in table_data:
+                    if row.get("entity_id") == self.claim_id:
+                        self.treasury = row.get("treasury", self.treasury)
+                        self.supplies = row.get("supplies", self.supplies)
+                        self.size = row.get("num_tiles", self.size)
+                        #     f"Updated claim data from subscription: treasury={self.treasury}, supplies={self.supplies}, tiles={self.size}"
+                        # )
+
+        except Exception as e:
+            logging.error(f"Error updating claim from subscription data: {e}")

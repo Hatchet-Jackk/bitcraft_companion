@@ -4,12 +4,21 @@ import queue
 import logging
 import threading
 from tkinter import messagebox
-from data_manager import DataService
-from main_window import MainWindow
+from app.core.data_service import DataService
+from app.ui.main_window import MainWindow
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+# Configure logging to both console and file
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(),  # Console output
+        logging.FileHandler("debug.log", mode='w')  # File output (overwrites each run)
+    ]
+)
 
 
 class LoginWindow(ctk.CTk):

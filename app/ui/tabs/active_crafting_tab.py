@@ -2,18 +2,18 @@ import customtkinter as ctk
 import logging
 from tkinter import Menu, ttk
 from typing import List, Dict
-from filter_popup import FilterPopup
+from app.ui.components.filter_popup import FilterPopup
 
 
-class PassiveCraftingTab(ctk.CTkFrame):
-    """The tab for displaying passive crafting status with item-focused, expandable rows."""
+class ActiveCraftingTab(ctk.CTkFrame):
+    """The tab for displaying active crafting status with item-focused, expandable rows."""
 
     def __init__(self, master, app):
         super().__init__(master, fg_color="transparent")
         self.app = app
 
-        # Updated headers - removed Status, added Crafter
-        self.headers = ["Item", "Tier", "Quantity", "Recipe", "Time Remaining", "Crafter", "Building"]
+        # Updated headers to include Accept Help column
+        self.headers = ["Item", "Tier", "Quantity", "Tag", "Progress", "Accept Help", "Crafter", "Building"]
         self.all_data: List[Dict] = []
         self.filtered_data: List[Dict] = []
 
@@ -80,14 +80,15 @@ class PassiveCraftingTab(ctk.CTkFrame):
             height=12,
         )
 
-        # Create the Treeview
+        # Create the Treeview with tree structure support
         self.tree = ttk.Treeview(self, columns=self.headers, show="tree headings", style="Treeview")
 
-        # Configure tags for different status colors based on time remaining
-        self.tree.tag_configure("ready", background="#2d4a2d", foreground="#4CAF50")  # Green for ready
-        self.tree.tag_configure("crafting", background="#3d3d2d", foreground="#FFA726")  # Orange for crafting
+        # Configure tags for different progress colors based on active crafting status
+        self.tree.tag_configure("ready", background="#2d4a2d", foreground="#4CAF50")  # Green for ready/complete
+        self.tree.tag_configure("crafting", background="#3d3d2d", foreground="#FFA726")  # Orange for in progress
         self.tree.tag_configure("empty", background="#2a2d2e", foreground="#888888")  # Gray for empty
-        self.tree.tag_configure("child", background="#3a3a3a")
+        self.tree.tag_configure("child", background="#3a3a3a")  # Darker for child rows
+        self.tree.tag_configure("preparing", background="#2e2e3a", foreground="#B39DDB")  # Purple for preparation
 
         # Create scrollbars
         vsb = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview, style="Vertical.TScrollbar")
@@ -105,8 +106,9 @@ class PassiveCraftingTab(ctk.CTkFrame):
             "Item": 180,
             "Tier": 50,
             "Quantity": 70,
-            "Recipe": 70,
-            "Time Remaining": 120,
+            "Tag": 70,
+            "Progress": 120,
+            "Accept Help": 90,
             "Crafter": 90,
             "Building": 200,
         }
@@ -152,12 +154,17 @@ class PassiveCraftingTab(ctk.CTkFrame):
             return
 
         # Handle special cases for filters
-        if header.lower() in ["building", "crafter"]:
+        if header.lower() in ["building", "crafter", "accept help"]:
             unique_values = self._get_filter_data_for_expandable_column(header)
-            filter_data = [{f"{header.lower()}_display": val} for val in unique_values]
+            filter_data = [{f"{header.lower().replace(' ', '_')}_display": val} for val in unique_values]
             current_selection = self.active_filters.get(header, set(unique_values))
             FilterPopup(
-                self, header, filter_data, current_selection, self._apply_column_filter, custom_key=f"{header.lower()}_display"
+                self,
+                header,
+                filter_data,
+                current_selection,
+                self._apply_column_filter,
+                custom_key=f"{header.lower().replace(' ', '_')}_display",
             )
         else:
             field_name = header.lower().replace(" ", "_")
@@ -178,16 +185,21 @@ class PassiveCraftingTab(ctk.CTkFrame):
             operations = row.get("operations", [])
             for operation in operations:
                 if header.lower() == "building":
-                    # For building, include refinery + crafter info
-                    refinery = operation.get("refinery", "")
+                    # For building, include building + crafter info
+                    building = operation.get("building_name", "")
                     crafter = operation.get("crafter", "")
-                    if refinery and crafter:
-                        unique_values.add(f"{refinery} (by {crafter})")
+                    if building and crafter:
+                        unique_values.add(f"{building} (by {crafter})")
                 elif header.lower() == "crafter":
                     # For crafter, just the crafter name
                     crafter = operation.get("crafter", "")
                     if crafter:
                         unique_values.add(crafter)
+                elif header.lower() == "accept help":
+                    # For accept help, just the accept help value
+                    accept_help = operation.get("accept_help", "")
+                    if accept_help:
+                        unique_values.add(accept_help)
 
         return sorted(list(unique_values))
 
@@ -201,14 +213,13 @@ class PassiveCraftingTab(ctk.CTkFrame):
             self.apply_filter()
 
     def update_data(self, new_data):
-        """Receives new crafting data (already item-focused and grouped)."""
+        """Receives new active crafting data (already item-focused and grouped)."""
         if isinstance(new_data, list):
             self.all_data = new_data
         else:
             self.all_data = []
 
         self.apply_filter()
-        logging.debug(f"Passive crafting data updated: {len(self.all_data)} item groups")
 
     def apply_filter(self):
         """Filters the master data list based on search and column filters."""
@@ -217,7 +228,7 @@ class PassiveCraftingTab(ctk.CTkFrame):
 
         if self.active_filters:
             for header, values in self.active_filters.items():
-                if header.lower() in ["building", "crafter"]:
+                if header.lower() in ["building", "crafter", "accept help"]:
                     temp_data = [row for row in temp_data if self._expandable_column_matches_filter(row, header, values)]
                 else:
                     field_name = header.lower().replace(" ", "_")
@@ -240,11 +251,11 @@ class PassiveCraftingTab(ctk.CTkFrame):
         operations = row.get("operations", [])
         for operation in operations:
             if header.lower() == "building":
-                # For building, check refinery + crafter combination
-                refinery = operation.get("refinery", "")
+                # For building, check building + crafter combination
+                building = operation.get("building_name", "")
                 crafter = operation.get("crafter", "")
-                if refinery and crafter:
-                    display_name = f"{refinery} (by {crafter})"
+                if building and crafter:
+                    display_name = f"{building} (by {crafter})"
                     if display_name in selected_values:
                         return True
             elif header.lower() == "crafter":
@@ -252,13 +263,18 @@ class PassiveCraftingTab(ctk.CTkFrame):
                 crafter = operation.get("crafter", "")
                 if crafter in selected_values:
                     return True
+            elif header.lower() == "accept help":
+                # For accept help, check accept help value
+                accept_help = operation.get("accept_help", "")
+                if accept_help in selected_values:
+                    return True
 
         return False
 
     def _row_matches_search(self, row, search_term):
         """Checks if a row matches the search term, including operation data."""
         # Check main row data
-        main_fields = ["item", "recipe", "time_remaining", "crafter", "building"]
+        main_fields = ["item", "tag", "progress", "accept_help", "crafter", "building"]
         for field in main_fields:
             if search_term in str(row.get(field, "")).lower():
                 return True
@@ -266,7 +282,7 @@ class PassiveCraftingTab(ctk.CTkFrame):
         # Check individual operation data
         operations = row.get("operations", [])
         for operation in operations:
-            operation_fields = ["item_name", "recipe", "time_remaining", "crafter", "refinery"]
+            operation_fields = ["item", "tag", "progress", "accept_help", "crafter", "building_name"]
             for field in operation_fields:
                 if search_term in str(operation.get(field, "")).lower():
                     return True
@@ -283,19 +299,22 @@ class PassiveCraftingTab(ctk.CTkFrame):
 
         sort_key = self.sort_column.lower().replace(" ", "_")
 
-        # Special sorting for time remaining - convert to seconds for proper numerical sorting
-        if sort_key == "time_remaining":
+        # Special sorting for progress - convert to numerical value for proper sorting
+        if sort_key == "progress":
 
-            def time_sort_key(x):
-                time_str = str(x.get(sort_key, ""))
-                if time_str == "READY":
-                    return 0
-                elif time_str in ["Empty", "Error", "N/A", "Unknown"]:
-                    return 999999
+            def progress_sort_key(x):
+                progress_str = str(x.get(sort_key, ""))
+                if "%" in progress_str:
+                    try:
+                        return int(progress_str.replace("%", ""))
+                    except ValueError:
+                        return 999
+                elif progress_str.lower() == "preparation":
+                    return -1  # Preparation comes first
                 else:
-                    return self._time_to_seconds(time_str)
+                    return 999  # Unknown progress comes last
 
-            self.filtered_data.sort(key=time_sort_key, reverse=self.sort_reverse)
+            self.filtered_data.sort(key=progress_sort_key, reverse=self.sort_reverse)
         elif sort_key in ["tier", "quantity"]:
             # Numeric sorting
             self.filtered_data.sort(
@@ -312,30 +331,6 @@ class PassiveCraftingTab(ctk.CTkFrame):
         self.render_table()
         self.update_header_sort_indicators()
 
-    def _time_to_seconds(self, time_str):
-        """Convert time string like '2h 30m 15s' to total seconds."""
-        if not time_str or time_str in ["READY", "Empty", "Error", "N/A", "Unknown"]:
-            return 0 if time_str == "READY" else 999999
-
-        total_seconds = 0
-        try:
-            # Remove ~ prefix if present
-            time_str = time_str.replace("~", "")
-
-            # Parse formats like "2h 30m 15s", "30m 15s", "15s"
-            parts = time_str.split()
-            for part in parts:
-                if "h" in part:
-                    total_seconds += int(part.replace("h", "")) * 3600
-                elif "m" in part:
-                    total_seconds += int(part.replace("m", "")) * 60
-                elif "s" in part:
-                    total_seconds += int(part.replace("s", ""))
-        except:
-            return 999999  # Put parsing errors at the end
-
-        return total_seconds
-
     def update_header_sort_indicators(self):
         """Updates the arrows on column headers."""
         for header in self.headers:
@@ -346,7 +341,7 @@ class PassiveCraftingTab(ctk.CTkFrame):
             self.tree.heading(header, text=text + filter_indicator)
 
     def render_table(self):
-        """Renders the hierarchical crafting data with mandatory two-level expansion, preserving expansion state."""
+        """Renders the hierarchical active crafting data with mandatory two-level expansion, preserving expansion state."""
         # Save current expansion state before clearing (unless it's the first load)
         is_first_load = not self.has_had_first_load
 
@@ -362,23 +357,23 @@ class PassiveCraftingTab(ctk.CTkFrame):
         for row_data in self.filtered_data:
             item_name = row_data.get("item", "Unknown Item")
             tier = row_data.get("tier", 0)
-            quantity = row_data.get("quantity", 0)
-            recipe = row_data.get("recipe", "Unknown Recipe")
-            time_remaining = row_data.get("time_remaining", "Unknown")
+            quantity = row_data.get("total_quantity", 0)
+            tag = row_data.get("tag", "empty")
+            progress = row_data.get("progress", "Unknown")
+            accept_help = row_data.get("accept_help", "Unknown")
             crafter = row_data.get("crafter", "Unknown")
-            building = row_data.get("building", "Unknown")
+            building = row_data.get("building_name", "Unknown")
             operations = row_data.get("operations", [])
             is_expandable = row_data.get("is_expandable", False)
-            expansion_level = row_data.get("expansion_level", 0)
 
             # Create a unique identifier for this row to track expansion state
-            row_id = f"{item_name}|{tier}|{recipe}"
+            row_id = f"{item_name}|{tier}|{tag}"
 
             # Prepare main row values
-            values = [item_name, str(tier), str(quantity), recipe, time_remaining, crafter, building]
+            values = [item_name, str(tier), str(quantity), tag, progress, accept_help, crafter, building]
 
-            # Determine tag based on time remaining
-            tag = self._get_time_tag(time_remaining)
+            # Determine tag based on progress
+            tag = self._get_progress_tag(progress)
 
             if is_expandable and operations:
                 # Create expandable parent row
@@ -412,7 +407,7 @@ class PassiveCraftingTab(ctk.CTkFrame):
             # Get the item's values to create identifier
             values = self.tree.item(item_id, "values")
             if values and len(values) >= 3:
-                # Create identifier from item, tier, recipe
+                # Create identifier from item, tier, tag
                 item_identifier = f"{values[0]}|{values[1]}|{values[3]}"
 
                 # If this item is expanded, save its identifier
@@ -448,10 +443,11 @@ class PassiveCraftingTab(ctk.CTkFrame):
         item_name = child_data.get("item", child_data.get("item_name", "Unknown Item"))
         tier = child_data.get("tier", 0)
         quantity = child_data.get("quantity", 0)
-        recipe = child_data.get("recipe", "Unknown Recipe")
-        time_remaining = child_data.get("time_remaining", "Unknown")
+        tag = child_data.get("tag", "empty")
+        progress = child_data.get("progress", "Unknown")
+        accept_help = child_data.get("accept_help", "Unknown")
         crafter = child_data.get("crafter", "Unknown")
-        building = child_data.get("building", child_data.get("refinery", "Unknown"))
+        building = child_data.get("building_name", child_data.get("building", "Unknown"))
         is_expandable = child_data.get("is_expandable", False)
         child_operations = child_data.get("operations", [])
 
@@ -460,15 +456,15 @@ class PassiveCraftingTab(ctk.CTkFrame):
         indented_item_name = f"{indent}{item_name}"
 
         # Create identifier for this child row for expansion tracking
-        child_row_id = f"{item_name}|{tier}|{recipe}|{crafter}"
+        child_row_id = f"{item_name}|{tier}|{tag}|{crafter}"
         if level > 1:
             child_row_id += f"|{building}"
 
         # Prepare child values
-        child_values = [indented_item_name, str(tier), str(quantity), recipe, time_remaining, crafter, building]
+        child_values = [indented_item_name, str(tier), str(quantity), tag, progress, accept_help, crafter, building]
 
         # Determine tag
-        child_tag = self._get_time_tag(time_remaining)
+        child_tag = self._get_progress_tag(progress)
 
         # Insert the child row
         if is_expandable and child_operations:
@@ -495,11 +491,20 @@ class PassiveCraftingTab(ctk.CTkFrame):
             # Leaf node - no further expansion
             self.tree.insert(parent_id, "end", values=child_values, tags=("child", child_tag))
 
-    def _get_time_tag(self, time_remaining):
-        """Determines the appropriate tag for color coding based on time remaining."""
-        if time_remaining == "READY":
-            return "ready"
-        elif time_remaining not in ["Empty", "Unknown", "Error", "N/A"]:
-            return "crafting"
+    def _get_progress_tag(self, progress):
+        """Determines the appropriate tag for color coding based on progress."""
+        progress_str = str(progress).lower()
+
+        if progress_str == "preparation":
+            return "preparing"
+        elif "%" in progress_str:
+            try:
+                progress_value = int(progress_str.replace("%", ""))
+                if progress_value >= 100:
+                    return "ready"
+                else:
+                    return "crafting"
+            except ValueError:
+                return "empty"
         else:
             return "empty"
