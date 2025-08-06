@@ -73,7 +73,7 @@ class MainWindow(ctk.CTk):
 
     def __init__(self, data_service: DataService):
         super().__init__()
-        self.title("Bitcraft Companion")
+        self.title("Bitcraft Companion - AUTO EXPORT")
         self.geometry("900x600")
 
         # Set minimum window size to prevent UI elements from becoming inaccessible
@@ -193,7 +193,7 @@ class MainWindow(ctk.CTk):
             placeholder_text="🔍 Type to search items...",
             height=34,
             font=ctk.CTkFont(size=12),
-            fg_color=("#2a2d2e", "#343638"),
+            fg_color=("#2e2a2a", "#343638"),
             border_color=("#404040", "#505050"),
             text_color=("#ffffff", "#f0f0f0"),
             placeholder_text_color=("#888888", "#999999"),
@@ -517,6 +517,11 @@ class MainWindow(ctk.CTk):
                 try:
                     # Update dialog
                     self.shutdown_dialog.update_status("Stopping real-time services...")
+
+                    # Stop auto export service first
+                    if hasattr(self, "claim_info_header") and self.claim_info_header:
+                        logging.info("[MainWindow] Stopping auto export service...")
+                        self.claim_info_header.cleanup_auto_export()
 
                     # Stop the data service
                     if hasattr(self, "data_service") and self.data_service:

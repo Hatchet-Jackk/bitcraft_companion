@@ -8,6 +8,8 @@ from openpyxl.styles import Font, Alignment
 from datetime import datetime
 import os
 
+from ...services.auto_export_service import AutoExportService
+
 
 class ClaimInfoHeader(ctk.CTkFrame):
     """
@@ -16,7 +18,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
     """
 
     def __init__(self, master, app):
-        super().__init__(master, fg_color="#1a1a1a", corner_radius=8)
+        super().__init__(master, fg_color="#650000", corner_radius=8)
         self.app = app
 
         # Add claim management attributes
@@ -34,11 +36,21 @@ class ClaimInfoHeader(ctk.CTkFrame):
         self.traveler_tasks_expiration = 0
         self.task_refresh_time = "Unknown"
 
+        # Initialize auto export service
+        self.auto_export_service = AutoExportService(app)
+        self._setup_auto_export_callbacks()
+
         # Load tile cost data from the app's data service
         self.tile_cost_lookup = {}
         self._load_tile_cost_data()
 
         self._create_widgets()
+
+    def _setup_auto_export_callbacks(self):
+        """Setup callbacks for auto export service."""
+        self.auto_export_service.on_export_success = self._on_export_success
+        self.auto_export_service.on_export_error = self._on_export_error
+        self.auto_export_service.on_status_change = self._on_status_change
 
     def _load_tile_cost_data(self):
         """Load claim tile cost data for supplies calculation."""
@@ -94,13 +106,13 @@ class ClaimInfoHeader(ctk.CTkFrame):
         claim_frame = ctk.CTkFrame(self, fg_color="transparent")
         claim_frame.grid(row=0, column=0, sticky="w", padx=15, pady=10)
 
-        # Create frame for dropdown and refresh button
-        dropdown_frame = ctk.CTkFrame(claim_frame, fg_color="transparent")
-        dropdown_frame.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 12))
+        # Create frame for dropdown and auto-export controls
+        controls_frame = ctk.CTkFrame(claim_frame, fg_color="transparent")
+        controls_frame.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 12))
 
         # IMPROVED: Use CTkOptionMenu instead of custom dropdown
         self.claim_dropdown = ctk.CTkOptionMenu(
-            dropdown_frame,
+            controls_frame,
             values=["Loading..."],
             command=self._on_claim_selected,
             font=ctk.CTkFont(size=16, weight="bold"),
@@ -115,49 +127,76 @@ class ClaimInfoHeader(ctk.CTkFrame):
             anchor="w",
             state="disabled",  # Start disabled
             height=40,
-            width=300,
+            width=250,
         )
-        self.claim_dropdown.grid(row=0, column=0, sticky="w", padx=(0, 10))
+        self.claim_dropdown.grid(row=0, column=0, sticky="w", padx=(0, 8))
 
-        # Add refresh button
-        self.refresh_button = ctk.CTkButton(
-            dropdown_frame,
-            text="Refresh Data",
-            width=120,
+        # Set Location button
+        self.location_button = ctk.CTkButton(
+            controls_frame,
+            text="Set Location",
+            width=100,
             height=40,
             font=ctk.CTkFont(size=12),
-            command=self._refresh_current_claim,
+            command=self._set_export_location,
             fg_color=("#404040", "#505050"),
             hover_color=("#5a5a5a", "#707070"),
             text_color="#ffffff",
             corner_radius=8,
-            border_width=0,
         )
-        self.refresh_button.grid(row=0, column=1, sticky="w", padx=(2, 12))
+        self.location_button.grid(row=0, column=1, sticky="w", padx=(0, 8))
 
-        # Add tooltip to refresh button
-        self._add_tooltip(
-            self.refresh_button, "Refreshes all data for the current claim - helpful if tables appear corrupted or incomplete"
+        # Filename entry
+        self.filename_label = ctk.CTkLabel(controls_frame, text="File:", font=ctk.CTkFont(size=12))
+        self.filename_label.grid(row=0, column=2, sticky="w", padx=(0, 5))
+        
+        self.filename_entry = ctk.CTkEntry(
+            controls_frame,
+            width=120,
+            height=40,
+            font=ctk.CTkFont(size=12),
+            placeholder_text="inventory_export",
         )
+        self.filename_entry.insert(0, "inventory_export")
+        self.filename_entry.grid(row=0, column=3, sticky="w", padx=(0, 8))
 
-        # Add export button
-        self.export_button = ctk.CTkButton(
-            dropdown_frame,
-            text="Export Data",
+        # Interval dropdown
+        self.interval_label = ctk.CTkLabel(controls_frame, text="Every:", font=ctk.CTkFont(size=12))
+        self.interval_label.grid(row=0, column=4, sticky="w", padx=(0, 5))
+        
+        self.interval_dropdown = ctk.CTkOptionMenu(
+            controls_frame,
+            values=["1 min", "5 min", "10 min"],
+            width=80,
+            height=40,
+            font=ctk.CTkFont(size=12),
+            command=self._on_interval_selected,
+            fg_color=("#404040", "#505050"),
+            button_color=("#404040", "#505050"),
+            button_hover_color=("#5a5a5a", "#707070"),
+            dropdown_fg_color=("#2a2d2e", "#3a3a3a"),
+        )
+        self.interval_dropdown.set("5 min")
+        self.interval_dropdown.grid(row=0, column=5, sticky="w", padx=(0, 8))
+
+        # Start/Stop button
+        self.start_stop_button = ctk.CTkButton(
+            controls_frame,
+            text="▶ Start",
             width=100,
             height=40,
             font=ctk.CTkFont(size=12),
-            command=self._export_data,
+            command=self._toggle_auto_export,
             fg_color=("#2E7D32", "#388E3C"),
             hover_color=("#1B5E20", "#2E7D32"),
             text_color="#ffffff",
             corner_radius=8,
         )
-        self.export_button.grid(row=0, column=2, sticky="w", padx=(0, 10))
+        self.start_stop_button.grid(row=0, column=6, sticky="w", padx=(0, 8))
 
-        # Add logout button
+        # Logout button
         self.logout_button = ctk.CTkButton(
-            dropdown_frame,
+            controls_frame,
             text="Logout",
             width=80,
             height=40,
@@ -168,11 +207,11 @@ class ClaimInfoHeader(ctk.CTkFrame):
             text_color="#ffffff",
             corner_radius=8,
         )
-        self.logout_button.grid(row=0, column=3, sticky="w", padx=(0, 10))
+        self.logout_button.grid(row=0, column=7, sticky="w", padx=(0, 8))
 
-        # Add quit button
+        # Quit button
         self.quit_button = ctk.CTkButton(
-            dropdown_frame,
+            controls_frame,
             text="Quit",
             width=70,
             height=40,
@@ -183,7 +222,16 @@ class ClaimInfoHeader(ctk.CTkFrame):
             text_color="#ffffff",
             corner_radius=8,
         )
-        self.quit_button.grid(row=0, column=4, sticky="w")
+        self.quit_button.grid(row=0, column=8, sticky="w")
+
+        # Status label for export feedback
+        self.export_status_label = ctk.CTkLabel(
+            claim_frame, 
+            text="Auto export ready - set location to start", 
+            font=ctk.CTkFont(size=11),
+            text_color="#CCCCCC"
+        )
+        self.export_status_label.grid(row=2, column=0, sticky="w", pady=(5, 0))
 
         # Create info row with treasury, supplies, and supplies run out
         info_frame = ctk.CTkFrame(claim_frame, fg_color="transparent")
@@ -387,6 +435,124 @@ class ClaimInfoHeader(ctk.CTkFrame):
     def refresh_supplies_runout(self):
         """Manually refresh the supplies run out calculation (for periodic updates)."""
         self._update_supplies_runout()
+
+    # Auto Export Methods
+    def _set_export_location(self):
+        """Set the export directory for auto exports."""
+        try:
+            if self.auto_export_service.set_export_directory():
+                # Update the button text to show current location
+                directory = self.auto_export_service.export_directory
+                if directory:
+                    short_path = os.path.basename(directory) or os.path.dirname(directory).split(os.sep)[-1]
+                    self.location_button.configure(text=f"📁 {short_path}")
+                    self.export_status_label.configure(text=f"Export location set: {directory}")
+                    logging.info(f"Auto export location set to: {directory}")
+                else:
+                    self.export_status_label.configure(text="No location selected")
+            else:
+                self.export_status_label.configure(text="Failed to set export location")
+        except Exception as e:
+            logging.error(f"Error setting export location: {e}")
+            self.export_status_label.configure(text="Error setting location")
+
+    def _on_interval_selected(self, value: str):
+        """Handle interval selection change."""
+        try:
+            # Extract minutes from value like "5 min"
+            minutes = int(value.split()[0])
+            self.auto_export_service.set_interval(minutes)
+            logging.info(f"Auto export interval set to: {minutes} minutes")
+        except Exception as e:
+            logging.error(f"Error setting export interval: {e}")
+
+    def _toggle_auto_export(self):
+        """Toggle the auto export on/off."""
+        try:
+            if not self.auto_export_service.is_running:
+                # Start auto export
+                filename = self.filename_entry.get().strip()
+                if filename:
+                    self.auto_export_service.set_filename(filename)
+                
+                if self.auto_export_service.start_auto_export():
+                    self._set_export_ui_state(running=True)
+                    logging.info("Auto export started")
+                else:
+                    self.export_status_label.configure(text="Failed to start auto export - check location")
+            else:
+                # Stop auto export
+                self.auto_export_service.stop_auto_export()
+                self._set_export_ui_state(running=False)
+                logging.info("Auto export stopped")
+        except Exception as e:
+            logging.error(f"Error toggling auto export: {e}")
+            self.export_status_label.configure(text=f"Error: {e}")
+
+    def _set_export_ui_state(self, running: bool):
+        """Set UI state based on auto export running status."""
+        try:
+            if running:
+                # Disable all controls except stop button
+                self.location_button.configure(state="disabled")
+                self.filename_entry.configure(state="disabled")
+                self.interval_dropdown.configure(state="disabled")
+                self.logout_button.configure(state="disabled")
+                self.quit_button.configure(state="disabled")
+                
+                # Change start button to stop button
+                self.start_stop_button.configure(
+                    text="⏹ Stop",
+                    fg_color=("#D32F2F", "#B71C1C"),
+                    hover_color=("#B71C1C", "#8B0000")
+                )
+            else:
+                # Re-enable all controls
+                self.location_button.configure(state="normal")
+                self.filename_entry.configure(state="normal")
+                self.interval_dropdown.configure(state="normal")
+                self.logout_button.configure(state="normal")
+                self.quit_button.configure(state="normal")
+                
+                # Change stop button back to start button
+                self.start_stop_button.configure(
+                    text="▶ Start",
+                    fg_color=("#2E7D32", "#388E3C"),
+                    hover_color=("#1B5E20", "#2E7D32")
+                )
+        except Exception as e:
+            logging.error(f"Error setting UI state: {e}")
+
+    # Auto Export Callback Methods
+    def _on_export_success(self, export_path: str):
+        """Called when an export succeeds."""
+        try:
+            filename = os.path.basename(export_path)
+            self.export_status_label.configure(text=f"✅ Exported: {filename}")
+            # Reset status after 5 seconds
+            self.after(5000, lambda: self.export_status_label.configure(
+                text=f"Auto export running - every {self.auto_export_service.interval_minutes} min"
+            ))
+        except Exception as e:
+            logging.error(f"Error in export success callback: {e}")
+
+    def _on_export_error(self, error_message: str):
+        """Called when an export fails."""
+        try:
+            self.export_status_label.configure(text=f"❌ Export error: {error_message}")
+            # Reset status after 10 seconds
+            self.after(10000, lambda: self.export_status_label.configure(
+                text=f"Auto export running - every {self.auto_export_service.interval_minutes} min"
+            ))
+        except Exception as e:
+            logging.error(f"Error in export error callback: {e}")
+
+    def _on_status_change(self, status_message: str):
+        """Called when export status changes."""
+        try:
+            self.export_status_label.configure(text=status_message)
+        except Exception as e:
+            logging.error(f"Error in status change callback: {e}")
 
     def _refresh_current_claim(self):
         """Refresh all data for the current claim."""
@@ -910,6 +1076,16 @@ class ClaimInfoHeader(ctk.CTkFrame):
         except Exception as e:
             logging.error(f"Error during logout: {e}")
             messagebox.showerror("Logout Error", f"An error occurred during logout:\n{str(e)}")
+
+    def cleanup_auto_export(self):
+        """Clean up auto export service when application is closing."""
+        try:
+            if hasattr(self, 'auto_export_service') and self.auto_export_service:
+                if self.auto_export_service.is_running:
+                    logging.info("Stopping auto export service before quit")
+                    self.auto_export_service.stop_auto_export()
+        except Exception as e:
+            logging.error(f"Error cleaning up auto export: {e}")
 
     def _quit_application(self):
         """Quits the application."""

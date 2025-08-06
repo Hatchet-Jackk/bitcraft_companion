@@ -28,7 +28,7 @@ class LoginWindow(ctk.CTk):
 
     def __init__(self):
         super().__init__()
-        self.title("Bitcraft Companion")
+        self.title("Bitcraft Companion - AUTO EXPORT")
         self.resizable(False, False)
 
         self.data_service = DataService()
