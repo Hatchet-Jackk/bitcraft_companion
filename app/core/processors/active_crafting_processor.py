@@ -327,17 +327,16 @@ class ActiveCraftingProcessor(BaseProcessor):
                 recipe_name = recipe_info.get("name", f"Recipe {recipe_id}")
                 recipe_name = re.sub(r"\{\d+\}", "", recipe_name).strip()
 
-                # Calculate progress percentage and status
-                # Progress is raw progress value, need to calculate percentage based on recipe requirements
+                # Calculate progress percentage and status using current_effort/total_effort approach
                 recipe_actions_required = recipe_info.get("actions_required", 1)
-                total_actions_required = recipe_actions_required * craft_count
+                total_effort = recipe_actions_required * craft_count  # Total effort needed
+                current_effort = progress  # Current progress is the current effort
 
-                if total_actions_required > 0:
-                    progress_percentage = min(100, max(0, (progress / total_actions_required) * 100))
-                else:
-                    progress_percentage = 0
-
-                status_display = "Preparation" if preparation else f"{int(progress_percentage)}%"
+                # Display progress as current_effort/total_effort
+                status_display = f"{total_effort - current_effort:,}"
+                # status_display = f"{current_effort:,}/{total_effort:,}"
+                if current_effort == total_effort:
+                    status_display = "READY"
 
                 # Check if this building accepts help
                 accepts_help = "Yes" if hasattr(self, "_public_actions") and building_id in self._public_actions else "No"
@@ -367,8 +366,8 @@ class ActiveCraftingProcessor(BaseProcessor):
                             "tag": item_tag,
                             "crafter": crafter_name,
                             "building_name": container_name,
-                            "progress": status_display,
-                            "progress_value": progress_percentage,
+                            "remaining_effort": status_display,
+                            "progress_value": f"{current_effort}/{total_effort}",
                             "accept_help": accepts_help,
                             "action_id": action_id,
                             "recipe_name": recipe_name,
@@ -433,11 +432,11 @@ class ActiveCraftingProcessor(BaseProcessor):
                 hierarchy[item_name]["crafters"][crafter]["accept_help_values"].add(op["accept_help"])
 
                 # Group by building + progress (Level 3)
-                building_progress_key = f"{op['building_name']}|{op['progress']}"
+                building_progress_key = f"{op['building_name']}|{op['remaining_effort']}"
                 if building_progress_key not in hierarchy[item_name]["crafters"][crafter]["buildings"]:
                     hierarchy[item_name]["crafters"][crafter]["buildings"][building_progress_key] = {
                         "building_name": op["building_name"],
-                        "progress": op["progress"],
+                        "remaining_effort": op["remaining_effort"],
                         "progress_value": op["progress_value"],
                         "accept_help": op["accept_help"],
                         "quantity": 0,
@@ -475,7 +474,7 @@ class ActiveCraftingProcessor(BaseProcessor):
 
     def _format_hierarchy_for_ui(self, hierarchy):
         """
-        Format hierarchical data for UI consumption with proper progress rollup.
+        Format hierarchical data for UI consumption - simplified for flat display.
 
         Args:
             hierarchy: The 3-level hierarchy structure
@@ -487,134 +486,40 @@ class ActiveCraftingProcessor(BaseProcessor):
             formatted = {}
 
             for item_name, item_data in hierarchy.items():
-                # Format Level 1 (Item) summary
-                num_crafters = len(item_data["unique_crafters"])
-                num_buildings = len(item_data["unique_buildings"])
+                # Since we're using flat rows now, just create individual operation entries
+                operations = []
 
-                if num_crafters > 1:
-                    crafter_summary = f"{num_crafters} Crafters"
-                else:
-                    crafter_summary = list(item_data["unique_crafters"])[0] if item_data["unique_crafters"] else "Unknown"
-
-                if num_buildings > 1:
-                    building_summary = f"{num_buildings} Buildings"
-                else:
-                    building_summary = list(item_data["unique_buildings"])[0] if item_data["unique_buildings"] else "Unknown"
-
-                # Determine smart expansion strategy based on data structure
-                all_crafter_progress = []
-                crafter_operations = []
-
-                if num_crafters == 1 and num_buildings > 1:
-                    # Case 2: Single crafter, multiple buildings → Skip crafter level, expand to buildings
-                    crafter_name = list(item_data["crafters"].keys())[0]
-                    crafter_data = item_data["crafters"][crafter_name]
-
+                for crafter_name, crafter_data in item_data["crafters"].items():
                     for building_progress_key, building_data in crafter_data["buildings"].items():
-                        crafter_operations.append(
-                            {
-                                "item": item_name,
-                                "tier": item_data["tier"],
-                                "quantity": building_data["quantity"],
-                                "tag": item_data["tag"],
-                                "progress": building_data["progress"],
-                                "accept_help": building_data["accept_help"],
-                                "crafter": crafter_name,
-                                "building_name": building_data["building_name"],
-                                "is_expandable": False,
-                                "expansion_level": 1,  # Direct building expansion
-                            }
-                        )
-                        all_crafter_progress.append(building_data["progress_value"])
-
-                elif num_crafters > 1:
-                    # Case 3 & 4: Multiple crafters → Expand to crafters first
-                    for crafter_name, crafter_data in item_data["crafters"].items():
-                        num_crafter_buildings = len(crafter_data["unique_buildings"])
-
-                        if num_crafter_buildings > 1:
-                            crafter_building_summary = f"{num_crafter_buildings} Buildings"
-                        else:
-                            crafter_building_summary = (
-                                list(crafter_data["unique_buildings"])[0] if crafter_data["unique_buildings"] else "Unknown"
-                            )
-
-                        # Create Level 3 (Buildings/Progress) data for this crafter
-                        building_operations = []
-                        crafter_progress = []
-
-                        for building_progress_key, building_data in crafter_data["buildings"].items():
-                            building_operations.append(
+                        # Each building/progress combination becomes its own operation
+                        for operation in building_data["operations"]:
+                            operations.append(
                                 {
-                                    "item": item_name,
-                                    "tier": item_data["tier"],
-                                    "quantity": building_data["quantity"],
-                                    "tag": item_data["tag"],
-                                    "progress": building_data["progress"],
-                                    "accept_help": building_data["accept_help"],
-                                    "crafter": crafter_name,
-                                    "building_name": building_data["building_name"],
+                                    "item": operation["item_name"],
+                                    "tier": operation["tier"],
+                                    "quantity": operation["quantity"],
+                                    "tag": operation["tag"],
+                                    "remaining_effort": operation["remaining_effort"],
+                                    "accept_help": operation["accept_help"],
+                                    "crafter": operation["crafter"],
+                                    "building_name": operation["building_name"],
                                     "is_expandable": False,
-                                    "expansion_level": 2,
+                                    "expansion_level": 0,
                                 }
                             )
-                            crafter_progress.append(building_data["progress_value"])
-                            all_crafter_progress.append(building_data["progress_value"])
 
-                        # Get average progress for this crafter
-                        crafter_avg_progress = sum(crafter_progress) / len(crafter_progress) if crafter_progress else 0
-                        crafter_progress_display = f"{int(crafter_avg_progress)}%"
-
-                        # Summarize accept help for this crafter
-                        crafter_accept_help = self._summarize_accept_help(crafter_data["accept_help_values"])
-
-                        # Case 4: Multiple crafters with multiple buildings → Make crafter expandable to buildings
-                        # Case 3: Multiple crafters with single building → No further expansion needed
-                        child_is_expandable = len(crafter_data["buildings"]) > 1
-
-                        crafter_operations.append(
-                            {
-                                "item": item_name,
-                                "tier": item_data["tier"],
-                                "quantity": crafter_data["total_quantity"],
-                                "tag": item_data["tag"],
-                                "progress": crafter_progress_display,
-                                "accept_help": crafter_accept_help,
-                                "crafter": crafter_name,
-                                "building_name": crafter_building_summary,
-                                "operations": building_operations if child_is_expandable else [],
-                                "is_expandable": child_is_expandable,
-                                "expansion_level": 1,
-                            }
-                        )
-                else:
-                    # Case 1: Single crafter, single building → Will be handled by parent not being expandable
-                    # But we still need to collect the progress for parent display
-                    for crafter_name, crafter_data in item_data["crafters"].items():
-                        for building_progress_key, building_data in crafter_data["buildings"].items():
-                            all_crafter_progress.append(building_data["progress_value"])
-
-                # Get average progress for the entire item
-                item_avg_progress = sum(all_crafter_progress) / len(all_crafter_progress) if all_crafter_progress else 0
-                item_progress_display = f"{int(item_avg_progress)}%"
-
-                # Summarize accept help for the entire item
-                item_accept_help = self._summarize_accept_help(item_data["accept_help_values"])
-
-                # Determine if parent should be expandable based on smart expansion rules
-                parent_is_expandable = not (num_crafters == 1 and num_buildings == 1)
-
+                # Create a simple entry that contains all the individual operations
                 formatted[item_name] = {
-                    "item": item_name,  # Tab expects "item"
+                    "item": item_name,
                     "tier": item_data["tier"],
                     "total_quantity": item_data["total_quantity"],
                     "tag": item_data["tag"],
-                    "progress": item_progress_display,
-                    "accept_help": item_accept_help,
-                    "crafter": crafter_summary,
-                    "building_name": building_summary,
-                    "operations": crafter_operations,
-                    "is_expandable": parent_is_expandable,
+                    "remaining_effort": "Multiple",  # Not used in flat display
+                    "accept_help": "Mixed",  # Not used in flat display
+                    "crafter": "Multiple",  # Not used in flat display
+                    "building_name": "Multiple",  # Not used in flat display
+                    "operations": operations,
+                    "is_expandable": True,  # Always expandable to show individual operations
                     "expansion_level": 0,
                 }
 
@@ -756,7 +661,7 @@ class ActiveCraftingProcessor(BaseProcessor):
                 "entity_id": entity_id,
                 "building_entity_id": building_entity_id,
                 "function_type": function_type,
-                "progress": progress,
+                "remaining_effort": progress,
                 "recipe_id": recipe_id,
                 "craft_count": craft_count,
                 "last_crit_outcome": last_crit_outcome,

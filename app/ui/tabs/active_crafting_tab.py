@@ -13,7 +13,7 @@ class ActiveCraftingTab(ctk.CTkFrame):
         self.app = app
 
         # Updated headers to include Accept Help column
-        self.headers = ["Item", "Tier", "Quantity", "Tag", "Progress", "Accept Help", "Crafter", "Building"]
+        self.headers = ["Item", "Tier", "Quantity", "Tag", "Remaining Effort", "Accept Help", "Crafter", "Building"]
         self.all_data: List[Dict] = []
         self.filtered_data: List[Dict] = []
 
@@ -21,10 +21,6 @@ class ActiveCraftingTab(ctk.CTkFrame):
         self.sort_reverse = False
         self.active_filters: Dict[str, set] = {}
         self.clicked_header = None
-
-        # Track expansion state for better user experience
-        self.auto_expand_on_first_load = False
-        self.has_had_first_load = False
 
         self._create_widgets()
         self._create_context_menu()
@@ -61,7 +57,7 @@ class ActiveCraftingTab(ctk.CTkFrame):
         # Create unique style names to prevent conflicts
         self.v_scrollbar_style = "ActiveCrafting.Vertical.TScrollbar"
         self.h_scrollbar_style = "ActiveCrafting.Horizontal.TScrollbar"
-        
+
         # Configure custom scrollbar styles
         style.configure(
             self.v_scrollbar_style,
@@ -83,49 +79,24 @@ class ActiveCraftingTab(ctk.CTkFrame):
             lightcolor="#1e2124",
             height=12,
         )
-        
+
         # Configure state-specific scrollbar colors to prevent grey appearance when inactive
         style.map(
             self.v_scrollbar_style,
             background=[
-                ("active", "#1e2124"),      # Hover state
-                ("pressed", "#1e2124"),     # Click/drag state  
-                ("disabled", "#1e2124"),    # No scroll needed state
-                ("!active", "#1e2124")      # Normal state
+                ("active", "#1e2124"),  # Hover state
+                ("pressed", "#1e2124"),  # Click/drag state
+                ("disabled", "#1e2124"),  # No scroll needed state
+                ("!active", "#1e2124"),  # Normal state
             ],
-            troughcolor=[
-                ("active", "#2a2d2e"),
-                ("pressed", "#2a2d2e"), 
-                ("disabled", "#2a2d2e"),
-                ("!active", "#2a2d2e")
-            ],
-            arrowcolor=[
-                ("active", "#666"),
-                ("pressed", "#666"),
-                ("disabled", "#666"), 
-                ("!active", "#666")
-            ]
+            troughcolor=[("active", "#2a2d2e"), ("pressed", "#2a2d2e"), ("disabled", "#2a2d2e"), ("!active", "#2a2d2e")],
+            arrowcolor=[("active", "#666"), ("pressed", "#666"), ("disabled", "#666"), ("!active", "#666")],
         )
         style.map(
             self.h_scrollbar_style,
-            background=[
-                ("active", "#1e2124"),
-                ("pressed", "#1e2124"),
-                ("disabled", "#1e2124"),
-                ("!active", "#1e2124")
-            ],
-            troughcolor=[
-                ("active", "#2a2d2e"),
-                ("pressed", "#2a2d2e"),
-                ("disabled", "#2a2d2e"),
-                ("!active", "#2a2d2e")
-            ],
-            arrowcolor=[
-                ("active", "#666"),
-                ("pressed", "#666"),
-                ("disabled", "#666"),
-                ("!active", "#666")
-            ]
+            background=[("active", "#1e2124"), ("pressed", "#1e2124"), ("disabled", "#1e2124"), ("!active", "#1e2124")],
+            troughcolor=[("active", "#2a2d2e"), ("pressed", "#2a2d2e"), ("disabled", "#2a2d2e"), ("!active", "#2a2d2e")],
+            arrowcolor=[("active", "#666"), ("pressed", "#666"), ("disabled", "#666"), ("!active", "#666")],
         )
 
         # Create the Treeview with tree structure support
@@ -155,7 +126,7 @@ class ActiveCraftingTab(ctk.CTkFrame):
             "Tier": 50,
             "Quantity": 70,
             "Tag": 70,
-            "Progress": 120,
+            "Remaining Effort": 120,
             "Accept Help": 90,
             "Crafter": 90,
             "Building": 200,
@@ -172,7 +143,7 @@ class ActiveCraftingTab(ctk.CTkFrame):
         # Configure event debouncing for better resize performance
         self.resize_timer = None
         self.cached_total_width = None
-        
+
         # Bind events
         self.tree.bind("<Button-3>", self.show_header_context_menu)
         self.tree.bind("<Configure>", self.on_tree_configure)
@@ -182,7 +153,7 @@ class ActiveCraftingTab(ctk.CTkFrame):
         # Cancel previous timer if it exists
         if self.resize_timer:
             self.after_cancel(self.resize_timer)
-        
+
         # Schedule the actual configure handling with debouncing
         self.resize_timer = self.after(150, self._handle_tree_configure)
 
@@ -191,11 +162,11 @@ class ActiveCraftingTab(ctk.CTkFrame):
         try:
             total_width = sum(self.tree.column(col, "width") for col in ["#0"] + list(self.headers))
             widget_width = self.tree.winfo_width()
-            
+
             # Only update if width actually changed to avoid unnecessary operations
             if self.cached_total_width != total_width:
                 self.cached_total_width = total_width
-                
+
                 if total_width > widget_width:
                     self.hsb.grid(row=1, column=0, sticky="ew")
                 else:
@@ -283,13 +254,65 @@ class ActiveCraftingTab(ctk.CTkFrame):
             self.apply_filter()
 
     def update_data(self, new_data):
-        """Receives new active crafting data (already item-focused and grouped)."""
+        """Receives new active crafting data and flattens it into individual operations."""
         if isinstance(new_data, list):
-            self.all_data = new_data
+            # Flatten hierarchical data into individual operations
+            self.all_data = self._flatten_active_crafting_data(new_data)
         else:
             self.all_data = []
 
         self.apply_filter()
+
+    def _flatten_active_crafting_data(self, hierarchical_data):
+        """
+        Converts hierarchical active crafting data into flat list of individual operations.
+
+        Args:
+            hierarchical_data: List of item groups with nested operations
+
+        Returns:
+            List of individual active crafting operations
+        """
+        flattened = []
+
+        try:
+            for item_group in hierarchical_data:
+                operations = item_group.get("operations", [])
+
+                # If there are no operations, create a single row from the group data
+                if not operations:
+                    flattened.append(
+                        {
+                            "item": item_group.get("item", "Unknown Item"),
+                            "tier": item_group.get("tier", 0),
+                            "quantity": item_group.get("total_quantity", 0),
+                            "tag": item_group.get("tag", "empty"),
+                            "remaining_effort": item_group.get("remaining_effort", "Unknown"),
+                            "accept_help": item_group.get("accept_help", "Unknown"),
+                            "crafter": item_group.get("crafter", "Unknown"),
+                            "building": item_group.get("building_name", "Unknown"),
+                        }
+                    )
+                else:
+                    # Create individual rows for each operation
+                    for operation in operations:
+                        flattened.append(
+                            {
+                                "item": operation.get("item", operation.get("item_name", item_group.get("item", "Unknown Item"))),
+                                "tier": operation.get("tier", item_group.get("tier", 0)),
+                                "quantity": operation.get("quantity", operation.get("craft_count", 1)),
+                                "tag": operation.get("tag", item_group.get("tag", "empty")),
+                                "remaining_effort": operation.get("remaining_effort", "Unknown"),
+                                "accept_help": operation.get("accept_help", "Unknown"),
+                                "crafter": operation.get("crafter", "Unknown"),
+                                "building": operation.get("building_name", operation.get("building", "Unknown")),
+                            }
+                        )
+
+        except Exception as e:
+            logging.error(f"Error flattening active crafting data: {e}")
+
+        return flattened
 
     def apply_filter(self):
         """Filters the master data list based on search and column filters."""
@@ -341,21 +364,19 @@ class ActiveCraftingTab(ctk.CTkFrame):
 
         return False
 
-    def _row_matches_search(self, row, search_term):
-        """Checks if a row matches the search term, including operation data."""
-        # Check main row data
-        main_fields = ["item", "tag", "progress", "accept_help", "crafter", "building"]
-        for field in main_fields:
-            if search_term in str(row.get(field, "")).lower():
+    def _row_matches_search(self, operation_data, search_term):
+        """Check if individual operation data matches the search term."""
+        # Check main fields in the flattened operation data
+        searchable_fields = ["item", "tag", "remaining_effort", "accept_help", "crafter", "building"]
+        for field in searchable_fields:
+            if search_term in str(operation_data.get(field, "")).lower():
                 return True
 
-        # Check individual operation data
-        operations = row.get("operations", [])
-        for operation in operations:
-            operation_fields = ["item", "tag", "progress", "accept_help", "crafter", "building_name"]
-            for field in operation_fields:
-                if search_term in str(operation.get(field, "")).lower():
-                    return True
+        # Check tier and quantity as strings
+        if search_term in str(operation_data.get("tier", "")).lower():
+            return True
+        if search_term in str(operation_data.get("quantity", "")).lower():
+            return True
 
         return False
 
@@ -370,11 +391,27 @@ class ActiveCraftingTab(ctk.CTkFrame):
         sort_key = self.sort_column.lower().replace(" ", "_")
 
         # Special sorting for progress - convert to numerical value for proper sorting
-        if sort_key == "progress":
+        if sort_key == "remaining_effort":
 
             def progress_sort_key(x):
                 progress_str = str(x.get(sort_key, ""))
-                if "%" in progress_str:
+                if "/" in progress_str:
+                    # Handle current_effort/total_effort format (e.g., "24050/24050")
+                    try:
+                        parts = progress_str.split("/")
+                        if len(parts) == 2:
+                            current = int(parts[0])
+                            total = int(parts[1])
+                            if total > 0:
+                                return (current / total) * 100  # Convert to percentage for sorting
+                            else:
+                                return 0
+                        else:
+                            return 999
+                    except ValueError:
+                        return 999
+                elif "%" in progress_str:
+                    # Handle legacy percentage format
                     try:
                         return int(progress_str.replace("%", ""))
                     except ValueError:
@@ -411,170 +448,35 @@ class ActiveCraftingTab(ctk.CTkFrame):
             self.tree.heading(header, text=text + filter_indicator)
 
     def render_table(self):
-        """Renders the hierarchical active crafting data with mandatory two-level expansion, preserving expansion state."""
-        # Save current expansion state before clearing (unless it's the first load)
-        is_first_load = not self.has_had_first_load
-
-        if self.has_had_first_load:
-            expanded_items = self._save_expansion_state()
-        else:
-            expanded_items = set()
-            self.has_had_first_load = True
-
+        """Render the active crafting data as individual flat rows."""
         # Clear the tree
         self.tree.delete(*self.tree.get_children())
 
-        for row_data in self.filtered_data:
-            item_name = row_data.get("item", "Unknown Item")
-            tier = row_data.get("tier", 0)
-            quantity = row_data.get("total_quantity", 0)
-            tag = row_data.get("tag", "empty")
-            progress = row_data.get("progress", "Unknown")
-            accept_help = row_data.get("accept_help", "Unknown")
-            crafter = row_data.get("crafter", "Unknown")
-            building = row_data.get("building_name", "Unknown")
-            operations = row_data.get("operations", [])
-            is_expandable = row_data.get("is_expandable", False)
+        for operation_data in self.filtered_data:
+            # Extract data for each individual operation
+            item_name = operation_data.get("item", "Unknown Item")
+            tier = operation_data.get("tier", 0)
+            quantity = operation_data.get("quantity", 0)
+            tag = operation_data.get("tag", "empty")
+            remaining_effort = operation_data.get("remaining_effort", "Unknown")
+            accept_help = operation_data.get("accept_help", "Unknown")
+            crafter = operation_data.get("crafter", "Unknown")
+            building = operation_data.get("building", "Unknown")
 
-            # Create a unique identifier for this row to track expansion state
-            row_id = f"{item_name}|{tier}|{tag}"
+            # Prepare row values
+            values = [item_name, str(tier), str(quantity), tag, remaining_effort, accept_help, crafter, building]
 
-            # Prepare main row values
-            values = [item_name, str(tier), str(quantity), tag, progress, accept_help, crafter, building]
+            # Determine tag based on progress for styling
+            progress_tag = self._get_progress_tag(remaining_effort)
 
-            # Determine tag based on progress
-            tag = self._get_progress_tag(progress)
-
-            if is_expandable and operations:
-                # Create expandable parent row
-                parent_id = self.tree.insert("", "end", values=values, tags=(tag,))
-
-                # Determine if this item should be expanded
-                should_expand = False
-                if is_first_load and self.auto_expand_on_first_load:
-                    # Auto-expand on first load
-                    should_expand = True
-                elif not is_first_load and row_id in expanded_items:
-                    # Previously expanded (only check this after first load)
-                    should_expand = True
-
-                # Process child operations
-                for child_data in operations:
-                    self._render_child_row(parent_id, child_data, 1, row_id, expanded_items, is_first_load)
-
-                # Apply expansion state
-                if should_expand:
-                    self.tree.item(parent_id, open=True)
-            else:
-                # Non-expandable row or no operations
-                self.tree.insert("", "end", values=values, tags=(tag,))
-
-    def _save_expansion_state(self):
-        """Save the current expansion state of all tree items."""
-        expanded_items = set()
-
-        def check_item(item_id):
-            # Get the item's values to create identifier
-            values = self.tree.item(item_id, "values")
-            if values and len(values) >= 3:
-                # Create identifier from item, tier, tag
-                item_identifier = f"{values[0]}|{values[1]}|{values[3]}"
-
-                # If this item is expanded, save its identifier
-                if self.tree.item(item_id, "open"):
-                    expanded_items.add(item_identifier)
-
-                # Check children recursively
-                for child_id in self.tree.get_children(item_id):
-                    check_item(child_id)
-
-        # Check all top-level items
-        for item_id in self.tree.get_children():
-            check_item(item_id)
-
-        return expanded_items
-
-    def _render_child_row(self, parent_id, child_data, level, parent_row_id=None, expanded_items=None, is_first_load=False):
-        """
-        Renders a child row, potentially with its own children for second-level expansion.
-
-        Args:
-            parent_id: The parent tree item ID
-            child_data: The child data dictionary
-            level: Expansion level (1 for first level, 2 for second level)
-            parent_row_id: The identifier of the parent row for expansion tracking
-            expanded_items: Set of previously expanded item identifiers
-            is_first_load: Whether this is the first time loading data
-        """
-        if expanded_items is None:
-            expanded_items = set()
-
-        # Extract child data
-        item_name = child_data.get("item", child_data.get("item_name", "Unknown Item"))
-        tier = child_data.get("tier", 0)
-        quantity = child_data.get("quantity", 0)
-        tag = child_data.get("tag", "empty")
-        progress = child_data.get("progress", "Unknown")
-        accept_help = child_data.get("accept_help", "Unknown")
-        crafter = child_data.get("crafter", "Unknown")
-        building = child_data.get("building_name", child_data.get("building", "Unknown"))
-        is_expandable = child_data.get("is_expandable", False)
-        child_operations = child_data.get("operations", [])
-
-        # Create indentation based on level
-        indent = "  " + "  " * (level - 1) + "└─ "
-        indented_item_name = f"{indent}{item_name}"
-
-        # Create identifier for this child row for expansion tracking
-        child_row_id = f"{item_name}|{tier}|{tag}|{crafter}"
-        if level > 1:
-            child_row_id += f"|{building}"
-
-        # Prepare child values
-        child_values = [indented_item_name, str(tier), str(quantity), tag, progress, accept_help, crafter, building]
-
-        # Determine tag
-        child_tag = self._get_progress_tag(progress)
-
-        # Insert the child row
-        if is_expandable and child_operations:
-            # This child has its own children (second level expansion)
-            child_id = self.tree.insert(parent_id, "end", values=child_values, tags=("child", child_tag))
-
-            # Determine if this child should be expanded
-            should_expand_child = False
-            if is_first_load and self.auto_expand_on_first_load:
-                # Auto-expand on first load
-                should_expand_child = True
-            elif not is_first_load and child_row_id in expanded_items:
-                # Previously expanded
-                should_expand_child = True
-
-            # Add grandchildren (second level)
-            for grandchild_data in child_operations:
-                self._render_child_row(child_id, grandchild_data, level + 1, child_row_id, expanded_items, is_first_load)
-
-            # Apply expansion state for this child
-            if should_expand_child:
-                self.tree.item(child_id, open=True)
-        else:
-            # Leaf node - no further expansion
-            self.tree.insert(parent_id, "end", values=child_values, tags=("child", child_tag))
+            # Insert as a simple flat row
+            self.tree.insert("", "end", values=values, tags=(progress_tag,))
 
     def _get_progress_tag(self, progress):
         """Determines the appropriate tag for color coding based on progress."""
         progress_str = str(progress).lower()
 
-        if progress_str == "preparation":
-            return "preparing"
-        elif "%" in progress_str:
-            try:
-                progress_value = int(progress_str.replace("%", ""))
-                if progress_value >= 100:
-                    return "ready"
-                else:
-                    return "crafting"
-            except ValueError:
-                return "empty"
+        if progress_str == "ready":
+            return "ready"
         else:
-            return "empty"
+            return "crafting"
