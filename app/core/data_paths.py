@@ -23,8 +23,8 @@ def get_bundled_data_directory():
         str: Path to bundled data directory (read-only)
     """
     if getattr(sys, "frozen", False):
-        # Running as EXE - data is bundled relative to executable
-        return os.path.join(os.path.dirname(sys.executable), "data")
+        # Running as EXE - data is bundled in PyInstaller's temporary directory
+        return os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)), "data")
     else:
         # Running in development - data is in app/data/
         return os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "data"))
@@ -118,34 +118,47 @@ def ensure_user_data_directory():
 def migrate_user_data_files():
     """
     Migrate existing user data files from old locations to new user data directory.
-
-    This helps with the transition from the old _get_data_directory() approach
-    to the new proper user data handling.
     """
     try:
-        old_data_dir = os.path.dirname(__file__)  # Old location
-        new_data_dir = get_user_data_directory()  # New location
+        user_data_dir = get_user_data_directory()  # AppData/BitCraftCompanion
+        filename = "player_data.json"
+        target_path = os.path.join(user_data_dir, filename)
 
-        files_to_migrate = ["player_data.json"]
+        # Check if file already exists in target location (AppData)
+        if os.path.exists(target_path):
+            logging.info(f"Found {filename} in user data directory: {target_path}")
+            return
 
-        for filename in files_to_migrate:
-            old_path = os.path.join(old_data_dir, filename)
-            new_path = os.path.join(new_data_dir, filename)
+        # File not in AppData, check application directory
+        if getattr(sys, "frozen", False):
+            # Running as EXE - check directory where executable is located
+            app_dir = os.path.dirname(sys.executable)
+        else:
+            # Running in development - check app directory (parent of core)
+            app_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 
-            # Only migrate if old file exists and new file doesn't
-            if os.path.exists(old_path) and not os.path.exists(new_path):
+        source_path = os.path.join(app_dir, filename)
+
+        if os.path.exists(source_path):
+            try:
+                # Move file to AppData directory (not copy, to avoid duplicates)
+                import shutil
+
+                shutil.move(source_path, target_path)
+                logging.info(f"Migrated {filename} from {app_dir} to user data directory: {target_path}")
+
+            except Exception as e:
+                logging.error(f"Could not migrate {filename} from {app_dir}: {e}")
+                # If move fails, try copy as fallback
                 try:
-                    # Copy file to new location
-                    import shutil
-
-                    shutil.copy2(old_path, new_path)
-                    logging.info(f"Migrated {filename} to user data directory")
-
-                    # Optionally remove old file (commented out for safety)
-                    # os.remove(old_path)
-
-                except Exception as e:
-                    logging.warning(f"Could not migrate {filename}: {e}")
+                    shutil.copy2(source_path, target_path)
+                    logging.info(f"Copied {filename} from {app_dir} to user data directory as fallback")
+                except Exception as copy_error:
+                    logging.error(f"Failed to copy {filename} as fallback: {copy_error}")
+        else:
+            logging.info(
+                f"No existing {filename} found in application directory. Will create new file in user data directory when needed."
+            )
 
     except Exception as e:
         logging.error(f"Error during user data migration: {e}")
@@ -155,3 +168,5 @@ def migrate_user_data_files():
 if __name__ != "__main__":
     # Ensure user data directory is ready when module is imported
     ensure_user_data_directory()
+    # Migrate user data files if needed (helps with dev -> EXE transition)
+    migrate_user_data_files()

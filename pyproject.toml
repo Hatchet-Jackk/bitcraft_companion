@@ -1,12 +1,12 @@
 [tool.poetry]
 name = "app"
-version = "0.2.5"
+version = "0.2.6"
 description = ""
 authors = ["Hatchet Jackk <helloitsyourdadcube@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.8,<3.14"
+python = ">=3.9,<3.14"
 websockets = "^15.0.1"
 requests = "^2.32.4"
 openpyxl = "^3.1.5"

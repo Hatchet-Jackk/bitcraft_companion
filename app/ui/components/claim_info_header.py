@@ -1,5 +1,6 @@
 import customtkinter as ctk
 import logging
+import time
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import openpyxl
@@ -135,7 +136,9 @@ class ClaimInfoHeader(ctk.CTkFrame):
         self.refresh_button.grid(row=0, column=1, sticky="w", padx=(2, 12))
 
         # Add tooltip to refresh button
-        self._add_tooltip(self.refresh_button, "Refreshes all data for the current claim - helpful if tables appear corrupted or incomplete")
+        self._add_tooltip(
+            self.refresh_button, "Refreshes all data for the current claim - helpful if tables appear corrupted or incomplete"
+        )
 
         # Add export button
         self.export_button = ctk.CTkButton(
@@ -591,45 +594,45 @@ class ClaimInfoHeader(ctk.CTkFrame):
         """Calculates and updates the task refresh countdown."""
         try:
             if self.traveler_tasks_expiration <= 0:
-                self.task_refresh_time = "Unknown"
-                color = "#cccccc"
+                # No expiration time set - reset to 4 hours as fallback
+                current_time = time.time()
+                self.traveler_tasks_expiration = current_time + (4 * 60 * 60)  # 4 hours
+                self.task_refresh_time = "4h 0m"
+                color = "#9C27B0"  # Purple for reset
             else:
-                # The traveler_tasks_expiration is in SECONDS, not microseconds
-                import time
-
                 current_time_seconds = time.time()
                 time_diff_seconds = self.traveler_tasks_expiration - current_time_seconds
 
                 if time_diff_seconds <= 0:
-                    # Tasks should refresh now or have refreshed
-                    self.task_refresh_time = "Ready"
-                    color = "#4CAF50"  # Green for ready
+                    # Timer expired - reset to 4 hours and continue countdown
+                    logging.info("Task refresh timer expired - resetting to 4 hours")
+                    self.traveler_tasks_expiration = current_time_seconds + (4 * 60 * 60)  # 4 hours
+                    time_diff_seconds = 4 * 60 * 60  # Start fresh countdown
 
-                    # Check if we need to request fresh data (only once when transitioning to Ready)
-                    if not hasattr(self, "_ready_state_detected") or not self._ready_state_detected:
-                        self._ready_state_detected = True
-                        self._request_fresh_player_state()
-                else:
-                    # Calculate time components
-                    total_seconds = int(time_diff_seconds)
-                    days = total_seconds // 86400
-                    hours = (total_seconds % 86400) // 3600
-                    minutes = (total_seconds % 3600) // 60
-                    seconds = total_seconds % 60
+                    # Reset ready state detection for next cycle
+                    if hasattr(self, "_ready_state_detected"):
+                        self._ready_state_detected = False
 
-                    # Format display based on time remaining
-                    if total_seconds < 60:  # less than 1 minute
-                        self.task_refresh_time = f"{seconds}s"
-                        color = "#FF5722"  # Red for very soon
-                    elif total_seconds < 3600:  # less than 1 hour
-                        self.task_refresh_time = f"{minutes}m {seconds}s"
-                        color = "#FF9800"  # Orange for soon
-                    elif days == 0:  # same day
-                        self.task_refresh_time = f"{hours}h {minutes}m"
-                        color = "#FFC107"  # Amber for today
-                    else:  # more than a day
-                        self.task_refresh_time = f"{days}d {hours}h"
-                        color = "#9C27B0"  # Purple for future
+                # Continue with normal countdown display logic...
+                total_seconds = int(time_diff_seconds)
+                days = total_seconds // 86400
+                hours = (total_seconds % 86400) // 3600
+                minutes = (total_seconds % 3600) // 60
+                seconds = total_seconds % 60
+
+                # Format display based on time remaining
+                if total_seconds < 60:  # less than 1 minute
+                    self.task_refresh_time = f"{seconds}s"
+                    color = "#FF5722"  # Red for very soon
+                elif total_seconds < 3600:  # less than 1 hour
+                    self.task_refresh_time = f"{minutes}m {seconds}s"
+                    color = "#FF9800"  # Orange for soon
+                elif days == 0:  # same day
+                    self.task_refresh_time = f"{hours}h {minutes}m"
+                    color = "#FFC107"  # Amber for today
+                else:  # more than a day
+                    self.task_refresh_time = f"{days}d {hours}h"
+                    color = "#9C27B0"  # Purple for future
 
             # Update the label with appropriate color
             self.task_refresh_label.configure(text=self.task_refresh_time, text_color=color)

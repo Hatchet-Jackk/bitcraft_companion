@@ -160,7 +160,6 @@ class TasksProcessor(BaseProcessor):
                 if entity_id:
                     self._player_state[entity_id] = {
                         "traveler_tasks_expiration": row.get("traveler_tasks_expiration", 0),
-                        # Store other player state data if needed
                     }
 
                     # Send the expiration time to the claim info header

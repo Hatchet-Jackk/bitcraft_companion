@@ -219,6 +219,7 @@ class BitCraft:
             data = self._load_reference_data(table)
             if data is not None:
                 reference_data[table] = data
+                logging.info(f"Loaded reference data for table: {table}")
             else:
                 logging.warning(f"Failed to load reference data for table: {table}")
 
@@ -548,7 +549,7 @@ class BitCraft:
                     # Use a timeout to allow the loop to check the stop event
                     msg = self.ws_connection.recv(timeout=1.0)
                     data = json.loads(msg)
-                    
+
                     # Log WebSocket message types for connection diagnostics
                     logging.info(f"Received WebSocket message: {list(data.keys())}")
 
