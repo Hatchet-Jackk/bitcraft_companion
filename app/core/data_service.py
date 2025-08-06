@@ -173,10 +173,10 @@ class DataService:
             # Standardize claim keys for UI compatibility
             for claim in all_claims:
                 # Add both key formats for backward compatibility
-                if 'entity_id' in claim and 'claim_id' not in claim:
-                    claim['claim_id'] = claim['entity_id']
-                if 'name' in claim and 'claim_name' not in claim:
-                    claim['claim_name'] = claim['name']
+                if "entity_id" in claim and "claim_id" not in claim:
+                    claim["claim_id"] = claim["entity_id"]
+                if "name" in claim and "claim_name" not in claim:
+                    claim["claim_name"] = claim["name"]
 
             # Set up claim manager with all claims
             self.claim_manager.set_available_claims(all_claims)
@@ -279,14 +279,6 @@ class DataService:
     def _handle_timer_update(self, timer_data):
         """Handle real-time timer updates from the crafting service"""
         try:
-            # Handle both dictionary timer updates and list data updates
-            data = timer_data.get("data", {})
-
-            if isinstance(data, dict):
-                timer_data_sample = dict(list(data.items())[:3])
-            else:
-                logging.warning(f"[DATA SERVICE] Received timer_data with unknown data type: {type(data)}")
-
             self.data_queue.put(timer_data)
         except Exception as e:
             logging.error(f"Error handling timer update: {e}")
@@ -346,11 +338,10 @@ class DataService:
                 return False
 
             # Notify UI that claim switching is starting
-            claim_name = new_claim_data.get('claim_name') or new_claim_data.get('name', 'Unknown Claim')
-            self.data_queue.put({
-                "type": "claim_switching", 
-                "data": {"status": "loading", "claim_name": claim_name, "claim_id": claim_id}
-            })
+            claim_name = new_claim_data.get("claim_name") or new_claim_data.get("name", "Unknown Claim")
+            self.data_queue.put(
+                {"type": "claim_switching", "data": {"status": "loading", "claim_name": claim_name, "claim_id": claim_id}}
+            )
 
             # Save current claim state
             if self.claim_manager:
@@ -390,20 +381,22 @@ class DataService:
             self._setup_subscriptions_for_current_claim()
 
             # Notify UI that claim switching completed successfully
-            self.data_queue.put({
-                "type": "claim_switched", 
-                "data": {
-                    "status": "success", 
-                    "claim_id": claim_id, 
-                    "claim_name": claim_name,
-                    "claim_info": {
-                        "name": claim_name,
-                        "treasury": getattr(self.claim, 'treasury', 0),
-                        "supplies": getattr(self.claim, 'supplies', 0),
-                        "tile_count": getattr(self.claim, 'size', 0)
-                    }
+            self.data_queue.put(
+                {
+                    "type": "claim_switched",
+                    "data": {
+                        "status": "success",
+                        "claim_id": claim_id,
+                        "claim_name": claim_name,
+                        "claim_info": {
+                            "name": claim_name,
+                            "treasury": getattr(self.claim, "treasury", 0),
+                            "supplies": getattr(self.claim, "supplies", 0),
+                            "tile_count": getattr(self.claim, "size", 0),
+                        },
+                    },
                 }
-            })
+            )
 
             logging.info(f"Successfully switched to claim: {claim_name}")
             return True
@@ -411,10 +404,7 @@ class DataService:
         except Exception as e:
             logging.error(f"Error switching claims: {e}")
             # Notify UI of error
-            self.data_queue.put({
-                "type": "claim_switched", 
-                "data": {"status": "error", "error": str(e)}
-            })
+            self.data_queue.put({"type": "claim_switched", "data": {"status": "error", "error": str(e)}})
             return False
 
     def refresh_current_claim_data(self):
@@ -423,23 +413,23 @@ class DataService:
             if not self.claim or not self.claim.claim_id:
                 logging.warning("No current claim available for data refresh")
                 return False
-                
+
             if not self.player or not self.player.user_id:
                 logging.warning("No user ID available for data refresh")
                 return False
-                
+
             logging.info(f"Refreshing data for current claim: {self.claim.claim_id}")
-            
+
             # Clear all processor caches to ensure fresh data
-            if hasattr(self, 'message_router') and self.message_router:
+            if hasattr(self, "message_router") and self.message_router:
                 self.message_router.clear_all_processor_caches()
-            
+
             # Restart subscriptions for current claim (this will fetch all fresh data)
             self._setup_subscriptions_for_current_claim()
-            
+
             logging.info("Current claim data refresh completed successfully")
             return True
-            
+
         except Exception as e:
             logging.error(f"Error refreshing current claim data: {e}")
             return False
@@ -462,10 +452,10 @@ class DataService:
                 # Standardize claim keys for UI compatibility
                 for claim in updated_claims:
                     # Add both key formats for backward compatibility
-                    if 'entity_id' in claim and 'claim_id' not in claim:
-                        claim['claim_id'] = claim['entity_id']
-                    if 'name' in claim and 'claim_name' not in claim:
-                        claim['claim_name'] = claim['name']
+                    if "entity_id" in claim and "claim_id" not in claim:
+                        claim["claim_id"] = claim["entity_id"]
+                    if "name" in claim and "claim_name" not in claim:
+                        claim["claim_name"] = claim["name"]
 
                 # Send updated claims list to UI
                 self.data_queue.put(
