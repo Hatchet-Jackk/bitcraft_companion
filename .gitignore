@@ -34,3 +34,6 @@ player_data.json
 # File types to ignore
 *.xlsx
 *.txt
+*.log
+.*
+*.zip

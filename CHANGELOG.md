@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5]
+### Improvements
+* Vastly improved network performance
+* Vastly improved data loading
+* Vastly improved claim switching performance
+* Data presentation in passive and active crafting tabs
+
+### Added
+* Real time countdowns for passive crafting
+* Real time countdown for traveler task resets
+* Logout and Quit buttons in main window
+* Accept help value in active crafting
+* Claim supply depletion value
+
+### Fixed
+* Re-added data export
+* Scrollbar colors now use the correct color when disabled
+
 ## [0.1.11]
 ### Fixed
 - Resolved issue where certain items were not appearing in the claim inventory
