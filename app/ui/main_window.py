@@ -2,6 +2,7 @@ import sys
 import customtkinter as ctk
 import queue
 import logging
+import time
 from tkinter import messagebox
 from typing import Dict
 import os
@@ -102,8 +103,10 @@ class MainWindow(ctk.CTk):
         self.expected_data_types = {"inventory", "crafting", "active_crafting", "tasks", "claim_info"}
         self.received_data_types = set()
 
-        # Create tab content area with border/outline
-        self.tab_content_area = ctk.CTkFrame(self, fg_color="#2b2b2b", border_width=2, border_color="#404040", corner_radius=10)
+        # Create tab content area with modern styling
+        self.tab_content_area = ctk.CTkFrame(
+            self, fg_color=("#2b2b2b", "#1e1e1e"), border_width=2, border_color=("#404040", "#505050"), corner_radius=12
+        )
         self.tab_content_area.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 10))
         self.tab_content_area.grid_columnconfigure(0, weight=1)
         self.tab_content_area.grid_rowconfigure(0, weight=1)
@@ -152,25 +155,29 @@ class MainWindow(ctk.CTk):
         self.search_field = ctk.CTkEntry(
             search_frame,
             textvariable=self.search_var,
-            placeholder_text="Type to search items...",
-            height=32,
+            placeholder_text="🔍 Type to search items...",
+            height=34,
             font=ctk.CTkFont(size=12),
-            fg_color="#2a2d2e",
-            border_color="#404040",
-            text_color="#ffffff",
+            fg_color=("#2a2d2e", "#343638"),
+            border_color=("#404040", "#505050"),
+            text_color=("#ffffff", "#f0f0f0"),
+            placeholder_text_color=("#888888", "#999999"),
+            corner_radius=8,
         )
         self.search_field.grid(row=0, column=1, sticky="ew", padx=(0, 8))
 
-        # Clear button
+        # Clear button with modern styling
         self.clear_button = ctk.CTkButton(
             search_frame,
-            text="Clear",
+            text="✕ Clear",
             command=self.clear_search,
-            width=60,
-            height=32,
+            width=70,
+            height=34,
             font=ctk.CTkFont(size=11),
-            fg_color="#666666",
-            hover_color="#777777",
+            fg_color=("#666666", "#707070"),
+            hover_color=("#777777", "#808080"),
+            corner_radius=8,
+            text_color=("#ffffff", "#f0f0f0"),
         )
         self.clear_button.grid(row=0, column=2, sticky="e")
 
@@ -180,53 +187,91 @@ class MainWindow(ctk.CTk):
         self.search_field.focus()  # Return focus to search field
 
     def _create_loading_overlay(self):
-        """Creates a loading overlay with a custom image and message."""
+        """Creates a clean, text-based loading overlay."""
         overlay = ctk.CTkFrame(self.tab_content_area, fg_color="#2b2b2b")
         overlay.grid(row=0, column=0, sticky="nsew")
         overlay.grid_columnconfigure(0, weight=1)
         overlay.grid_rowconfigure(0, weight=1)
 
-        # Make sure it starts on top
-        overlay.tkraise()
-
-        # Create loading content
+        # Create loading content frame
         loading_frame = ctk.CTkFrame(overlay, fg_color="transparent")
         loading_frame.grid(row=0, column=0)
 
-        # Load the custom image (replace 'loading.png' with your actual filename if different)
-        image_path = os.path.join(os.path.dirname(__file__), "images", "loading.png")
-        if os.path.exists(image_path):
-            pil_image = Image.open(image_path)
-            self.loading_image = ctk.CTkImage(light_image=pil_image, dark_image=pil_image, size=(192, 192))
-            self.loading_image_label = ctk.CTkLabel(loading_frame, image=self.loading_image, text="")
-            self.loading_image_label.pack(pady=10)
-        else:
-            # Fallback to text if image is missing
-            self.loading_image_label = ctk.CTkLabel(
-                loading_frame, text="Loading...", font=ctk.CTkFont(size=16, weight="bold"), text_color="#3B8ED0"
-            )
-            self.loading_image_label.pack(pady=10)
+        # Main loading title with modern styling
+        self.loading_title = ctk.CTkLabel(loading_frame, text="", font=ctk.CTkFont(size=24, weight="bold"), text_color="#3B8ED0")
+        self.loading_title.pack(pady=(0, 20))
 
-        # Loading message
+        # Animated loading indicator (will be updated with dots)
+        self.loading_indicator = ctk.CTkLabel(loading_frame, text="●●●", font=ctk.CTkFont(size=18), text_color="#1F6AA5")
+        self.loading_indicator.pack(pady=(0, 15))
+
+        # Loading message with better formatting
         self.loading_message = ctk.CTkLabel(
             loading_frame,
             text="Connecting to game server and fetching your claim data",
-            font=ctk.CTkFont(size=12),
-            text_color="#888888",
+            font=ctk.CTkFont(size=13),
+            text_color="#CCCCCC",
         )
         self.loading_message.pack()
 
+        # Start the loading animation
+        self._start_loading_animation()
+
         return overlay
 
+    def _start_loading_animation(self):
+        """Starts the loading dots animation."""
+        self.loading_animation_state = 0
+        self._animate_loading_dots()
+
+    def _animate_loading_dots(self):
+        """Animates the loading dots with a cycling pattern."""
+        if not hasattr(self, "is_loading") or not self.is_loading:
+            return
+
+        try:
+            dot_patterns = ["●○○", "●●○", "●●●", "○●●", "○○●", "○○○"]
+            if hasattr(self, "loading_indicator"):
+                pattern = dot_patterns[self.loading_animation_state % len(dot_patterns)]
+                self.loading_indicator.configure(text=pattern)
+                self.loading_animation_state += 1
+
+            # Schedule next animation frame
+            self.after(300, self._animate_loading_dots)
+        except Exception as e:
+            logging.error(f"Error in loading animation: {e}")
+
     def show_loading(self):
-        """Shows the loading overlay and disables tab buttons."""
+        """Shows the loading overlay with minimum display time for better UX."""
         self.is_loading = True
+        self.loading_start_time = time.time()
         self.loading_overlay.grid(row=0, column=0, sticky="nsew")
         self.loading_overlay.tkraise()
         self._set_tab_buttons_state("disabled")
 
+        # Restart animation
+        if hasattr(self, "loading_indicator"):
+            self._start_loading_animation()
+
     def hide_loading(self):
-        """Hides the loading overlay and enables tab buttons."""
+        """Hides the loading overlay with minimum display time."""
+        if not self.is_loading:
+            return
+
+        # Ensure minimum display time of 1 second for better UX
+        if hasattr(self, "loading_start_time"):
+            elapsed = time.time() - self.loading_start_time
+            min_display_time = 1.0
+
+            if elapsed < min_display_time:
+                remaining = int((min_display_time - elapsed) * 1000)
+                self.after(remaining, self._actually_hide_loading)
+                return
+
+        self._actually_hide_loading()
+
+    def _actually_hide_loading(self):
+        """Actually hides the loading overlay."""
         self.is_loading = False
         self.loading_overlay.grid_remove()
         self._set_tab_buttons_state("normal")
@@ -248,20 +293,20 @@ class MainWindow(ctk.CTk):
             logging.info(f"Created tab: {name}")
 
     def _create_tab_buttons(self):
-        """Creates the tab navigation buttons with enhanced tab-like styling."""
+        """Creates the tab navigation buttons with modern styling."""
         for i, name in enumerate(self.tabs.keys()):
             btn = ctk.CTkButton(
                 self.tab_frame,
                 text=name,
                 width=140,
-                height=35,
-                corner_radius=8,
+                height=38,
+                corner_radius=10,
                 border_width=2,
                 border_color="#404040",
                 font=ctk.CTkFont(size=12, weight="bold"),
                 fg_color="transparent",
-                text_color="#cccccc",
-                hover_color="#3a3a3a",
+                text_color=("#cccccc", "#e0e0e0"),
+                hover_color=("#3a3a3a", "#454545"),
                 command=lambda n=name: self.show_tab(n),
             )
             btn.grid(row=0, column=i, padx=(0 if i == 0 else 4, 0), pady=(0, 2), sticky="w")
@@ -275,19 +320,24 @@ class MainWindow(ctk.CTk):
         self.active_tab_name = tab_name
         self.tabs[tab_name].tkraise()
 
-        # Update button appearances with proper tab styling
+        # Update button appearances with modern styling
         for i, (name, button) in enumerate(self.tab_buttons.items()):
             if name == tab_name:
-                # Active tab styling - connected to content area
+                # Active tab with subtle gradient effect
                 button.configure(
-                    fg_color=("#3B8ED0", "#1F6AA5"),
+                    fg_color=("#3B8ED0", "#2980B9"),
                     text_color="white",
                     border_color="#3B8ED0",
                     hover_color=("#2E7BB8", "#1A5A8A"),
                 )
             else:
-                # Inactive tab styling
-                button.configure(fg_color="transparent", text_color="#cccccc", border_color="#404040", hover_color="#3a3a3a")
+                # Inactive tab with improved contrast
+                button.configure(
+                    fg_color="transparent",
+                    text_color=("#cccccc", "#e0e0e0"),
+                    border_color="#404040",
+                    hover_color=("#3a3a3a", "#454545"),
+                )
 
         # Apply current search filter to the new tab
         self.on_search_change()
@@ -360,7 +410,7 @@ class MainWindow(ctk.CTk):
             # - Flash the title bar
             # - Send system notification
 
-            # For now, just update the window title briefly
+            # Update window title briefly
             original_title = self.title()
             self.title(f"🎉 {count} items ready! - {original_title}")
 
@@ -535,7 +585,7 @@ class MainWindow(ctk.CTk):
                 custom_message = f"Switching to {claim_name}... One moment please"
                 self.show_loading_with_message(custom_message)
 
-                # Update header to show switching state (this will disable dropdown)
+                # Update header for switching state
                 self.claim_info.set_claim_switching(True, message)
 
                 # Disable tab buttons during switch
@@ -770,7 +820,7 @@ class MainWindow(ctk.CTk):
 
         # Ensure the loading image is visible (it's already loaded in _create_loading_overlay)
         # The existing image will show during claim switching
-        
+
         # Show loading overlay
         self.show_loading()
 

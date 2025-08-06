@@ -60,9 +60,13 @@ class PassiveCraftingTab(ctk.CTkFrame):
         )
         style.map("Treeview.Heading", background=[("active", "#2c5d8f")])
 
-        # Style scrollbars BEFORE creating the Treeview to ensure consistency
+        # Create unique style names to prevent conflicts
+        self.v_scrollbar_style = "PassiveCrafting.Vertical.TScrollbar"
+        self.h_scrollbar_style = "PassiveCrafting.Horizontal.TScrollbar"
+        
+        # Configure custom scrollbar styles
         style.configure(
-            "Vertical.TScrollbar",
+            self.v_scrollbar_style,
             background="#1e2124",
             borderwidth=0,
             arrowcolor="#666",
@@ -72,7 +76,7 @@ class PassiveCraftingTab(ctk.CTkFrame):
             width=12,
         )
         style.configure(
-            "Horizontal.TScrollbar",
+            self.h_scrollbar_style,
             background="#1e2124",
             borderwidth=0,
             arrowcolor="#666",
@@ -91,9 +95,9 @@ class PassiveCraftingTab(ctk.CTkFrame):
         self.tree.tag_configure("empty", background="#2a2d2e", foreground="#888888")  # Gray for empty
         self.tree.tag_configure("child", background="#3a3a3a")
 
-        # Create scrollbars
-        vsb = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview, style="Vertical.TScrollbar")
-        hsb = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview, style="Horizontal.TScrollbar")
+        # Create scrollbars with unique styles
+        vsb = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview, style=self.v_scrollbar_style)
+        hsb = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview, style=self.h_scrollbar_style)
         self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
 
         self.tree.grid(row=0, column=0, sticky="nsew")
@@ -241,9 +245,6 @@ class PassiveCraftingTab(ctk.CTkFrame):
         shortest = min(times_in_seconds, key=lambda x: x[0])
         return shortest[1]
 
-    def _update_visible_timers(self, timer_changes):
-        """DEPRECATED: Removed complex visible timer update logic."""
-        pass
 
     def apply_filter(self):
         """Filters the master data list based on search and column filters."""

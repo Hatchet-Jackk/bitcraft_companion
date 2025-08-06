@@ -127,11 +127,12 @@ class ClaimInfoHeader(ctk.CTkFrame):
             font=ctk.CTkFont(size=12),
             command=self._refresh_claims,
             fg_color=("#404040", "#505050"),
-            hover_color=("#505050", "#606060"),
+            hover_color=("#5a5a5a", "#707070"),
             text_color="#ffffff",
             corner_radius=8,
+            border_width=0,
         )
-        self.refresh_button.grid(row=0, column=1, sticky="w", padx=(0, 10))
+        self.refresh_button.grid(row=0, column=1, sticky="w", padx=(2, 12))
 
         # Add tooltip to refresh button
         self._add_tooltip(self.refresh_button, "Updates the claims list when joining a new claim mid-game")
@@ -226,31 +227,60 @@ class ClaimInfoHeader(ctk.CTkFrame):
         return frame
 
     def _add_tooltip(self, widget, text):
-        """Adds a simple tooltip to a widget."""
+        """Adds a tooltip with delay to prevent hover interference."""
         tooltip = None
+        tooltip_timer = None
+
+        def show_tooltip():
+            nonlocal tooltip
+            if tooltip is None:  # Only create if not already created
+                try:
+                    # Position tooltip away from button edges to prevent interference
+                    x = widget.winfo_rootx() + widget.winfo_width() // 2 - 50
+                    y = widget.winfo_rooty() + widget.winfo_height() + 5
+
+                    tooltip = tk.Toplevel(widget)
+                    tooltip.wm_overrideredirect(True)
+                    tooltip.wm_geometry(f"+{x}+{y}")
+
+                    # Ensure tooltip doesn't capture mouse events
+                    tooltip.attributes("-topmost", True)
+                    tooltip.lift()
+
+                    label = tk.Label(
+                        tooltip,
+                        text=text,
+                        background="#333333",
+                        foreground="#ffffff",
+                        borderwidth=1,
+                        relief="solid",
+                        font=("Arial", 9),
+                    )
+                    label.pack(ipadx=6, ipady=3)
+                except Exception:
+                    # If tooltip creation fails, just ignore
+                    pass
 
         def on_enter(event):
-            nonlocal tooltip
-            x = widget.winfo_rootx() + 20
-            y = widget.winfo_rooty() + 20
-            tooltip = tk.Toplevel(widget)
-            tooltip.wm_overrideredirect(True)
-            tooltip.wm_geometry(f"+{x}+{y}")
-            label = tk.Label(
-                tooltip,
-                text=text,
-                background="#222",
-                foreground="#fff",
-                borderwidth=1,
-                relief="solid",
-                font=("Arial", 9),
-            )
-            label.pack(ipadx=4, ipady=2)
+            nonlocal tooltip_timer
+            # Cancel any existing timer
+            if tooltip_timer:
+                widget.after_cancel(tooltip_timer)
+            # Show tooltip after delay to prevent immediate interference
+            tooltip_timer = widget.after(400, show_tooltip)
 
         def on_leave(event):
-            nonlocal tooltip
+            nonlocal tooltip, tooltip_timer
+            # Cancel pending tooltip
+            if tooltip_timer:
+                widget.after_cancel(tooltip_timer)
+                tooltip_timer = None
+            # Destroy existing tooltip
             if tooltip:
-                tooltip.destroy()
+                try:
+                    tooltip.destroy()
+                except Exception:
+                    pass
                 tooltip = None
 
         widget.bind("<Enter>", on_enter)
@@ -683,7 +713,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
                 title="Export Claim Data",
                 defaultextension=".xlsx",
                 filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
-                initialfile=default_filename
+                initialfile=default_filename,
             )
 
             if not file_path:
@@ -692,14 +722,14 @@ class ClaimInfoHeader(ctk.CTkFrame):
 
             # Create workbook
             workbook = openpyxl.Workbook()
-            
+
             # Remove default sheet
             default_sheet = workbook.active
             workbook.remove(default_sheet)
 
             # Export each tab's data
             tabs_data = self._get_all_tabs_data()
-            
+
             for tab_name, tab_data in tabs_data.items():
                 if tab_data:
                     self._create_excel_sheet(workbook, tab_name, tab_data)
@@ -709,13 +739,10 @@ class ClaimInfoHeader(ctk.CTkFrame):
 
             # Save the workbook
             workbook.save(file_path)
-            
+
             # Show success message
-            messagebox.showinfo(
-                "Export Successful", 
-                f"Data exported successfully to:\n{os.path.basename(file_path)}"
-            )
-            
+            messagebox.showinfo("Export Successful", f"Data exported successfully to:\n{os.path.basename(file_path)}")
+
             logging.info(f"Data exported to: {file_path}")
 
         except Exception as e:
@@ -725,30 +752,27 @@ class ClaimInfoHeader(ctk.CTkFrame):
     def _get_all_tabs_data(self):
         """Retrieves data from all tabs in the main application."""
         tabs_data = {}
-        
+
         try:
-            if hasattr(self.app, 'tabs'):
+            if hasattr(self.app, "tabs"):
                 for tab_name, tab_instance in self.app.tabs.items():
-                    if hasattr(tab_instance, 'filtered_data'):
+                    if hasattr(tab_instance, "filtered_data"):
                         # Get filtered data from each tab
                         data = tab_instance.filtered_data
                         if data:
-                            tabs_data[tab_name] = {
-                                'headers': getattr(tab_instance, 'headers', []),
-                                'data': data
-                            }
-                        
+                            tabs_data[tab_name] = {"headers": getattr(tab_instance, "headers", []), "data": data}
+
         except Exception as e:
             logging.error(f"Error getting tabs data: {e}")
-            
+
         return tabs_data
 
     def _create_excel_sheet(self, workbook, tab_name, tab_data):
         """Creates an Excel sheet for a specific tab's data."""
         try:
             sheet = workbook.create_sheet(title=tab_name)
-            headers = tab_data.get('headers', [])
-            data = tab_data.get('data', [])
+            headers = tab_data.get("headers", [])
+            data = tab_data.get("data", [])
 
             if not headers or not data:
                 return
@@ -757,20 +781,20 @@ class ClaimInfoHeader(ctk.CTkFrame):
             for col_idx, header in enumerate(headers, 1):
                 cell = sheet.cell(row=1, column=col_idx, value=header)
                 cell.font = Font(bold=True)
-                cell.alignment = Alignment(horizontal='center')
+                cell.alignment = Alignment(horizontal="center")
 
             # Write data
             for row_idx, row_data in enumerate(data, 2):
                 for col_idx, header in enumerate(headers, 1):
                     # Get value based on header name (convert to lowercase and replace spaces with underscores)
-                    header_key = header.lower().replace(' ', '_').replace("'", "")
-                    
+                    header_key = header.lower().replace(" ", "_").replace("'", "")
+
                     # Handle special cases for different tab structures
                     if tab_name == "Traveler's Tasks":
                         value = self._get_traveler_task_value(row_data, header)
                     else:
                         value = row_data.get(header_key, row_data.get(header.lower(), ""))
-                    
+
                     # Convert to string for Excel
                     sheet.cell(row=row_idx, column=col_idx, value=str(value))
 
@@ -794,27 +818,27 @@ class ClaimInfoHeader(ctk.CTkFrame):
         """Gets the correct value for traveler tasks data structure."""
         try:
             if header == "Traveler":
-                return row_data.get('traveler', '')
+                return row_data.get("traveler", "")
             elif header == "Item":
                 # For parent rows, show completion summary
-                operations = row_data.get('operations', [])
+                operations = row_data.get("operations", [])
                 if operations:
-                    completed = row_data.get('completed_count', 0)
-                    total = row_data.get('total_count', 0)
+                    completed = row_data.get("completed_count", 0)
+                    total = row_data.get("total_count", 0)
                     return f"Tasks ({completed}/{total} completed)"
-                return row_data.get('item', '')
+                return row_data.get("item", "")
             elif header == "Completed":
-                return row_data.get('completed', '')
+                return row_data.get("completed", "")
             elif header == "Status":
-                return row_data.get('status', '')
+                return row_data.get("status", "")
             else:
                 # For other fields, check operations if main row doesn't have it
-                value = row_data.get(header.lower().replace(' ', '_'), '')
+                value = row_data.get(header.lower().replace(" ", "_"), "")
                 if not value:
-                    operations = row_data.get('operations', [])
+                    operations = row_data.get("operations", [])
                     if operations:
                         # Get from first operation
-                        return operations[0].get(header.lower().replace(' ', '_'), '')
+                        return operations[0].get(header.lower().replace(" ", "_"), "")
                 return value
         except Exception as e:
             logging.error(f"Error getting traveler task value: {e}")
@@ -824,7 +848,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
         """Creates a sheet with claim information."""
         try:
             sheet = workbook.create_sheet(title="Claim Info")
-            
+
             # Claim information
             claim_info = [
                 ["Claim Name", self.claim_name],
@@ -835,7 +859,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
                 ["Supplies per Hour", f"{self.supplies_per_hour:.3f}"],
                 ["Time Until Depletion", self.time_remaining],
                 ["Task Refresh Time", self.task_refresh_time],
-                ["Export Date", datetime.now().strftime("%Y-%m-%d %H:%M:%S")]
+                ["Export Date", datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
             ]
 
             for row_idx, (label, value) in enumerate(claim_info, 1):
@@ -843,8 +867,8 @@ class ClaimInfoHeader(ctk.CTkFrame):
                 sheet.cell(row=row_idx, column=2, value=str(value))
 
             # Auto-adjust column widths
-            sheet.column_dimensions['A'].width = 20
-            sheet.column_dimensions['B'].width = 30
+            sheet.column_dimensions["A"].width = 20
+            sheet.column_dimensions["B"].width = 30
 
         except Exception as e:
             logging.error(f"Error creating claim info sheet: {e}")
@@ -865,10 +889,10 @@ class ClaimInfoHeader(ctk.CTkFrame):
 
             # Perform logout
             logging.info("User initiated logout from main window")
-            
-            if hasattr(self.app, 'data_service') and self.app.data_service:
+
+            if hasattr(self.app, "data_service") and self.app.data_service:
                 # Clear credentials using the data service client
-                if hasattr(self.app.data_service, 'client'):
+                if hasattr(self.app.data_service, "client"):
                     if self.app.data_service.client.logout():
                         messagebox.showinfo("Logout Successful", "You have been logged out. The application will now close.")
                         # Close the application
@@ -888,18 +912,19 @@ class ClaimInfoHeader(ctk.CTkFrame):
         """Quits the application."""
         try:
             logging.info("User initiated application quit from header")
-            
+
             # Call the main window's closing method
-            if hasattr(self.app, 'on_closing'):
+            if hasattr(self.app, "on_closing"):
                 self.app.on_closing()
             else:
                 # Fallback: try to close the root window
                 self.app.quit()
-                
+
         except Exception as e:
             logging.error(f"Error quitting application: {e}")
             try:
                 self.app.quit()
             except:
                 import sys
+
                 sys.exit(0)

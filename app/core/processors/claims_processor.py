@@ -230,7 +230,7 @@ class ClaimsProcessor(BaseProcessor):
                     "supplies": claim_details["supplies"],
                     "tile_count": claim_details["tile_count"],
                 }
-                
+
                 self._queue_update("claim_info_update", claim_info)
 
         except Exception as e:
@@ -446,15 +446,13 @@ class ClaimsProcessor(BaseProcessor):
     def clear_cache(self):
         """Clear cached claims data when switching claims."""
         super().clear_cache()
-        
+
         # Clear claim-specific cached data
-        if hasattr(self, '_claim_members'):
+        if hasattr(self, "_claim_members"):
             self._claim_members.clear()
-            
-        if hasattr(self, '_claim_names'):
+
+        if hasattr(self, "_claim_names"):
             self._claim_names.clear()
-            
-        if hasattr(self, '_claim_local_details'):
+
+        if hasattr(self, "_claim_local_details"):
             self._claim_local_details.clear()
-            
-        logging.debug("Cleared claims processor cache")

@@ -58,9 +58,13 @@ class ActiveCraftingTab(ctk.CTkFrame):
         )
         style.map("Treeview.Heading", background=[("active", "#2c5d8f")])
 
-        # Style scrollbars BEFORE creating the Treeview to ensure consistency
+        # Create unique style names to prevent conflicts
+        self.v_scrollbar_style = "ActiveCrafting.Vertical.TScrollbar"
+        self.h_scrollbar_style = "ActiveCrafting.Horizontal.TScrollbar"
+        
+        # Configure custom scrollbar styles
         style.configure(
-            "Vertical.TScrollbar",
+            self.v_scrollbar_style,
             background="#1e2124",
             borderwidth=0,
             arrowcolor="#666",
@@ -70,7 +74,7 @@ class ActiveCraftingTab(ctk.CTkFrame):
             width=12,
         )
         style.configure(
-            "Horizontal.TScrollbar",
+            self.h_scrollbar_style,
             background="#1e2124",
             borderwidth=0,
             arrowcolor="#666",
@@ -90,9 +94,9 @@ class ActiveCraftingTab(ctk.CTkFrame):
         self.tree.tag_configure("child", background="#3a3a3a")  # Darker for child rows
         self.tree.tag_configure("preparing", background="#2e2e3a", foreground="#B39DDB")  # Purple for preparation
 
-        # Create scrollbars
-        vsb = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview, style="Vertical.TScrollbar")
-        hsb = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview, style="Horizontal.TScrollbar")
+        # Create scrollbars with unique styles
+        vsb = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview, style=self.v_scrollbar_style)
+        hsb = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview, style=self.h_scrollbar_style)
         self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
 
         self.tree.grid(row=0, column=0, sticky="nsew")

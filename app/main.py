@@ -15,8 +15,8 @@ logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.StreamHandler(),  # Console output
-        logging.FileHandler("debug.log", mode="w"),  # File output (overwrites each run)
+        logging.StreamHandler(),
+        logging.FileHandler("debug.log", mode="w"),
     ],
 )
 
@@ -28,7 +28,7 @@ class LoginWindow(ctk.CTk):
 
     def __init__(self):
         super().__init__()
-        self.title("Bitcraft Companion - Login")
+        self.title("Bitcraft Companion")
         self.resizable(False, False)
 
         self.data_service = DataService()
@@ -205,18 +205,15 @@ class LoginWindow(ctk.CTk):
 
     def on_closing(self):
         """Handles cleanup when the login window is closed."""
-        logging.info("[LoginWindow] Closing login window...")
 
         try:
             if hasattr(self, "data_service") and self.data_service:
-                logging.info("[LoginWindow] Stopping data service...")
                 self.data_service.stop()
 
-            logging.info("[LoginWindow] Destroying login window...")
             self.destroy()
 
         except Exception as e:
-            logging.error(f"[LoginWindow] Error during shutdown: {e}")
+            logging.error(f"Error during shutdown: {e}")
             try:
                 self.destroy()
             except:

@@ -88,60 +88,6 @@ class QueryService:
             logging.error(f"Error fetching claim buildings: {e}")
             return []
 
-    # ========== DEPRECATED ONE-OFF QUERIES (Legacy Methods) ==========
-    # These methods are no longer used due to subscription-based architecture.
-    # Data now flows through client.start_subscription_listener() instead.
-    # Kept for backward compatibility but should not be used in new code.
-
-    def get_claim_inventory(self, claim_id: str) -> List[Dict]:
-        """DEPRECATED: Use subscription data instead. Get all inventory for buildings in a claim."""
-        try:
-            query = (
-                "SELECT inventory_state.* FROM inventory_state "
-                "JOIN building_state ON inventory_state.owner_entity_id = building_state.entity_id "
-                "WHERE building_state.claim_entity_id = '{claim_id}';".format(claim_id=claim_id)
-            )
-            return self.client.query(query) or []
-        except Exception as e:
-            logging.error(f"Error fetching claim inventory: {e}")
-            return []
-
-    def get_progressive_actions(self, claim_id: str) -> List[Dict]:
-        """DEPRECATED: Use subscription data instead. Get all progressive actions for a claim."""
-        try:
-            query = (
-                "SELECT progressive_action_state.*, building_state.building_description_id "
-                "FROM progressive_action_state JOIN building_state "
-                "ON progressive_action_state.building_entity_id = building_state.entity_id "
-                "WHERE building_state.claim_entity_id = '{claim_id}';".format(claim_id=claim_id)
-            )
-            return self.client.query(query) or []
-        except Exception as e:
-            logging.error(f"Error fetching progressive actions: {e}")
-            return []
-
-    def get_passive_crafting(self, claim_id: str) -> List[Dict]:
-        """DEPRECATED: Use subscription data instead. Get all passive crafting operations for a claim."""
-        try:
-            query = (
-                "SELECT passive_craft_state.* FROM passive_craft_state "
-                "JOIN building_state ON passive_craft_state.building_entity_id = building_state.entity_id "
-                "WHERE building_state.claim_entity_id = '{claim_id}';".format(claim_id=claim_id)
-            )
-            return self.client.query(query) or []
-        except Exception as e:
-            logging.error(f"Error fetching passive crafting: {e}")
-            return []
-
-    def get_traveler_tasks(self, user_id: str) -> List[Dict]:
-        """DEPRECATED: Use subscription data instead. Get all traveler tasks for a user."""
-        try:
-
-            query = f"SELECT * FROM traveler_task_state WHERE player_entity_id = '{user_id}';"
-            return self.client.query(query) or []
-        except Exception as e:
-            logging.error(f"Error fetching traveler tasks: {e}")
-            return []
 
     def get_claim_members(self, claim_id: str) -> List[Dict]:
         """Get all members of a claim. Still used by claim_members_service."""

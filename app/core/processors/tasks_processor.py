@@ -353,15 +353,13 @@ class TasksProcessor(BaseProcessor):
     def clear_cache(self):
         """Clear cached tasks data when switching claims."""
         super().clear_cache()
-        
+
         # Clear claim-specific cached data
-        if hasattr(self, '_task_states'):
+        if hasattr(self, "_task_states"):
             self._task_states.clear()
-            
-        if hasattr(self, '_task_descriptions'):
+
+        if hasattr(self, "_task_descriptions"):
             self._task_descriptions.clear()
-            
-        if hasattr(self, '_player_state'):
+
+        if hasattr(self, "_player_state"):
             self._player_state.clear()
-            
-        logging.debug("Cleared tasks processor cache")

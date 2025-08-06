@@ -73,11 +73,11 @@ class BaseProcessor(ABC):
         """
         Clear cached subscription data when switching claims.
         Override in subclasses to clear processor-specific cached data.
-        
+
         This method is called during claim switching to prevent data contamination
         between different claims.
         """
-        logging.debug(f"Clearing cache for {self.__class__.__name__}")
+        logging.info(f"Clearing cache for {self.__class__.__name__}")
 
     def _queue_update(self, update_type, data, changes=None, timestamp=None):
         """
@@ -114,5 +114,4 @@ class BaseProcessor(ABC):
             reducer_name: Name of the reducer
         """
         if inserts or deletes:
-            # logging.debug(f"{table_name.upper()} UPDATE: {inserts} inserts, {deletes} deletes - {reducer_name}")
             pass

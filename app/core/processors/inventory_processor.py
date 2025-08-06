@@ -487,15 +487,13 @@ class InventoryProcessor(BaseProcessor):
     def clear_cache(self):
         """Clear cached inventory data when switching claims."""
         super().clear_cache()
-        
+
         # Clear claim-specific cached data
-        if hasattr(self, '_inventory_data'):
+        if hasattr(self, "_inventory_data"):
             self._inventory_data.clear()
-            
-        if hasattr(self, '_building_data'):
+
+        if hasattr(self, "_building_data"):
             self._building_data.clear()
-            
-        if hasattr(self, '_building_nicknames'):
+
+        if hasattr(self, "_building_nicknames"):
             self._building_nicknames.clear()
-            
-        logging.debug("Cleared inventory processor cache")

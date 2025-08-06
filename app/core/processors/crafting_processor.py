@@ -1232,18 +1232,16 @@ class CraftingProcessor(BaseProcessor):
     def clear_cache(self):
         """Clear cached crafting data when switching claims."""
         super().clear_cache()
-        
+
         # Clear claim-specific cached data
-        if hasattr(self, '_passive_craft_data'):
+        if hasattr(self, "_passive_craft_data"):
             self._passive_craft_data.clear()
-            
-        if hasattr(self, '_building_data'):
+
+        if hasattr(self, "_building_data"):
             self._building_data.clear()
-            
-        if hasattr(self, '_building_nicknames'):
+
+        if hasattr(self, "_building_nicknames"):
             self._building_nicknames.clear()
-            
-        if hasattr(self, '_claim_members'):
+
+        if hasattr(self, "_claim_members"):
             self._claim_members.clear()
-            
-        logging.debug("Cleared crafting processor cache")

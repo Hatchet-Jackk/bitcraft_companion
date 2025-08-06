@@ -46,9 +46,13 @@ class TravelerTasksTab(ctk.CTkFrame):
         )
         style.map("Treeview", background=[("selected", "#1f6aa5")])
 
-        # Configure scrollbar styling for consistency with other tabs
+        # Create unique style names to prevent conflicts
+        self.v_scrollbar_style = "TravelerTasks.Vertical.TScrollbar"
+        self.h_scrollbar_style = "TravelerTasks.Horizontal.TScrollbar"
+        
+        # Configure custom scrollbar styles
         style.configure(
-            "Vertical.TScrollbar",
+            self.v_scrollbar_style,
             background="#1e2124",
             borderwidth=0,
             arrowcolor="#666",
@@ -58,29 +62,7 @@ class TravelerTasksTab(ctk.CTkFrame):
             width=12,
         )
         style.configure(
-            "Horizontal.TScrollbar",
-            background="#1e2124",
-            borderwidth=0,
-            arrowcolor="#666",
-            troughcolor="#2a2d2e",
-            darkcolor="#1e2124",
-            lightcolor="#1e2124",
-            height=12,
-        )
-
-        # Style scrollbars
-        style.configure(
-            "Vertical.TScrollbar",
-            background="#1e2124",
-            borderwidth=0,
-            arrowcolor="#666",
-            troughcolor="#2a2d2e",
-            darkcolor="#1e2124",
-            lightcolor="#1e2124",
-            width=12,
-        )
-        style.configure(
-            "Horizontal.TScrollbar",
+            self.h_scrollbar_style,
             background="#1e2124",
             borderwidth=0,
             arrowcolor="#666",
@@ -113,9 +95,9 @@ class TravelerTasksTab(ctk.CTkFrame):
         self.tree.tag_configure("child_completed", background="#3a4a3a", foreground="#4CAF50")  # Green for completed tasks
         self.tree.tag_configure("child_incomplete", background="#3a3a3a", foreground="white")  # Neutral for incomplete tasks
 
-        # Create scrollbars with CONSISTENT styling
-        vsb = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview, style="Vertical.TScrollbar")
-        hsb = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview, style="Horizontal.TScrollbar")
+        # Create scrollbars with unique styles
+        vsb = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview, style=self.v_scrollbar_style)
+        hsb = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview, style=self.h_scrollbar_style)
         self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
 
         self.tree.grid(row=0, column=0, sticky="nsew")

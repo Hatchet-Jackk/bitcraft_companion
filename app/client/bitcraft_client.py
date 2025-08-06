@@ -24,12 +24,6 @@ class BitCraft:
     DEFAULT_SUBPROTOCOL = "v1.json.spacetimedb"
     AUTH_API_BASE_URL = "https://api.bitcraftonline.com/authentication"
 
-    def _get_data_directory(self):
-        """DEPRECATED: Use get_user_data_path() or get_bundled_data_path() instead."""
-        from ..core.data_paths import get_user_data_directory
-
-        return get_user_data_directory()
-
     def __init__(self):
         self.host = os.getenv("BITCRAFT_SPACETIME_HOST", "bitcraft-early-access.spacetimedb.com")
         self.uri = "{scheme}://{host}/v1/database/{module}/{endpoint}"
@@ -271,8 +265,6 @@ class BitCraft:
             self.region = None
             self.player_name = None
 
-    # In client.py, add this method inside the BitCraft class
-
     def fetch_user_id_by_username(self, username: str) -> str | None:
         """
         Fetches the user entity ID for a given username using a one-off query.
@@ -506,7 +498,9 @@ class BitCraft:
 
             # Start the listener thread that will call the callback
             self.subscription_thread = threading.Thread(
-                target=self._listen_for_subscription_updates, args=(callback,), daemon=True
+                target=self._listen_for_subscription_updates,
+                args=(callback,),
+                daemon=True,
             )
             self.subscription_thread.start()
             logging.info("Subscription listener thread started.")
@@ -554,11 +548,9 @@ class BitCraft:
                     # Use a timeout to allow the loop to check the stop event
                     msg = self.ws_connection.recv(timeout=1.0)
                     data = json.loads(msg)
-                    # with open("debug_ws_subscription_queries_messages.json", "a") as f:
-                    #     f.write(f"{json.dumps(data)}\n")
-
-                    # Debug logging - you can remove this later
-                    logging.debug(f"Received WebSocket message type: {list(data.keys())}")
+                    
+                    # Log WebSocket message types for connection diagnostics
+                    logging.info(f"Received WebSocket message: {list(data.keys())}")
 
                     # Call the DataService callback with the message
                     callback(data)
