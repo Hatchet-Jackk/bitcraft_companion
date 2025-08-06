@@ -16,6 +16,15 @@ class TasksProcessor(BaseProcessor):
     for traveler task changes.
     """
 
+    def __init__(self, data_queue, services, reference_data):
+        """Initialize TasksProcessor with proper cache setup."""
+        super().__init__(data_queue, services, reference_data)
+
+        # Initialize task caches to ensure they exist for transactions
+        self._task_states = {}
+        self._task_descriptions = {}
+        self._player_state = {}
+
     def get_table_names(self):
         """Return list of table names this processor handles."""
         return ["traveler_task_state", "traveler_task_desc", "player_state"]
@@ -24,30 +33,90 @@ class TasksProcessor(BaseProcessor):
         """
         Handle traveler_task_state transactions.
 
-        Extracted from DataService._handle_tasks_transaction()
+        Process incremental changes and update cached data without wiping UI.
         """
         try:
+            table_name = table_update.get("table_name", "")
             updates = table_update.get("updates", [])
+
+            # Track if we need to refresh UI
+            data_changed = False
+            completed_tasks = []
 
             for update in updates:
                 inserts = update.get("inserts", [])
                 deletes = update.get("deletes", [])
 
                 if inserts or deletes:
-                    logging.info(f"TASK UPDATE: {len(inserts)} inserts, {len(deletes)} deletes - {reducer_name}")
+                    logging.info(f"TASK TRANSACTION: {len(inserts)} inserts, {len(deletes)} deletes - {reducer_name}")
+                    data_changed = True
 
-                    # Check for task completions in inserts
+                    # Process inserts to update cached data and detect completions
                     for insert_str in inserts:
                         try:
-                            task_data = ast.literal_eval(insert_str)
-                            if isinstance(task_data, list) and len(task_data) >= 4:
-                                completed = task_data[3] if len(task_data) > 3 else False
-                                if completed:
-                                    logging.info(f"🎉 Task completed! {reducer_name}")
-                        except Exception as e:
-                            logging.warning(f"Error parsing task insert: {e}")
+                            import json
 
-                    self._refresh_tasks()
+                            # Parse the transaction data
+                            if isinstance(insert_str, str):
+                                task_data = json.loads(insert_str)
+                            else:
+                                task_data = list(insert_str)
+
+                            # Update cached data based on table type
+                            if table_name == "traveler_task_state" and isinstance(task_data, list) and len(task_data) >= 4:
+                                # Extract task state data: [entity_id, player_entity_id, task_id, completed, traveler_id]
+                                entity_id = task_data[0] if len(task_data) > 0 else None
+                                player_entity_id = task_data[1] if len(task_data) > 1 else None
+                                task_id = task_data[2] if len(task_data) > 2 else None
+                                completed = task_data[3] if len(task_data) > 3 else False
+                                traveler_id = task_data[4] if len(task_data) > 4 else None
+
+                                # Update cached task state
+                                if task_id and hasattr(self, "_task_states"):
+                                    old_completed = self._task_states.get(task_id, {}).get("completed", False)
+
+                                    self._task_states[task_id] = {
+                                        "entity_id": entity_id,
+                                        "player_entity_id": player_entity_id,
+                                        "traveler_id": traveler_id,
+                                        "completed": completed,
+                                    }
+
+                                    # Detect newly completed tasks
+                                    if not old_completed and completed:
+                                        completed_tasks.append(
+                                            {"task_id": task_id, "traveler_id": traveler_id, "reducer_name": reducer_name}
+                                        )
+
+                        except Exception as e:
+                            logging.warning(f"Error parsing task transaction insert: {e}")
+
+                    # Process deletes (remove from cache if needed)
+                    for delete_str in deletes:
+                        try:
+                            import json
+
+                            if isinstance(delete_str, str):
+                                delete_data = json.loads(delete_str)
+                            else:
+                                delete_data = list(delete_str)
+
+                            # Remove from cached data if needed
+                            if table_name == "traveler_task_state" and isinstance(delete_data, list) and len(delete_data) >= 3:
+                                task_id = delete_data[2] if len(delete_data) > 2 else None
+                                if task_id and hasattr(self, "_task_states") and task_id in self._task_states:
+                                    del self._task_states[task_id]
+
+                        except Exception as e:
+                            logging.warning(f"Error parsing task transaction delete: {e}")
+
+            # Log task completions
+            for completed_task in completed_tasks:
+                logging.info(f"Task {completed_task['task_id']} completed! {completed_task['reducer_name']}")
+
+            # Only refresh UI if data actually changed and we have cached data to send
+            if data_changed:
+                self._refresh_tasks()
 
         except Exception as e:
             logging.error(f"Error handling tasks transaction: {e}")
@@ -91,23 +160,36 @@ class TasksProcessor(BaseProcessor):
 
     def _refresh_tasks(self):
         """
-        Process tasks data from subscription and send to UI.
+        Send current cached tasks data to UI instead of wiping it.
+        Called during transactions to update UI without losing data.
         """
         try:
-            # This method is called for transactions - for now send empty data
-            empty_tasks_data = {"active_tasks": [], "pending_tasks": [], "completed_tasks": []}
-            self._queue_update("tasks_update", empty_tasks_data, {"transaction_update": True})
+            # Send current cached task data if available
+            if (
+                hasattr(self, "_task_states")
+                and self._task_states
+                and hasattr(self, "_task_descriptions")
+                and self._task_descriptions
+            ):
+                # Use cached data to maintain current task state
+                formatted_tasks = self._format_combined_task_data()
+                self._queue_update("tasks_update", formatted_tasks, {"transaction_update": True})
+                logging.debug("Refreshed tasks UI with cached data")
+            else:
+                # Only send empty data if we truly have no cached data
+                logging.debug("No cached task data available for refresh - preserving current UI state")
+                # Don't send empty data - let UI keep current state
 
         except Exception as e:
-            logging.error(f"Error processing tasks from subscription: {e}")
+            logging.error(f"Error refreshing tasks: {e}")
 
     def _process_task_state_data(self, task_state_rows):
         """
         Process traveler_task_state data to store task assignments with traveler info.
         """
         try:
-            # Store task state data
-            if not hasattr(self, "_task_states"):
+            # Ensure task state cache exists (should be initialized in __init__)
+            if not hasattr(self, "_task_states") or self._task_states is None:
                 self._task_states = {}
 
             for row in task_state_rows:
@@ -128,8 +210,8 @@ class TasksProcessor(BaseProcessor):
         Process traveler_task_desc data to store task descriptions.
         """
         try:
-            # Store task description data
-            if not hasattr(self, "_task_descriptions"):
+            # Ensure task description cache exists (should be initialized in __init__)
+            if not hasattr(self, "_task_descriptions") or self._task_descriptions is None:
                 self._task_descriptions = {}
 
             for row in task_desc_rows:
@@ -151,8 +233,8 @@ class TasksProcessor(BaseProcessor):
         Process player_state data to extract traveler_tasks_expiration.
         """
         try:
-            # Store player state data
-            if not hasattr(self, "_player_state"):
+            # Ensure player state cache exists (should be initialized in __init__)
+            if not hasattr(self, "_player_state") or self._player_state is None:
                 self._player_state = {}
 
             for row in player_state_rows:
