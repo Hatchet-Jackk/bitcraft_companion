@@ -12,14 +12,12 @@ from datetime import datetime
 from tkinter import filedialog
 from typing import Optional, Callable
 
-from ..ui.components.export_utils import export_inventory_to_excel
-
 
 class AutoExportService:
     """
     Service for automatically exporting inventory claim table data at regular intervals.
 
-    Uses the existing export infrastructure to create timestamped Excel files
+    Uses the existing export infrastructure to create timestamped CSV files
     in a user-specified directory.
     """
 
@@ -89,7 +87,7 @@ class AutoExportService:
             filename: Base filename (extension will be added automatically)
         """
         # Remove extension if user included it
-        if filename.endswith((".xlsx", ".xls")):
+        if filename.endswith((".csv", ".xlsx", ".xls")):
             filename = os.path.splitext(filename)[0]
 
         self.filename = filename
@@ -210,7 +208,7 @@ class AutoExportService:
                 return
 
             # Generate timestamped filename
-            export_filename = f"{self.filename}.xlsx"
+            export_filename = f"{self.filename}.csv"
             export_path = os.path.join(self.export_directory, export_filename)
 
             # Get current inventory data from the application
@@ -222,8 +220,11 @@ class AutoExportService:
                     self.on_export_error("No inventory data available")
                 return
 
-            # Export to Excel using existing export infrastructure
-            success = export_inventory_to_excel(inventory_data, export_path)
+            # Export to CSV using existing export infrastructure
+            # The inventory data is a list, so we need to use the single sheet function
+            from ..ui.components.export_utils import export_inventory_to_csv
+
+            success = export_inventory_to_csv(inventory_data, export_path)
 
             if success:
                 logging.info(f"Successfully exported inventory data to: {export_path}")
@@ -244,7 +245,7 @@ class AutoExportService:
         Get current inventory data from the application's data service.
 
         Returns:
-            Current inventory data in the format expected by export_inventory_to_excel
+            Current inventory data in the format expected by export_multiple_sheets_to_csv
         """
         try:
             # Access the inventory data through the main window's tabs
@@ -253,7 +254,7 @@ class AutoExportService:
                 if hasattr(inventory_tab, "all_data") and inventory_tab.all_data:
                     logging.info(f"Found {len(inventory_tab.all_data)} inventory items to export")
                     return inventory_tab.all_data
-                    
+
             # Alternative: Try to access through different path structures
             if hasattr(self.app, "main_window") and hasattr(self.app.main_window, "tabs"):
                 main_tabs = self.app.main_window.tabs
@@ -271,7 +272,7 @@ class AutoExportService:
                     if hasattr(inventory_tab, "all_data") and inventory_tab.all_data:
                         logging.info(f"Found {len(inventory_tab.all_data)} inventory items to export (direct app access)")
                         return inventory_tab.all_data
-                        
+
             # No real data found
             logging.warning("Could not access current inventory data - no data available")
             logging.info("Available app attributes: " + ", ".join(dir(self.app)))
