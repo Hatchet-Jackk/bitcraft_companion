@@ -60,7 +60,7 @@ class PassiveCraftingTab(ctk.CTkFrame):
         )
         style.map("Treeview.Heading", background=[("active", "#2c5d8f")])
 
-        # Style scrollbars
+        # Style scrollbars BEFORE creating the Treeview to ensure consistency
         style.configure(
             "Vertical.TScrollbar",
             background="#1e2124",

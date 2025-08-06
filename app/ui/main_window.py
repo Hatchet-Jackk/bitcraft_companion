@@ -763,11 +763,14 @@ class MainWindow(ctk.CTk):
 
     def show_loading_with_message(self, message: str):
         """
-        Shows the loading overlay with a custom message and clears tab content.
+        Shows the loading overlay with a custom image and message for claim switching.
         """
         # Update loading message
         self.loading_message.configure(text=message)
 
+        # Ensure the loading image is visible (it's already loaded in _create_loading_overlay)
+        # The existing image will show during claim switching
+        
         # Show loading overlay
         self.show_loading()
 

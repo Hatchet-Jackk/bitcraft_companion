@@ -13,7 +13,7 @@ class TravelerTasksTab(ctk.CTkFrame):
         self.app = app
 
         # Updated headers - removed Task column, focus on item-based structure
-        self.headers = ["Traveler", "Completed", "Item", "Quantity", "Tier", "Tag", "Status"]
+        self.headers = ["Traveler", "Item", "Quantity", "Tier", "Tag", "Status"]
         self.all_data: List[Dict] = []
         self.filtered_data: List[Dict] = []
 
@@ -45,6 +45,28 @@ class TravelerTasksTab(ctk.CTkFrame):
             relief="flat",
         )
         style.map("Treeview", background=[("selected", "#1f6aa5")])
+
+        # Configure scrollbar styling for consistency with other tabs
+        style.configure(
+            "Vertical.TScrollbar",
+            background="#1e2124",
+            borderwidth=0,
+            arrowcolor="#666",
+            troughcolor="#2a2d2e",
+            darkcolor="#1e2124",
+            lightcolor="#1e2124",
+            width=12,
+        )
+        style.configure(
+            "Horizontal.TScrollbar",
+            background="#1e2124",
+            borderwidth=0,
+            arrowcolor="#666",
+            troughcolor="#2a2d2e",
+            darkcolor="#1e2124",
+            lightcolor="#1e2124",
+            height=12,
+        )
 
         # Style scrollbars
         style.configure(
@@ -105,7 +127,6 @@ class TravelerTasksTab(ctk.CTkFrame):
         # Updated column widths for new structure
         column_widths = {
             "Traveler": 90,
-            "Completed": 80,
             "Item": 200,
             "Quantity": 80,
             "Tier": 50,
@@ -664,7 +685,9 @@ class TravelerTasksTab(ctk.CTkFrame):
             expansion_key = f"traveler_{traveler_id}_{traveler_name}"
 
             # UPDATED: Prepare main row values for new column structure
-            values = [traveler_name, completed_summary, "", "", "", "", completion_status]
+            # Include completion status in the Item column for parent rows
+            item_with_completion = f"Tasks ({completed_summary} completed)"
+            values = [traveler_name, item_with_completion, "", "", "", completion_status]
 
             # Determine tag based on completion status
             if completion_status == "✅":
@@ -732,7 +755,7 @@ class TravelerTasksTab(ctk.CTkFrame):
         completion_status = task_data.get("status", "❌")
 
         # UPDATED: Prepare child values with new column structure (no task description shown)
-        child_values = ["", "", item, quantity, str(tier) if tier > 0 else "", tag, completion_status]
+        child_values = ["", item, quantity, str(tier) if tier > 0 else "", tag, completion_status]
 
         # Determine child tag
         if completion_status == "✅":

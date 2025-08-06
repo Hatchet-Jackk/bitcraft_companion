@@ -1,6 +1,11 @@
 import customtkinter as ctk
 import logging
 import tkinter as tk
+from tkinter import filedialog, messagebox
+import openpyxl
+from openpyxl.styles import Font, Alignment
+from datetime import datetime
+import os
 
 
 class ClaimInfoHeader(ctk.CTkFrame):
@@ -116,17 +121,65 @@ class ClaimInfoHeader(ctk.CTkFrame):
         # Add refresh button
         self.refresh_button = ctk.CTkButton(
             dropdown_frame,
-            text="🔄",
-            width=40,
+            text="Refresh Claims",
+            width=120,
             height=40,
-            font=ctk.CTkFont(size=16),
+            font=ctk.CTkFont(size=12),
             command=self._refresh_claims,
             fg_color=("#404040", "#505050"),
             hover_color=("#505050", "#606060"),
             text_color="#ffffff",
             corner_radius=8,
         )
-        self.refresh_button.grid(row=0, column=1, sticky="w")
+        self.refresh_button.grid(row=0, column=1, sticky="w", padx=(0, 10))
+
+        # Add tooltip to refresh button
+        self._add_tooltip(self.refresh_button, "Updates the claims list when joining a new claim mid-game")
+
+        # Add export button
+        self.export_button = ctk.CTkButton(
+            dropdown_frame,
+            text="Export Data",
+            width=100,
+            height=40,
+            font=ctk.CTkFont(size=12),
+            command=self._export_data,
+            fg_color=("#2E7D32", "#388E3C"),
+            hover_color=("#1B5E20", "#2E7D32"),
+            text_color="#ffffff",
+            corner_radius=8,
+        )
+        self.export_button.grid(row=0, column=2, sticky="w", padx=(0, 10))
+
+        # Add logout button
+        self.logout_button = ctk.CTkButton(
+            dropdown_frame,
+            text="Logout",
+            width=80,
+            height=40,
+            font=ctk.CTkFont(size=12),
+            command=self._logout,
+            fg_color=("#FF6B35", "#E55100"),
+            hover_color=("#E55100", "#BF360C"),
+            text_color="#ffffff",
+            corner_radius=8,
+        )
+        self.logout_button.grid(row=0, column=3, sticky="w", padx=(0, 10))
+
+        # Add quit button
+        self.quit_button = ctk.CTkButton(
+            dropdown_frame,
+            text="Quit",
+            width=70,
+            height=40,
+            font=ctk.CTkFont(size=12),
+            command=self._quit_application,
+            fg_color=("#D32F2F", "#B71C1C"),
+            hover_color=("#B71C1C", "#8B0000"),
+            text_color="#ffffff",
+            corner_radius=8,
+        )
+        self.quit_button.grid(row=0, column=4, sticky="w")
 
         # Create info row with treasury, supplies, and supplies run out
         info_frame = ctk.CTkFrame(claim_frame, fg_color="transparent")
@@ -615,3 +668,238 @@ class ClaimInfoHeader(ctk.CTkFrame):
                     self._ready_state_detected = False
         except Exception as e:
             logging.error(f"Error checking for updated expiration: {e}")
+
+    def _export_data(self):
+        """Exports all table data to an Excel file using native file dialog."""
+        try:
+            # Generate default filename
+            claim_name = self.claim_name.replace(" ", "_").replace("/", "-") if self.claim_name else "Unknown_Claim"
+            claim_id = self.current_claim_id if self.current_claim_id else "unknown"
+            date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+            default_filename = f"{claim_name}_{claim_id}_{date_str}.xlsx"
+
+            # Show file save dialog
+            file_path = filedialog.asksaveasfilename(
+                title="Export Claim Data",
+                defaultextension=".xlsx",
+                filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+                initialfile=default_filename
+            )
+
+            if not file_path:
+                logging.info("Export cancelled by user")
+                return
+
+            # Create workbook
+            workbook = openpyxl.Workbook()
+            
+            # Remove default sheet
+            default_sheet = workbook.active
+            workbook.remove(default_sheet)
+
+            # Export each tab's data
+            tabs_data = self._get_all_tabs_data()
+            
+            for tab_name, tab_data in tabs_data.items():
+                if tab_data:
+                    self._create_excel_sheet(workbook, tab_name, tab_data)
+
+            # Add claim info sheet
+            self._create_claim_info_sheet(workbook)
+
+            # Save the workbook
+            workbook.save(file_path)
+            
+            # Show success message
+            messagebox.showinfo(
+                "Export Successful", 
+                f"Data exported successfully to:\n{os.path.basename(file_path)}"
+            )
+            
+            logging.info(f"Data exported to: {file_path}")
+
+        except Exception as e:
+            logging.error(f"Error exporting data: {e}")
+            messagebox.showerror("Export Error", f"Failed to export data:\n{str(e)}")
+
+    def _get_all_tabs_data(self):
+        """Retrieves data from all tabs in the main application."""
+        tabs_data = {}
+        
+        try:
+            if hasattr(self.app, 'tabs'):
+                for tab_name, tab_instance in self.app.tabs.items():
+                    if hasattr(tab_instance, 'filtered_data'):
+                        # Get filtered data from each tab
+                        data = tab_instance.filtered_data
+                        if data:
+                            tabs_data[tab_name] = {
+                                'headers': getattr(tab_instance, 'headers', []),
+                                'data': data
+                            }
+                        
+        except Exception as e:
+            logging.error(f"Error getting tabs data: {e}")
+            
+        return tabs_data
+
+    def _create_excel_sheet(self, workbook, tab_name, tab_data):
+        """Creates an Excel sheet for a specific tab's data."""
+        try:
+            sheet = workbook.create_sheet(title=tab_name)
+            headers = tab_data.get('headers', [])
+            data = tab_data.get('data', [])
+
+            if not headers or not data:
+                return
+
+            # Write headers
+            for col_idx, header in enumerate(headers, 1):
+                cell = sheet.cell(row=1, column=col_idx, value=header)
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal='center')
+
+            # Write data
+            for row_idx, row_data in enumerate(data, 2):
+                for col_idx, header in enumerate(headers, 1):
+                    # Get value based on header name (convert to lowercase and replace spaces with underscores)
+                    header_key = header.lower().replace(' ', '_').replace("'", "")
+                    
+                    # Handle special cases for different tab structures
+                    if tab_name == "Traveler's Tasks":
+                        value = self._get_traveler_task_value(row_data, header)
+                    else:
+                        value = row_data.get(header_key, row_data.get(header.lower(), ""))
+                    
+                    # Convert to string for Excel
+                    sheet.cell(row=row_idx, column=col_idx, value=str(value))
+
+            # Auto-adjust column widths
+            for column in sheet.columns:
+                max_length = 0
+                column = list(column)
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                sheet.column_dimensions[column[0].column_letter].width = adjusted_width
+
+        except Exception as e:
+            logging.error(f"Error creating Excel sheet for {tab_name}: {e}")
+
+    def _get_traveler_task_value(self, row_data, header):
+        """Gets the correct value for traveler tasks data structure."""
+        try:
+            if header == "Traveler":
+                return row_data.get('traveler', '')
+            elif header == "Item":
+                # For parent rows, show completion summary
+                operations = row_data.get('operations', [])
+                if operations:
+                    completed = row_data.get('completed_count', 0)
+                    total = row_data.get('total_count', 0)
+                    return f"Tasks ({completed}/{total} completed)"
+                return row_data.get('item', '')
+            elif header == "Completed":
+                return row_data.get('completed', '')
+            elif header == "Status":
+                return row_data.get('status', '')
+            else:
+                # For other fields, check operations if main row doesn't have it
+                value = row_data.get(header.lower().replace(' ', '_'), '')
+                if not value:
+                    operations = row_data.get('operations', [])
+                    if operations:
+                        # Get from first operation
+                        return operations[0].get(header.lower().replace(' ', '_'), '')
+                return value
+        except Exception as e:
+            logging.error(f"Error getting traveler task value: {e}")
+            return ""
+
+    def _create_claim_info_sheet(self, workbook):
+        """Creates a sheet with claim information."""
+        try:
+            sheet = workbook.create_sheet(title="Claim Info")
+            
+            # Claim information
+            claim_info = [
+                ["Claim Name", self.claim_name],
+                ["Claim ID", self.current_claim_id or "Unknown"],
+                ["Treasury", f"{self.treasury:,}"],
+                ["Supplies", f"{self.supplies:,}"],
+                ["Tile Count", str(self.tile_count)],
+                ["Supplies per Hour", f"{self.supplies_per_hour:.3f}"],
+                ["Time Until Depletion", self.time_remaining],
+                ["Task Refresh Time", self.task_refresh_time],
+                ["Export Date", datetime.now().strftime("%Y-%m-%d %H:%M:%S")]
+            ]
+
+            for row_idx, (label, value) in enumerate(claim_info, 1):
+                sheet.cell(row=row_idx, column=1, value=label).font = Font(bold=True)
+                sheet.cell(row=row_idx, column=2, value=str(value))
+
+            # Auto-adjust column widths
+            sheet.column_dimensions['A'].width = 20
+            sheet.column_dimensions['B'].width = 30
+
+        except Exception as e:
+            logging.error(f"Error creating claim info sheet: {e}")
+
+    def _logout(self):
+        """Logs out the user with confirmation dialog."""
+        try:
+            # Show confirmation dialog
+            result = messagebox.askyesno(
+                "Confirm Logout",
+                "Logging out will clear your stored credentials and you'll need to re-authenticate.\n\nAre you sure you want to continue?",
+                icon="warning",
+            )
+
+            if not result:  # User clicked "No" or closed dialog
+                logging.info("Logout cancelled by user")
+                return
+
+            # Perform logout
+            logging.info("User initiated logout from main window")
+            
+            if hasattr(self.app, 'data_service') and self.app.data_service:
+                # Clear credentials using the data service client
+                if hasattr(self.app.data_service, 'client'):
+                    if self.app.data_service.client.logout():
+                        messagebox.showinfo("Logout Successful", "You have been logged out. The application will now close.")
+                        # Close the application
+                        self._quit_application()
+                    else:
+                        messagebox.showerror("Logout Error", "Failed to logout. See logs for details.")
+                else:
+                    messagebox.showerror("Logout Error", "Unable to access authentication system.")
+            else:
+                messagebox.showerror("Logout Error", "Unable to access data service.")
+
+        except Exception as e:
+            logging.error(f"Error during logout: {e}")
+            messagebox.showerror("Logout Error", f"An error occurred during logout:\n{str(e)}")
+
+    def _quit_application(self):
+        """Quits the application."""
+        try:
+            logging.info("User initiated application quit from header")
+            
+            # Call the main window's closing method
+            if hasattr(self.app, 'on_closing'):
+                self.app.on_closing()
+            else:
+                # Fallback: try to close the root window
+                self.app.quit()
+                
+        except Exception as e:
+            logging.error(f"Error quitting application: {e}")
+            try:
+                self.app.quit()
+            except:
+                import sys
+                sys.exit(0)

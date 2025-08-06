@@ -16,8 +16,8 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(),  # Console output
-        logging.FileHandler("debug.log", mode='w')  # File output (overwrites each run)
-    ]
+        logging.FileHandler("debug.log", mode="w"),  # File output (overwrites each run)
+    ],
 )
 
 
@@ -137,6 +137,17 @@ class LoginWindow(ctk.CTk):
 
     def logout(self):
         """Logs the user out by clearing credentials and refreshing the UI."""
+        # Show confirmation dialog
+        result = messagebox.askyesno(
+            "Confirm Logout",
+            "Logging out will clear your stored credentials and you'll need to re-authenticate. Are you sure you want to continue?",
+            icon="warning",
+        )
+
+        if not result:  # User clicked "No" or closed dialog
+            logging.info("Logout cancelled by user")
+            return
+
         logging.info("Logging out and clearing credentials.")
         if self.data_service.client.logout():
             # Refresh the UI to show the access code field
