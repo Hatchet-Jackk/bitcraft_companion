@@ -10,14 +10,19 @@ from app.ui.main_window import MainWindow
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
 
+# Clear any existing logging configuration and set up fresh
+for handler in logging.root.handlers[:]:
+    logging.root.removeHandler(handler)
+
 # Configure logging to both console and file
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.StreamHandler(),
+        logging.StreamHandler(sys.stdout),
         logging.FileHandler("debug.log", mode="w"),
     ],
+    force=True,  # Force reconfiguration if logging was already configured
 )
 
 

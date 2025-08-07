@@ -9,10 +9,12 @@ Provides a clean, single-page interface for application settings with improved U
 """
 
 import customtkinter as ctk
+import json
 import logging
 import webbrowser
 from datetime import datetime
 from tkinter import messagebox
+from ...core.data_paths import get_user_data_path
 from typing import Optional
 import os
 import toml
@@ -316,7 +318,31 @@ class SettingsWindow(ctk.CTkToplevel):
                 "debug": {"show_test_notification": True},
             }
 
-            # TODO: Implement actual loading from player_data.json
+            # Load from player_data.json
+            try:
+                file_path = get_user_data_path("player_data.json")
+                with open(file_path, "r") as f:
+                    player_data = json.load(f)
+                    
+                # Extract settings from player_data, merge with defaults
+                saved_settings = player_data.get("settings", {})
+                if saved_settings:
+                    # Deep merge: update defaults with saved settings
+                    for category, options in saved_settings.items():
+                        if category in default_settings and isinstance(options, dict):
+                            default_settings[category].update(options)
+                        else:
+                            default_settings[category] = options
+                    
+                logging.info("Settings loaded from player_data.json")
+                
+            except FileNotFoundError:
+                logging.info("No player_data.json found, using default settings")
+            except json.JSONDecodeError:
+                logging.warning("player_data.json is malformed, using default settings")
+            except Exception as e:
+                logging.error(f"Error reading player_data.json: {e}, using defaults")
+
             return default_settings
 
         except Exception as e:
@@ -333,8 +359,36 @@ class SettingsWindow(ctk.CTkToplevel):
             self.settings["notifications"]["passive_crafts_enabled"] = self.passive_crafts_var.get()
             self.settings["notifications"]["active_crafts_enabled"] = self.active_crafts_var.get()
 
-            # TODO: Implement actual saving to player_data.json
-            logging.info("Settings saved (placeholder)")
+            # Send updated settings to notification service
+            if hasattr(self.app, 'data_service') and self.app.data_service and hasattr(self.app.data_service, 'notification_service'):
+                self.app.data_service.notification_service.update_settings(self.settings)
+                logging.info(f"Settings sent to notification service: {self.settings['notifications']}")
+            else:
+                logging.warning("Could not access notification service to update settings")
+
+            # Save to player_data.json
+            try:
+                file_path = get_user_data_path("player_data.json")
+                
+                # Load existing player data or create new
+                player_data = {}
+                try:
+                    with open(file_path, "r") as f:
+                        player_data = json.load(f)
+                except (FileNotFoundError, json.JSONDecodeError):
+                    pass  # Start with empty dict if file doesn't exist or is corrupted
+                
+                # Update settings section
+                player_data["settings"] = self.settings
+                
+                # Write back to file
+                with open(file_path, "w") as f:
+                    json.dump(player_data, f, indent=4)
+                
+                logging.info("Settings saved to player_data.json")
+                
+            except Exception as e:
+                logging.error(f"Error saving to player_data.json: {e}")
 
         except Exception as e:
             logging.error(f"Error saving settings: {e}")
