@@ -255,6 +255,28 @@ class InventoryProcessor(BaseProcessor):
         except Exception as e:
             logging.error(f"Error sending inventory update: {e}")
 
+    def _is_town_bank_building(self, building_description_id):
+        """
+        Check if a building is a Town Bank type that should be excluded from inventory display.
+
+        Args:
+            building_description_id: The building description ID to check
+
+        Returns:
+            bool: True if the building is a Town Bank type
+        """
+        if not building_description_id:
+            return False
+
+        # Town Bank building IDs from building_desc reference data
+        town_bank_ids = {
+            418481362,  # TownDecorTownCenterBank
+            985246037,  # Town Bank
+            1615467546,  # Ancient Bank
+        }
+
+        return building_description_id in town_bank_ids
+
     def _consolidate_inventory(self):
         """
         Consolidate inventory data by item name, combining quantities from all containers.
@@ -273,6 +295,10 @@ class InventoryProcessor(BaseProcessor):
             for building_id, inventory_records in self._inventory_data.items():
                 building_info = self._building_data.get(building_id, {})
                 building_description_id = building_info.get("building_description_id")
+
+                # Skip Town Bank buildings
+                if self._is_town_bank_building(building_description_id):
+                    continue
 
                 # Get container name (nickname or building type name)
                 container_name = self._building_nicknames.get(building_id)
