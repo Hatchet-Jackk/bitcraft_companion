@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.11]
+### Fixed
+* Notification timing. Now they trigger when the tasks is READY not when you claim the item.
+* Notifications now bundle items to prevent notification spam for each item.
+
 ## [0.2.10]
 ### Fixed 
 * Update Accept Help value in real time

@@ -30,6 +30,9 @@ class CraftingProcessor(BaseProcessor):
 
         # Store raw crafting operations for timer calculations
         self.raw_crafting_operations = []
+        
+        # Track items that have already been notified as ready to prevent duplicates
+        self.notified_ready_items = set()
 
     def get_table_names(self):
         """Return list of table names this processor handles."""
@@ -225,28 +228,140 @@ class CraftingProcessor(BaseProcessor):
             status_code = status[0] if status and len(status) > 0 else 0
             status_text = "READY" if status_code == 2 else "IN_PROGRESS" if status_code == 1 else "UNKNOWN"
 
-            # Trigger notification for passive craft completions
+            # Clean up notification tracking when item is collected
             if action == "COLLECTED":
-                self._trigger_passive_craft_notification(recipe_name)
+                collected_entity_id = crafting_data.get("entity_id")
+                if collected_entity_id and collected_entity_id in self.notified_ready_items:
+                    self.notified_ready_items.remove(collected_entity_id)
 
             logging.info(f"Passive craft {action}: {recipe_name} at {building_name} ({status_text})")
 
         except Exception as e:
             logging.warning(f"Error logging crafting action: {e}")
     
-    def _trigger_passive_craft_notification(self, item_name: str):
+    def _get_item_name_from_recipe(self, recipe_id: int) -> str:
         """
-        Trigger a passive craft completion notification.
+        Get the actual item name from a recipe ID by looking up crafted_item_stacks.
         
         Args:
-            item_name: Name of the completed item
+            recipe_id: Recipe ID to look up
+            
+        Returns:
+            str: Actual item name or fallback
         """
         try:
-            # Access notification service through data service
+            if not self.reference_data or not recipe_id:
+                return f"Recipe {recipe_id}"
+            
+            # Get the recipe to find what item it produces
+            recipes = self.reference_data.get("crafting_recipe_desc", [])
+            
+            for recipe in recipes:
+                if recipe.get("id") == recipe_id:
+                    recipe_name = recipe.get("name", "Unknown Recipe")
+                    
+                    # Get the crafted items from this recipe
+                    crafted_items = recipe.get("crafted_item_stacks", [])
+                    
+                    if crafted_items and len(crafted_items) > 0:
+                        # Take the first item from crafted_item_stacks
+                        first_item = crafted_items[0]
+                        if isinstance(first_item, list) and len(first_item) >= 2:
+                            item_id = first_item[0]  # First element is item_id
+                            
+                            # Look up the item name from item_desc
+                            item_lookups = self._get_item_lookups()
+                            item_info = item_lookups.get(item_id, {})
+                            if item_info:
+                                item_name = item_info.get("name", f"Item {item_id}")
+                                return item_name
+                    else:
+                        # Fallback to recipe name if no crafted items
+                        import re
+                        item_name = re.sub(r"\{\d+\}", "", recipe_name).strip()
+                        return item_name
+                    break
+            
+            return f"Recipe {recipe_id}"
+            
+        except Exception as e:
+            logging.error(f"Error resolving item name for recipe {recipe_id}: {e}")
+            return f"Recipe {recipe_id}"
+
+    def _get_item_lookups(self):
+        """
+        Create combined item lookup dictionary from all reference data sources.
+        
+        Returns:
+            Dictionary mapping item_id to item details
+        """
+        try:
+            item_lookups = {}
+            
+            # Combine all item reference data
+            for data_source in ["resource_desc", "item_desc", "cargo_desc"]:
+                items = self.reference_data.get(data_source, [])
+                for item in items:
+                    item_id = item.get("id")
+                    if item_id is not None:
+                        item_lookups[item_id] = item
+            
+            return item_lookups
+            
+        except Exception as e:
+            logging.error(f"Error creating item lookups: {e}")
+            return {}
+
+    def _trigger_bundled_passive_craft_notifications(self, newly_ready_items):
+        """Trigger bundled passive craft completion notifications for multiple items."""
+        try:
+            if not newly_ready_items:
+                return
+            
+            # Group items by name to create bundled messages
+            item_counts = {}
+            for item in newly_ready_items:
+                item_name = item["item_name"]
+                item_counts[item_name] = item_counts.get(item_name, 0) + 1
+            
             if hasattr(self, 'services') and self.services:
                 data_service = self.services.get('data_service')
                 if data_service and hasattr(data_service, 'notification_service'):
-                    data_service.notification_service.show_passive_craft_notification(item_name)
+                    
+                    if len(item_counts) == 1:
+                        # Single item type
+                        item_name = list(item_counts.keys())[0]
+                        quantity = list(item_counts.values())[0]
+                        data_service.notification_service.show_passive_craft_notification(item_name, quantity)
+                    
+                    else:
+                        # Multiple item types - create summary message
+                        item_list = []
+                        for item_name, count in item_counts.items():
+                            if count == 1:
+                                item_list.append(item_name)
+                            else:
+                                item_list.append(f"{count}x {item_name}")
+                        
+                        if len(item_list) <= 3:
+                            summary = ", ".join(item_list)
+                        else:
+                            first_two = ", ".join(item_list[:2])
+                            remaining_types = len(item_list) - 2
+                            summary = f"{first_two} and {remaining_types} more types"
+                        
+                        data_service.notification_service.show_passive_craft_notification(f"Multiple items ready: {summary}", 1)
+                    
+        except Exception as e:
+            logging.error(f"Error triggering bundled passive craft notification: {e}")
+
+    def _trigger_passive_craft_notification(self, item_name: str, quantity: int = 1):
+        """Trigger a passive craft completion notification."""
+        try:
+            if hasattr(self, 'services') and self.services:
+                data_service = self.services.get('data_service')
+                if data_service and hasattr(data_service, 'notification_service'):
+                    data_service.notification_service.show_passive_craft_notification(item_name, quantity)
                     
         except Exception as e:
             logging.error(f"Error triggering passive craft notification: {e}")
@@ -338,7 +453,7 @@ class CraftingProcessor(BaseProcessor):
                     if timestamp_micros is None:
                         timestamp_micros = row.get("timestamp_micros")
 
-                    self._passive_craft_data[entity_id] = {
+                    craft_data = {
                         "entity_id": entity_id,
                         "owner_entity_id": row.get("owner_entity_id"),
                         "recipe_id": row.get("recipe_id"),
@@ -349,6 +464,36 @@ class CraftingProcessor(BaseProcessor):
                         "consumed_item_stacks": row.get("consumed_item_stacks", []),
                         "crafted_item_stacks": row.get("crafted_item_stacks", []),
                     }
+                    
+                    self._passive_craft_data[entity_id] = craft_data
+                    
+                    # Check if this craft is already completed in the initial subscription
+                    # If so, add it to notified_ready_items to prevent notifications
+                    status = craft_data.get("status", [0, {}])
+                    status_code = status[0] if status and len(status) > 0 else 0
+                    
+                    if status_code == 2:  # Status code 2 = READY
+                        self.notified_ready_items.add(entity_id)
+                    
+                    # Also check by calculating time remaining for extra safety
+                    elif timestamp_micros and craft_data.get("recipe_id"):
+                        try:
+                            recipe_id = craft_data.get("recipe_id")
+                            if self.reference_data:
+                                recipes = self.reference_data.get("crafting_recipe_desc", [])
+                                for recipe in recipes:
+                                    if recipe.get("id") == recipe_id:
+                                        duration_seconds = recipe.get("time_requirement", 0)
+                                        start_time = timestamp_micros / 1_000_000
+                                        current_time = time.time()
+                                        elapsed_time = current_time - start_time
+                                        remaining_time = duration_seconds - elapsed_time
+                                        
+                                        if remaining_time <= 0:
+                                            self.notified_ready_items.add(entity_id)
+                                        break
+                        except Exception as e:
+                            logging.warning(f"Error checking passive craft completion time for {entity_id}: {e}")
 
             for craft_id, craft_data in self._passive_craft_data.items():
                 recipe_id = craft_data.get("recipe_id")
@@ -356,6 +501,7 @@ class CraftingProcessor(BaseProcessor):
                 status = craft_data.get("status", [0, {}])
                 status_code = status[0] if status and len(status) > 0 else 0
                 status_text = "READY" if status_code == 2 else "IN_PROGRESS" if status_code == 1 else "UNKNOWN"
+
 
         except Exception as e:
             logging.error(f"Error processing passive craft data: {e}")
@@ -489,6 +635,7 @@ class CraftingProcessor(BaseProcessor):
         try:
             has_timer_changes = False
             updated_operations = []
+            newly_ready_items = []  # Collect items that become ready this cycle
 
             if len(self.raw_crafting_operations) == 0:
 
@@ -505,8 +652,25 @@ class CraftingProcessor(BaseProcessor):
                 if new_time_remaining != old_time_remaining:
                     operation["time_remaining"] = new_time_remaining
                     has_timer_changes = True
+                    
+                    # Check if item just became ready - collect for bundled notification
+                    if old_time_remaining != "READY" and new_time_remaining == "READY":
+                        if entity_id not in self.notified_ready_items:
+                            recipe_id = operation.get("recipe_id")
+                            if recipe_id:
+                                item_name = self._get_item_name_from_recipe(recipe_id)
+                                newly_ready_items.append({
+                                    "entity_id": entity_id,
+                                    "recipe_id": recipe_id,
+                                    "item_name": item_name
+                                })
+                                self.notified_ready_items.add(entity_id)
 
                 updated_operations.append(operation)
+                
+            # Process bundled notifications for all items that became ready this cycle
+            if newly_ready_items:
+                self._trigger_bundled_passive_craft_notifications(newly_ready_items)
 
             # Update the stored operations
             self.raw_crafting_operations = updated_operations
@@ -1268,3 +1432,7 @@ class CraftingProcessor(BaseProcessor):
 
         if hasattr(self, "_claim_members"):
             self._claim_members.clear()
+            
+        # Clear notification tracking to prevent stale notifications after claim switch
+        if hasattr(self, "notified_ready_items"):
+            self.notified_ready_items.clear()

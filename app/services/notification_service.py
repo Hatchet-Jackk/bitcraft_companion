@@ -155,12 +155,16 @@ class NotificationService:
             """Thread function to show notification without blocking UI."""
             try:
                 if NATIVE_TOAST_AVAILABLE:
-                    # Use native Windows toast notification
+                    # Use native Windows toast notification with enhanced visibility
                     toast(
                         title=title,
                         body=message,
                         duration='short',  # 'short' = 7 seconds, 'long' = 25 seconds
-                        app_id='BitCraft Companion'
+                        app_id='BitCraft Companion',
+                        # Add audio to make it more noticeable
+                        audio={'src': 'ms-winsoundevent:Notification.Default', 'loop': 'false'},
+                        # Try to make it stay on screen longer and be more visible
+                        scenario='reminder'  # This can help with visibility over games
                     )
                     logging.debug(f"Native toast notification shown: {title}")
                 elif NotificationWindow:

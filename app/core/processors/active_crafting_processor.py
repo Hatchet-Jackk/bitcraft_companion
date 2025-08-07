@@ -97,6 +97,28 @@ class ActiveCraftingProcessor(BaseProcessor):
                             progress = insert_data.get("progress", 0)
                             preparation = insert_data.get("preparation", False)
                             recipe_id = insert_data.get("recipe_id", 0)
+                            craft_count = insert_data.get("craft_count", 1)
+
+                            # Check if this progress update represents completion (READY status)
+                            if not preparation and recipe_id:
+                                try:
+                                    if self.reference_data:
+                                        recipe_lookup = {r["id"]: r for r in self.reference_data.get("crafting_recipe_desc", [])}
+                                        recipe_info = recipe_lookup.get(recipe_id, {})
+                                        if recipe_info:
+                                            recipe_actions_required = recipe_info.get("actions_required", 1)
+                                            total_effort = recipe_actions_required * craft_count
+                                            current_effort = progress
+                                            remaining_effort = max(0, total_effort - current_effort)
+                                            
+                                            # Check if this is newly completed
+                                            old_total_effort = recipe_actions_required * old_data.get("craft_count", 1)
+                                            old_remaining_effort = max(0, old_total_effort - old_progress)
+                                            
+                                            if remaining_effort == 0 and old_remaining_effort > 0:
+                                                self._trigger_active_craft_notification(recipe_id)
+                                except Exception as e:
+                                    logging.error(f"Error checking active craft completion status: {e}")
 
                             status_display = "Preparation" if preparation else f"{progress}%"
                         else:
@@ -109,15 +131,14 @@ class ActiveCraftingProcessor(BaseProcessor):
                     # Handle standalone deletes (completions)
                     for entity_id in delete_operations:
                         if entity_id not in insert_operations:
-                            # This is a standalone delete (completion)
+                            # This is a standalone delete (completion/claimed)
                             if entity_id in self._progressive_action_data:
                                 del self._progressive_action_data[entity_id]
 
                             delete_data = delete_operations[entity_id]
                             recipe_id = delete_data.get("recipe_id", 0)
 
-                            # Trigger notification for active craft completion
-                            self._trigger_active_craft_notification(recipe_id)
+                            # Notification is triggered when item becomes READY, not when claimed
 
                             has_active_crafting_changes = True
 
@@ -889,27 +910,10 @@ class ActiveCraftingProcessor(BaseProcessor):
             self._public_actions.clear()
 
     def _trigger_active_craft_notification(self, recipe_id: int):
-        """
-        Trigger an active craft completion notification.
-
-        Args:
-            recipe_id: Recipe ID of the completed item
-        """
+        """Trigger an active craft completion notification."""
         try:
-            # Get item name from recipe ID
-            item_name = f"Recipe {recipe_id}"
-
-            # Try to get recipe name from reference data
-            if self.reference_data:
-                recipes = self.reference_data.get("recipe_desc", [])
-                for recipe in recipes:
-                    if recipe.get("id") == recipe_id:
-                        item_name = recipe.get("name", item_name)
-                        # Clean up the item name (remove {0} placeholders)
-                        item_name = item_name.replace("{0}", "").strip()
-                        break
-
-            # Access notification service through data service
+            item_name = self._get_item_name_from_recipe(recipe_id)
+            
             if hasattr(self, "services") and self.services:
                 data_service = self.services.get("data_service")
                 if data_service and hasattr(data_service, "notification_service"):
@@ -917,3 +921,35 @@ class ActiveCraftingProcessor(BaseProcessor):
 
         except Exception as e:
             logging.error(f"Error triggering active craft notification: {e}")
+    
+    def _get_item_name_from_recipe(self, recipe_id: int) -> str:
+        """Get the actual item name from a recipe ID by looking up crafted_item_stacks."""
+        try:
+            if not self.reference_data or not recipe_id:
+                return f"Recipe {recipe_id}"
+            
+            recipes = self.reference_data.get("crafting_recipe_desc", [])
+            
+            for recipe in recipes:
+                if recipe.get("id") == recipe_id:
+                    recipe_name = recipe.get("name", "Unknown Recipe")
+                    crafted_items = recipe.get("crafted_item_stacks", [])
+                    
+                    if crafted_items and len(crafted_items) > 0:
+                        first_item = crafted_items[0]
+                        if isinstance(first_item, list) and len(first_item) >= 2:
+                            item_id = first_item[0]
+                            item_lookups = self._get_item_lookups()
+                            item_info = item_lookups.get(item_id, {})
+                            if item_info:
+                                return item_info.get("name", f"Item {item_id}")
+                    else:
+                        # Fallback to cleaned recipe name
+                        return re.sub(r"\{\d+\}", "", recipe_name).strip()
+                    break
+            
+            return f"Recipe {recipe_id}"
+            
+        except Exception as e:
+            logging.error(f"Error resolving item name for recipe {recipe_id}: {e}")
+            return f"Recipe {recipe_id}"
