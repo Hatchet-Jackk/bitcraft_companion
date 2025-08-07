@@ -177,23 +177,35 @@ class ClaimInventoryTab(ctk.CTkFrame):
 
     def update_data(self, new_data):
         """Receives new inventory data and converts it to the table format."""
-        if isinstance(new_data, dict):
-            table_data = []
-            for item_name, item_info in new_data.items():
-                table_data.append(
-                    {
-                        "name": item_name,
-                        "tier": item_info.get("tier", 0),
-                        "quantity": item_info.get("total_quantity", 0),
-                        "tag": item_info.get("tag", ""),
-                        "containers": item_info.get("containers", {}),
-                    }
-                )
-            self.all_data = table_data
-        else:
-            self.all_data = new_data if isinstance(new_data, list) else []
+        import logging
+        
+        try:
+            logging.debug(f"[ClaimInventoryTab] Updating data - type: {type(new_data)}")
+            
+            if isinstance(new_data, dict):
+                table_data = []
+                for item_name, item_info in new_data.items():
+                    table_data.append(
+                        {
+                            "name": item_name,
+                            "tier": item_info.get("tier", 0),
+                            "quantity": item_info.get("total_quantity", 0),
+                            "tag": item_info.get("tag", ""),
+                            "containers": item_info.get("containers", {}),
+                        }
+                    )
+                self.all_data = table_data
+                logging.debug(f"[ClaimInventoryTab] Processed {len(table_data)} inventory items")
+            else:
+                self.all_data = new_data if isinstance(new_data, list) else []
+                logging.debug(f"[ClaimInventoryTab] Set data to list with {len(self.all_data)} items")
 
-        self.apply_filter()
+            self.apply_filter()
+            
+        except Exception as e:
+            logging.error(f"[ClaimInventoryTab] Error updating data: {e}")
+            import traceback
+            logging.debug(traceback.format_exc())
 
     def apply_filter(self):
         """Filters the master data list based on search and column filters."""
@@ -255,32 +267,55 @@ class ClaimInventoryTab(ctk.CTkFrame):
 
     def render_table(self):
         """Clears and re-populates the Treeview with correct column layout."""
-        self.tree.delete(*self.tree.get_children())
+        import logging
+        
+        try:
+            logging.debug(f"[ClaimInventoryTab] Starting table render - {len(self.filtered_data)} items")
+            
+            # Clear existing rows
+            existing_children = self.tree.get_children()
+            logging.debug(f"[ClaimInventoryTab] Clearing {len(existing_children)} existing rows")
+            self.tree.delete(*existing_children)
 
-        for row_data in self.filtered_data:
-            item_name = row_data.get("name", "")
-            containers = row_data.get("containers", {})
+            rows_added = 0
+            child_rows_added = 0
+            for row_data in self.filtered_data:
+                item_name = row_data.get("name", "")
+                containers = row_data.get("containers", {})
 
-            values = [
-                item_name,
-                str(row_data.get("tier", "")),
-                str(row_data.get("quantity", "")),
-                str(row_data.get("tag", "")),
-                f"{len(containers)} Containers" if len(containers) > 1 else next(iter(containers.keys()), "N/A"),
-            ]
+                values = [
+                    item_name,
+                    str(row_data.get("tier", "")),
+                    str(row_data.get("quantity", "")),
+                    str(row_data.get("tag", "")),
+                    f"{len(containers)} Containers" if len(containers) > 1 else next(iter(containers.keys()), "N/A"),
+                ]
 
-            if len(containers) > 1:
-                item_id = self.tree.insert("", "end", values=values)
-            else:
-                item_id = self.tree.insert("", "end", text="", values=values, open=False)
+                try:
+                    if len(containers) > 1:
+                        item_id = self.tree.insert("", "end", values=values)
+                    else:
+                        item_id = self.tree.insert("", "end", text="", values=values, open=False)
+                    rows_added += 1
 
-            if len(containers) > 1:
-                for container_name, quantity in containers.items():
-                    child_values = [
-                        f"  └─ {item_name}",
-                        str(row_data.get("tier", "")),
-                        str(quantity),
-                        str(row_data.get("tag", "")),
-                        container_name,
-                    ]
-                    self.tree.insert(item_id, "end", text="", values=child_values, tags=("child",))
+                    if len(containers) > 1:
+                        for container_name, quantity in containers.items():
+                            child_values = [
+                                f"  └─ {item_name}",
+                                str(row_data.get("tier", "")),
+                                str(quantity),
+                                str(row_data.get("tag", "")),
+                                container_name,
+                            ]
+                            self.tree.insert(item_id, "end", text="", values=child_values, tags=("child",))
+                            child_rows_added += 1
+
+                except Exception as e:
+                    logging.error(f"[ClaimInventoryTab] Error adding row for {item_name}: {e}")
+
+            logging.debug(f"[ClaimInventoryTab] Table render complete - added {rows_added} main rows, {child_rows_added} child rows")
+            
+        except Exception as e:
+            logging.error(f"[ClaimInventoryTab] Critical error during table render: {e}")
+            import traceback
+            logging.debug(traceback.format_exc())

@@ -3,6 +3,8 @@ import customtkinter as ctk
 import queue
 import logging
 import threading
+import platform
+import os
 from tkinter import messagebox
 from app.core.data_service import DataService
 from app.ui.main_window import MainWindow
@@ -26,6 +28,80 @@ logging.basicConfig(
 )
 
 
+def log_system_environment():
+    """Log comprehensive system environment information for debugging."""
+    try:
+        logging.info("=== BitCraft Companion Starting ===")
+
+        # Python environment
+        logging.debug(f"Python version: {sys.version}")
+        logging.debug(f"Python executable: {sys.executable}")
+        logging.debug(f"Python platform: {platform.platform()}")
+
+        # CustomTkinter version
+        try:
+            ctk_version = ctk.__version__ if hasattr(ctk, "__version__") else "Unknown"
+            logging.debug(f"CustomTkinter version: {ctk_version}")
+        except:
+            logging.debug("CustomTkinter version: Unable to determine")
+
+        # System info
+        logging.debug(f"Operating System: {platform.system()} {platform.release()}")
+        logging.debug(f"Architecture: {platform.machine()}")
+        logging.debug(f"Processor: {platform.processor()}")
+
+        # Display information
+        try:
+            import tkinter as tk
+
+            root = tk.Tk()
+            screen_width = root.winfo_screenwidth()
+            screen_height = root.winfo_screenheight()
+
+            # Try to get DPI information
+            try:
+                dpi_x = root.winfo_fpixels("1i")  # pixels per inch
+                dpi_y = root.winfo_fpixels("1i")
+                logging.debug(f"Display: {screen_width}x{screen_height} @ {dpi_x:.0f} DPI")
+            except:
+                logging.debug(f"Display: {screen_width}x{screen_height}")
+
+            # Try to get scaling information
+            try:
+                scaling = root.tk.call("tk", "scaling")
+                logging.debug(f"Tkinter scaling factor: {scaling}")
+            except:
+                logging.debug("Tkinter scaling factor: Unable to determine")
+
+            root.destroy()
+        except Exception as e:
+            logging.debug(f"Display info error: {e}")
+
+        # Environment variables that might affect UI
+        env_vars_to_check = ["DISPLAY", "QT_SCALE_FACTOR", "GDK_SCALE", "GDK_DPI_SCALE"]
+        for env_var in env_vars_to_check:
+            value = os.environ.get(env_var)
+            if value:
+                logging.debug(f"Environment {env_var}: {value}")
+
+        # Execution context
+        if getattr(sys, "frozen", False):
+            logging.debug("Running from executable (frozen)")
+            logging.debug(f"Executable path: {sys.executable}")
+        else:
+            logging.debug("Running from source code")
+            logging.debug(f"Script path: {__file__}")
+
+        logging.info("System environment logged successfully")
+
+    except Exception as e:
+        logging.error(f"Error logging system environment: {e}")
+
+
+# Log system environment at startup
+log_system_environment()
+
+
 class LoginWindow(ctk.CTk):
     """
     A dynamic login window that adapts based on authentication status.
@@ -33,12 +109,13 @@ class LoginWindow(ctk.CTk):
 
     def __init__(self):
         super().__init__()
+        logging.info("Initializing login window")
         self.title("Bitcraft Companion")
         self.resizable(False, False)
 
         self.data_service = DataService()
 
-        # --- Main container ---
+        # Main container
         self.main_frame = ctk.CTkFrame(self)
         self.main_frame.pack(padx=20, pady=20, fill="both", expand=True)
 
@@ -46,6 +123,7 @@ class LoginWindow(ctk.CTk):
         self._setup_widgets()
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
+        logging.debug("Login window initialized successfully")
 
     def _setup_widgets(self):
         """Clears and rebuilds the UI based on authentication status."""
@@ -55,7 +133,7 @@ class LoginWindow(ctk.CTk):
 
         ctk.CTkLabel(self.main_frame, text="Login", font=("Arial", 18, "bold")).pack(pady=10)
 
-        # --- Input Fields ---
+        # Input Fields
         self.email_entry = ctk.CTkEntry(self.main_frame, placeholder_text="Email", width=250)
         self.email_entry.pack(pady=5)
         if self.data_service.client.email:
@@ -82,7 +160,7 @@ class LoginWindow(ctk.CTk):
         if self.data_service.client.region in regions:
             self.region_menu.set(self.data_service.client.region)
 
-        # --- Dynamic Widgets based on Auth Status ---
+        # Dynamic Widgets based on Auth Status
         self.auth_token_exists = self.data_service.client.auth is not None
 
         if self.auth_token_exists:
@@ -106,7 +184,7 @@ class LoginWindow(ctk.CTk):
             self.login_button = ctk.CTkButton(self.main_frame, text="Login", command=self.attempt_login, width=250)
             self.login_button.pack(pady=(10, 5))
 
-        # --- Static Buttons and Labels ---
+        # Static Buttons and Labels
         self.quit_button = ctk.CTkButton(self.main_frame, text="Quit", command=self.on_closing, width=250, fg_color="#c0392b")
         self.quit_button.pack(pady=5)
 
@@ -125,6 +203,7 @@ class LoginWindow(ctk.CTk):
             self.status_label.configure(text="Email is required to request a code.")
             return
 
+        logging.info(f"Requesting access code for email: {email[:3]}***@{email.split('@')[1] if '@' in email else 'unknown'}")
         self.status_label.configure(text="Requesting code...")
 
         # Run in a thread to avoid freezing the GUI
@@ -132,10 +211,13 @@ class LoginWindow(ctk.CTk):
             try:
                 success = self.data_service.client.get_access_code(email)
                 if success:
+                    logging.info("Access code request successful")
                     self.status_label.configure(text="Access code sent! Check your email.")
                 else:
+                    logging.warning("Access code request failed")
                     self.status_label.configure(text="Failed to request access code.")
             except Exception as e:
+                logging.error(f"Access code request error: {e}")
                 self.status_label.configure(text=f"Error: {e}")
 
         threading.Thread(target=do_request, daemon=True).start()
@@ -175,6 +257,7 @@ class LoginWindow(ctk.CTk):
             self.status_label.configure(text="Access Code is required.")
             return
 
+        logging.info(f"Attempting login - Player: {player_name}, Region: {region}")
         self.status_label.configure(text="Connecting...")
         self.login_button.configure(state="disabled")
 
@@ -204,6 +287,7 @@ class LoginWindow(ctk.CTk):
 
     def launch_main_app(self):
         """Closes the login window and opens the main application."""
+        logging.info("Login successful - launching main application")
         self.destroy()
         main_app = MainWindow(self.data_service)
         main_app.mainloop()

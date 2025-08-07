@@ -73,13 +73,25 @@ class MainWindow(ctk.CTk):
 
     def __init__(self, data_service: DataService):
         super().__init__()
+        logging.info("Initializing main application window")
+        
+        # Log window geometry and display info
+        try:
+            screen_width = self.winfo_screenwidth()
+            screen_height = self.winfo_screenheight()
+            logging.debug(f"Screen dimensions: {screen_width}x{screen_height}")
+        except Exception as e:
+            logging.debug(f"Error getting screen dimensions: {e}")
+        
         self.title("Bitcraft Companion")
         self.geometry("900x600")
+        logging.debug("Main window geometry set to 900x600")
 
         # Set minimum window size to prevent UI elements from becoming inaccessible
         # Width: 300px (dropdown) + 100px (settings) + 80px (logout) + 70px (quit) + 80px (padding) = 630px
         # Height: 80px (header) + 45px (tabs) + 50px (search) + 300px (content) + 45px (margins) = 520px
         self.minsize(650, 520)
+        logging.debug("Minimum window size set to 650x520")
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(3, weight=1)
@@ -101,22 +113,27 @@ class MainWindow(ctk.CTk):
         self.resize_timer = None
 
         # Create the claim info header
+        logging.debug("Creating claim info header")
         self.claim_info = ClaimInfoHeader(self, self)
         self.claim_info.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 5))
 
         # Create tab button frame with tab-like styling
+        logging.debug("Creating tab button frame")
         self.tab_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.tab_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(5, 0))
 
         # Create search section
+        logging.debug("Creating search section")
         self._create_search_section()
 
         # Track loading state
         self.is_loading = True
         self.expected_data_types = {"inventory", "crafting", "active_crafting", "tasks", "claim_info"}
         self.received_data_types = set()
+        logging.debug(f"Loading state initialized - expecting data types: {self.expected_data_types}")
 
         # Create tab content area with modern styling
+        logging.debug("Creating tab content area")
         self.tab_content_area = ctk.CTkFrame(
             self, fg_color=("#2b2b2b", "#1e1e1e"), border_width=2, border_color=("#404040", "#505050"), corner_radius=12
         )
@@ -125,9 +142,11 @@ class MainWindow(ctk.CTk):
         self.tab_content_area.grid_rowconfigure(0, weight=1)
 
         # Create loading overlay
+        logging.debug("Creating loading overlay")
         self.loading_overlay = self._create_loading_overlay()
 
         # Initialize tabs and UI
+        logging.debug("Initializing tabs and UI components")
         self._create_tabs()
         self._create_tab_buttons()
         self.show_tab("Claim Inventory")
@@ -753,23 +772,36 @@ class MainWindow(ctk.CTk):
     def process_data_queue(self):
         """Enhanced data queue processing that handles claim switching messages."""
         try:
+            message_count = 0
             while not self.data_service.data_queue.empty():
                 message = self.data_service.data_queue.get_nowait()
+                message_count += 1
                 msg_type = message.get("type")
                 msg_data = message.get("data")
+                
+                # Log data type and size for debugging
+                data_size = len(msg_data) if isinstance(msg_data, (dict, list)) else "unknown"
+                logging.debug(f"Processing message {message_count}: {msg_type} (data size: {data_size})")
 
                 if msg_type == "inventory_update":
                     if "Claim Inventory" in self.tabs:
+                        start_time = time.time()
                         self.tabs["Claim Inventory"].update_data(msg_data)
-
+                        update_time = time.time() - start_time
+                        logging.debug(f"Inventory tab update took {update_time:.3f}s")
+                        
                         # Track that we've received inventory data
                         if self.is_loading:
                             self.received_data_types.add("inventory")
+                            logging.debug(f"Received inventory data - progress: {self.received_data_types}")
                             self._check_all_data_loaded()
 
                 elif msg_type == "crafting_update":
                     if "Passive Crafting" in self.tabs:
+                        start_time = time.time()
                         self.tabs["Passive Crafting"].update_data(msg_data)
+                        update_time = time.time() - start_time
+                        logging.debug(f"Crafting tab update took {update_time:.3f}s")
 
                         # Check for completion celebrations
                         changes = message.get("changes", {})
@@ -779,15 +811,20 @@ class MainWindow(ctk.CTk):
                         # Track that we've received crafting data
                         if self.is_loading:
                             self.received_data_types.add("crafting")
+                            logging.debug(f"Received crafting data - progress: {self.received_data_types}")
                             self._check_all_data_loaded()
 
                 elif msg_type == "active_crafting_update":
                     if "Active Crafting" in self.tabs:
+                        start_time = time.time()
                         self.tabs["Active Crafting"].update_data(msg_data)
+                        update_time = time.time() - start_time
+                        logging.debug(f"Active crafting tab update took {update_time:.3f}s")
 
                         # Track that we've received active crafting data
                         if self.is_loading:
                             self.received_data_types.add("active_crafting")
+                            logging.debug(f"Received active crafting data - progress: {self.received_data_types}")
                             self._check_all_data_loaded()
 
                 elif msg_type == "timer_update":
