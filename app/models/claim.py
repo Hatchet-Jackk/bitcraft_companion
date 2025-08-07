@@ -119,11 +119,22 @@ class Claim:
 
         logging.info("Consolidating resources from claim inventory.")
         combined_item_lookup = {}
-        for data_list in [self.resource_desc, self.item_desc, self.cargo_desc]:
+        
+        # Use compound keys to prevent ID collisions between tables
+        for data_list, source_name in [(self.resource_desc, "resource_desc"), 
+                                       (self.item_desc, "item_desc"), 
+                                       (self.cargo_desc, "cargo_desc")]:
             if data_list:
                 for item in data_list:
                     if "id" in item:
-                        combined_item_lookup[item["id"]] = item
+                        item_id = item["id"]
+                        # Use compound key to prevent overwrites
+                        compound_key = (item_id, source_name)
+                        combined_item_lookup[compound_key] = item
+                        
+                        # Also maintain simple lookup with priority: item_desc > cargo_desc > resource_desc
+                        if item_id not in combined_item_lookup or source_name == "item_desc":
+                            combined_item_lookup[item_id] = item
 
         collection = {}
         storage_buildings = self.buildings.get("Storage", []) + self.buildings.get("Cargo Stockpile", [])
