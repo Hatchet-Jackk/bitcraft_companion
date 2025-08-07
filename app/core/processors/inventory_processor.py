@@ -321,11 +321,15 @@ class InventoryProcessor(BaseProcessor):
                                     item_id = item_data[0]
                                     quantity = item_data[1]
 
-                                    # Look up item details
-                                    item_info = item_lookups.get(item_id, {})
-                                    item_name = item_info.get("name", f"Unknown Item {item_id}")
-                                    item_tier = item_info.get("tier", 0)
-                                    item_tag = item_info.get("tag", "")
+                                    # Look up item details using smart lookup
+                                    item_info = self._lookup_item_by_id(item_lookups, item_id)
+                                    item_name = (
+                                        item_info.get("name", f"Unknown Item {item_id}")
+                                        if item_info
+                                        else f"Unknown Item {item_id}"
+                                    )
+                                    item_tier = item_info.get("tier", 0) if item_info else 0
+                                    item_tag = item_info.get("tag", "") if item_info else ""
 
                                     # Add to consolidated inventory
                                     if item_name not in consolidated:
@@ -345,10 +349,6 @@ class InventoryProcessor(BaseProcessor):
                         except Exception as e:
                             continue
 
-            for item_name, item_data in consolidated.items():
-                total_qty = item_data["total_quantity"]
-                containers = list(item_data["containers"].keys())
-
             return consolidated
 
         except Exception as e:
@@ -359,25 +359,70 @@ class InventoryProcessor(BaseProcessor):
         """
         Create combined item lookup dictionary from all reference data sources.
 
+        Uses compound keys to prevent ID conflicts between tables.
+        Example: item_id 1050001 exists in both item_desc and cargo_desc as different items.
+
         Returns:
-            Dictionary mapping item_id to item details
+            Dictionary mapping both (item_id, table_source) and item_id to item details
         """
         try:
             item_lookups = {}
 
-            # Combine all item reference data
+            # Combine all item reference data with compound keys to prevent overwrites
             for data_source in ["resource_desc", "item_desc", "cargo_desc"]:
                 items = self.reference_data.get(data_source, [])
                 for item in items:
                     item_id = item.get("id")
                     if item_id is not None:
-                        item_lookups[item_id] = item
+                        # Use compound key (item_id, table_source) to prevent overwrites
+                        compound_key = (item_id, data_source)
+                        item_lookups[compound_key] = item
+
+                        # Also maintain simple item_id lookup for backwards compatibility
+                        # Priority: item_desc > cargo_desc > resource_desc
+                        if item_id not in item_lookups or data_source == "item_desc":
+                            item_lookups[item_id] = item
 
             return item_lookups
 
         except Exception as e:
             logging.error(f"Error creating item lookups: {e}")
             return {}
+
+    def _lookup_item_by_id(self, item_lookups, item_id, preferred_source=None):
+        """
+        Smart item lookup that handles both compound keys and simple keys.
+
+        Args:
+            item_lookups: The lookup dictionary from _get_item_lookups()
+            item_id: The item ID to look up
+            preferred_source: Preferred table source ("item_desc", "cargo_desc", "resource_desc")
+
+        Returns:
+            Item details dictionary or None if not found
+        """
+        try:
+            # Try preferred source first if specified
+            if preferred_source:
+                compound_key = (item_id, preferred_source)
+                if compound_key in item_lookups:
+                    return item_lookups[compound_key]
+
+            # Try simple item_id lookup (uses priority system)
+            if item_id in item_lookups:
+                return item_lookups[item_id]
+
+            # Try all compound keys if simple lookup failed
+            for source in ["item_desc", "cargo_desc", "resource_desc"]:
+                compound_key = (item_id, source)
+                if compound_key in item_lookups:
+                    return item_lookups[compound_key]
+
+            return None
+
+        except Exception as e:
+            logging.error(f"Error looking up item {item_id}: {e}")
+            return None
 
     def _format_inventory_data(self, inventory_data):
         """
@@ -393,10 +438,8 @@ class InventoryProcessor(BaseProcessor):
             if not inventory_data:
                 return []
 
-            # Get reference data for item names/descriptions
-            resource_desc = {item["id"]: item for item in self.reference_data.get("resource_desc", [])}
-            item_desc = {item["id"]: item for item in self.reference_data.get("item_desc", [])}
-            cargo_desc = {item["id"]: item for item in self.reference_data.get("cargo_desc", [])}
+            # Use consolidated item lookups instead of separate dictionaries
+            item_lookups = self._get_item_lookups()
 
             formatted_items = []
 
@@ -404,8 +447,8 @@ class InventoryProcessor(BaseProcessor):
                 resource_id = item.get("resource_id", 0)
                 quantity = item.get("quantity", 0)
 
-                # Look up item details in reference data
-                item_info = resource_desc.get(resource_id) or item_desc.get(resource_id) or cargo_desc.get(resource_id)
+                # Look up item details using smart lookup
+                item_info = self._lookup_item_by_id(item_lookups, resource_id)
 
                 if item_info:
                     formatted_item = {
