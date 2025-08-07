@@ -30,7 +30,7 @@ class CraftingProcessor(BaseProcessor):
 
         # Store raw crafting operations for timer calculations
         self.raw_crafting_operations = []
-        
+
         # Track items that have already been notified as ready to prevent duplicates
         self.notified_ready_items = set()
 
@@ -238,52 +238,45 @@ class CraftingProcessor(BaseProcessor):
 
         except Exception as e:
             logging.warning(f"Error logging crafting action: {e}")
-    
+
     def _get_item_name_from_recipe(self, recipe_id: int) -> str:
         """
         Get the actual item name from a recipe ID by looking up crafted_item_stacks.
-        
+
         Args:
             recipe_id: Recipe ID to look up
-            
+
         Returns:
             str: Actual item name or fallback
         """
         try:
             if not self.reference_data or not recipe_id:
                 return f"Recipe {recipe_id}"
-            
-            # Get the recipe to find what item it produces
+
             recipes = self.reference_data.get("crafting_recipe_desc", [])
-            
+
             for recipe in recipes:
                 if recipe.get("id") == recipe_id:
                     recipe_name = recipe.get("name", "Unknown Recipe")
-                    
-                    # Get the crafted items from this recipe
                     crafted_items = recipe.get("crafted_item_stacks", [])
-                    
+
                     if crafted_items and len(crafted_items) > 0:
-                        # Take the first item from crafted_item_stacks
                         first_item = crafted_items[0]
+
                         if isinstance(first_item, list) and len(first_item) >= 2:
-                            item_id = first_item[0]  # First element is item_id
-                            
-                            # Look up the item name from item_desc
+                            item_id = first_item[0]
                             item_lookups = self._get_item_lookups()
-                            item_info = item_lookups.get(item_id, {})
+                            item_info = self._lookup_item_by_id(item_lookups, item_id)
+
                             if item_info:
-                                item_name = item_info.get("name", f"Item {item_id}")
-                                return item_name
+                                return item_info.get("name", f"Item {item_id}")
                     else:
                         # Fallback to recipe name if no crafted items
-                        import re
-                        item_name = re.sub(r"\{\d+\}", "", recipe_name).strip()
-                        return item_name
+                        return re.sub(r"\{\d+\}", "", recipe_name).strip()
                     break
-            
+
             return f"Recipe {recipe_id}"
-            
+
         except Exception as e:
             logging.error(f"Error resolving item name for recipe {recipe_id}: {e}")
             return f"Recipe {recipe_id}"
@@ -291,49 +284,121 @@ class CraftingProcessor(BaseProcessor):
     def _get_item_lookups(self):
         """
         Create combined item lookup dictionary from all reference data sources.
-        
+
+        Uses compound keys to prevent ID conflicts between tables.
+        Example: item_id 1050001 exists in both item_desc and cargo_desc as different items.
+
         Returns:
-            Dictionary mapping item_id to item details
+            Dictionary mapping both (item_id, table_source) and item_id to item details
         """
         try:
             item_lookups = {}
-            
-            # Combine all item reference data
+
+            # Combine all item reference data with compound keys to prevent overwrites
             for data_source in ["resource_desc", "item_desc", "cargo_desc"]:
                 items = self.reference_data.get(data_source, [])
                 for item in items:
                     item_id = item.get("id")
                     if item_id is not None:
-                        item_lookups[item_id] = item
-            
+                        # Use compound key (item_id, table_source) to prevent overwrites
+                        compound_key = (item_id, data_source)
+                        item_lookups[compound_key] = item
+
+                        # Also maintain simple item_id lookup for backwards compatibility
+                        # Priority: item_desc > cargo_desc > resource_desc
+                        if item_id not in item_lookups or data_source == "item_desc":
+                            item_lookups[item_id] = item
+
             return item_lookups
-            
+
         except Exception as e:
             logging.error(f"Error creating item lookups: {e}")
             return {}
+
+    def _lookup_item_by_id(self, item_lookups, item_id, preferred_source=None):
+        """
+        Smart item lookup that handles both compound keys and simple keys.
+
+        Args:
+            item_lookups: The lookup dictionary from _get_item_lookups()
+            item_id: The item ID to look up
+            preferred_source: Preferred table source ("item_desc", "cargo_desc", "resource_desc")
+
+        Returns:
+            Item details dictionary or None if not found
+        """
+        try:
+            # Try preferred source first if specified
+            if preferred_source:
+                compound_key = (item_id, preferred_source)
+                if compound_key in item_lookups:
+                    return item_lookups[compound_key]
+
+            # Try simple item_id lookup (uses priority system)
+            if item_id in item_lookups:
+                return item_lookups[item_id]
+
+            # Try all compound keys if simple lookup failed
+            for source in ["item_desc", "cargo_desc", "resource_desc"]:
+                compound_key = (item_id, source)
+                if compound_key in item_lookups:
+                    return item_lookups[compound_key]
+
+            return None
+
+        except Exception as e:
+            logging.error(f"Error looking up item {item_id}: {e}")
+            return None
+
+    def _determine_preferred_item_source(self, recipe_info):
+        """
+        Determine the preferred item source based on recipe context.
+
+        Args:
+            recipe_info: Recipe information dictionary
+
+        Returns:
+            str: Preferred source ("item_desc", "cargo_desc", "resource_desc") or None
+        """
+        try:
+            recipe_name = recipe_info.get("name", "").lower()
+
+            # Heuristics to determine if this is likely a cargo item
+            cargo_indicators = ["pack", "package", "bundle", "crate", "supplies", "materials", "goods", "cargo", "shipment"]
+
+            for indicator in cargo_indicators:
+                if indicator in recipe_name:
+                    return "cargo_desc"
+
+            # Default to item_desc for most crafting
+            return "item_desc"
+
+        except Exception as e:
+            logging.error(f"Error determining preferred source: {e}")
+            return None
 
     def _trigger_bundled_passive_craft_notifications(self, newly_ready_items):
         """Trigger bundled passive craft completion notifications for multiple items."""
         try:
             if not newly_ready_items:
                 return
-            
+
             # Group items by name to create bundled messages
             item_counts = {}
             for item in newly_ready_items:
                 item_name = item["item_name"]
                 item_counts[item_name] = item_counts.get(item_name, 0) + 1
-            
-            if hasattr(self, 'services') and self.services:
-                data_service = self.services.get('data_service')
-                if data_service and hasattr(data_service, 'notification_service'):
-                    
+
+            if hasattr(self, "services") and self.services:
+                data_service = self.services.get("data_service")
+                if data_service and hasattr(data_service, "notification_service"):
+
                     if len(item_counts) == 1:
                         # Single item type
                         item_name = list(item_counts.keys())[0]
                         quantity = list(item_counts.values())[0]
                         data_service.notification_service.show_passive_craft_notification(item_name, quantity)
-                    
+
                     else:
                         # Multiple item types - create summary message
                         item_list = []
@@ -342,27 +407,27 @@ class CraftingProcessor(BaseProcessor):
                                 item_list.append(item_name)
                             else:
                                 item_list.append(f"{count}x {item_name}")
-                        
+
                         if len(item_list) <= 3:
                             summary = ", ".join(item_list)
                         else:
                             first_two = ", ".join(item_list[:2])
                             remaining_types = len(item_list) - 2
                             summary = f"{first_two} and {remaining_types} more types"
-                        
+
                         data_service.notification_service.show_passive_craft_notification(f"Multiple items ready: {summary}", 1)
-                    
+
         except Exception as e:
             logging.error(f"Error triggering bundled passive craft notification: {e}")
 
     def _trigger_passive_craft_notification(self, item_name: str, quantity: int = 1):
         """Trigger a passive craft completion notification."""
         try:
-            if hasattr(self, 'services') and self.services:
-                data_service = self.services.get('data_service')
-                if data_service and hasattr(data_service, 'notification_service'):
+            if hasattr(self, "services") and self.services:
+                data_service = self.services.get("data_service")
+                if data_service and hasattr(data_service, "notification_service"):
                     data_service.notification_service.show_passive_craft_notification(item_name, quantity)
-                    
+
         except Exception as e:
             logging.error(f"Error triggering passive craft notification: {e}")
 
@@ -464,17 +529,17 @@ class CraftingProcessor(BaseProcessor):
                         "consumed_item_stacks": row.get("consumed_item_stacks", []),
                         "crafted_item_stacks": row.get("crafted_item_stacks", []),
                     }
-                    
+
                     self._passive_craft_data[entity_id] = craft_data
-                    
+
                     # Check if this craft is already completed in the initial subscription
                     # If so, add it to notified_ready_items to prevent notifications
                     status = craft_data.get("status", [0, {}])
                     status_code = status[0] if status and len(status) > 0 else 0
-                    
+
                     if status_code == 2:  # Status code 2 = READY
                         self.notified_ready_items.add(entity_id)
-                    
+
                     # Also check by calculating time remaining for extra safety
                     elif timestamp_micros and craft_data.get("recipe_id"):
                         try:
@@ -488,7 +553,7 @@ class CraftingProcessor(BaseProcessor):
                                         current_time = time.time()
                                         elapsed_time = current_time - start_time
                                         remaining_time = duration_seconds - elapsed_time
-                                        
+
                                         if remaining_time <= 0:
                                             self.notified_ready_items.add(entity_id)
                                         break
@@ -501,7 +566,6 @@ class CraftingProcessor(BaseProcessor):
                 status = craft_data.get("status", [0, {}])
                 status_code = status[0] if status and len(status) > 0 else 0
                 status_text = "READY" if status_code == 2 else "IN_PROGRESS" if status_code == 1 else "UNKNOWN"
-
 
         except Exception as e:
             logging.error(f"Error processing passive craft data: {e}")
@@ -652,22 +716,18 @@ class CraftingProcessor(BaseProcessor):
                 if new_time_remaining != old_time_remaining:
                     operation["time_remaining"] = new_time_remaining
                     has_timer_changes = True
-                    
+
                     # Check if item just became ready - collect for bundled notification
                     if old_time_remaining != "READY" and new_time_remaining == "READY":
                         if entity_id not in self.notified_ready_items:
                             recipe_id = operation.get("recipe_id")
                             if recipe_id:
                                 item_name = self._get_item_name_from_recipe(recipe_id)
-                                newly_ready_items.append({
-                                    "entity_id": entity_id,
-                                    "recipe_id": recipe_id,
-                                    "item_name": item_name
-                                })
+                                newly_ready_items.append({"entity_id": entity_id, "recipe_id": recipe_id, "item_name": item_name})
                                 self.notified_ready_items.add(entity_id)
 
                 updated_operations.append(operation)
-                
+
             # Process bundled notifications for all items that became ready this cycle
             if newly_ready_items:
                 self._trigger_bundled_passive_craft_notifications(newly_ready_items)
@@ -861,9 +921,6 @@ class CraftingProcessor(BaseProcessor):
             recipe_lookup = {r["id"]: r for r in self.reference_data.get("crafting_recipe_desc", [])}
             building_desc_lookup = {b["id"]: b["name"] for b in self.reference_data.get("building_desc", [])}
 
-            #     f"[CRAFTING DEBUG] Starting consolidation with {len(item_lookups)} item references, {len(recipe_lookup)} recipes, and {len(building_desc_lookup)} building types"
-            # )
-
             # Process each crafting operation to extract individual items
             for craft_id, craft_data in self._passive_craft_data.items():
                 building_id = craft_data.get("building_entity_id")
@@ -929,34 +986,36 @@ class CraftingProcessor(BaseProcessor):
                         item_id = item_stack[0]
                         quantity = item_stack[1]
 
-                        # Look up item details
-                        item_info = item_lookups.get(item_id, {})
-                        item_name = item_info.get("name", f"Unknown Item {item_id}")
-                        item_tier = item_info.get("tier", 0)
-                        item_tag = item_info.get("tag", "")
+                        # Look up item details using smart lookup with preferred source
+                        preferred_source = self._determine_preferred_item_source(recipe_info)
+                        item_info = self._lookup_item_by_id(item_lookups, item_id, preferred_source)
+                        item_name = item_info.get("name", f"Unknown Item {item_id}") if item_info else f"Unknown Item {item_id}"
+                        item_tier = item_info.get("tier", 0) if item_info else 0
+                        item_tag = item_info.get("tag", "") if item_info else ""
+                    else:
+                        logging.warning(f"Invalid item_stack format: {item_stack} - skipping")
+                        continue
 
-                        # Create raw operation
-                        raw_operation = {
-                            "item_name": item_name,
-                            "tier": item_tier,
-                            "quantity": quantity,
-                            "tag": item_tag,
-                            "crafter": crafter_name,
-                            "building_name": container_name,
-                            "time_remaining": time_remaining_display,
-                            "entity_id": craft_id,  # This is the entity_id for timer updates
-                            "craft_id": craft_id,  # Keep for backwards compatibility
-                            "recipe_name": recipe_name,
-                        }
-                        raw_operations.append(raw_operation)
-                        #     f"[CRAFTING DEBUG] Raw operation: {item_name} x{quantity} by '{crafter_name}' in '{container_name}' - {time_remaining_display}"
-                        # )
+                    # Create raw operation
+                    raw_operation = {
+                        "item_name": item_name,
+                        "tier": item_tier,
+                        "quantity": quantity,
+                        "tag": item_tag,
+                        "crafter": crafter_name,
+                        "building_name": container_name,
+                        "time_remaining": time_remaining_display,
+                        "entity_id": craft_id,  # This is the entity_id for timer updates
+                        "craft_id": craft_id,
+                        "recipe_name": recipe_name,
+                    }
+                    raw_operations.append(raw_operation)
 
             # Now build the 3-level hierarchy
             return self._build_hierarchy(raw_operations)
 
         except Exception as e:
-            logging.error(f"Error consolidating crafting: {e}")
+            logging.error(f"Error consolidating passive crafting: {e}")
             return {}
 
     def _build_hierarchy(self, raw_operations):
@@ -1291,19 +1350,29 @@ class CraftingProcessor(BaseProcessor):
         """
         Create combined item lookup dictionary from all reference data sources.
 
+        Uses compound keys to prevent ID conflicts between tables.
+        Example: item_id 1050001 exists in both item_desc and cargo_desc as different items.
+
         Returns:
-            Dictionary mapping item_id to item details
+            Dictionary mapping both (item_id, table_source) and item_id to item details
         """
         try:
             item_lookups = {}
 
-            # Combine all item reference data
+            # Combine all item reference data with compound keys to prevent overwrites
             for data_source in ["resource_desc", "item_desc", "cargo_desc"]:
                 items = self.reference_data.get(data_source, [])
                 for item in items:
                     item_id = item.get("id")
                     if item_id is not None:
-                        item_lookups[item_id] = item
+                        # Use compound key (item_id, table_source) to prevent overwrites
+                        compound_key = (item_id, data_source)
+                        item_lookups[compound_key] = item
+
+                        # Also maintain simple item_id lookup for backwards compatibility
+                        # Priority: item_desc > cargo_desc > resource_desc
+                        if item_id not in item_lookups or data_source == "item_desc":
+                            item_lookups[item_id] = item
 
             return item_lookups
 
@@ -1432,7 +1501,7 @@ class CraftingProcessor(BaseProcessor):
 
         if hasattr(self, "_claim_members"):
             self._claim_members.clear()
-            
+
         # Clear notification tracking to prevent stale notifications after claim switch
         if hasattr(self, "notified_ready_items"):
             self.notified_ready_items.clear()
