@@ -884,6 +884,17 @@ test = ["build[virtualenv] (>=1.0.3)", "filelock (>=3.4.0)", "ini2toml[lite] (>=
 type = ["importlib_metadata (>=7.0.2)", "jaraco.develop (>=7.21)", "mypy (==1.14.*)", "pytest-mypy"]
 
 [[package]]
+name = "toml"
+version = "0.10.2"
+description = "Python Library for Tom's Obvious, Minimal Language"
+optional = false
+python-versions = ">=2.6, !=3.0.*, !=3.1.*, !=3.2.*"
+files = [
+    {file = "toml-0.10.2-py2.py3-none-any.whl", hash = "sha256:806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b"},
+    {file = "toml-0.10.2.tar.gz", hash = "sha256:b3bda1d108d5dd99f4a20d24d9c348e91c4db7ab1b749200bded2f839ccbe68f"},
+]
+
+[[package]]
 name = "tomli"
 version = "2.2.1"
 description = "A lil' TOML parser"
@@ -1031,6 +1042,44 @@ files = [
 ]
 
 [[package]]
+name = "win11toast"
+version = "0.35"
+description = "Toast notifications for Windows 10 and 11"
+optional = false
+python-versions = "*"
+files = [
+    {file = "win11toast-0.35-py3-none-any.whl", hash = "sha256:1e101516c283884b987969d0b8f27dc79d4b19273243899070c2cd0d6b86cbb4"},
+    {file = "win11toast-0.35.tar.gz", hash = "sha256:59215bee9bd14e5651603fca791f05ac5932e6b864cb515c8bdfdb2da97b8376"},
+]
+
+[package.dependencies]
+winsdk = "*"
+
+[[package]]
+name = "winsdk"
+version = "1.0.0b10"
+description = "Python bindings for the Windows SDK"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "winsdk-1.0.0b10-cp310-cp310-win32.whl", hash = "sha256:90f75c67e166d588a045bcde0117a4631c705904f7af4ac42644479dcf0d8c52"},
+    {file = "winsdk-1.0.0b10-cp310-cp310-win_amd64.whl", hash = "sha256:c3be3fbf692b8888bac8c0712c490c080ab8976649ef01f9f6365947f4e5a8b1"},
+    {file = "winsdk-1.0.0b10-cp310-cp310-win_arm64.whl", hash = "sha256:6ab69dd65d959d94939c21974a33f4f1dfa625106c8784435ecacbd8ff0bf74d"},
+    {file = "winsdk-1.0.0b10-cp311-cp311-win32.whl", hash = "sha256:9ea4fdad9ca8a542198aee3c753ac164b8e2f550d760bb88815095d64750e0f5"},
+    {file = "winsdk-1.0.0b10-cp311-cp311-win_amd64.whl", hash = "sha256:f12e25bbf0a658270203615677520b8170edf500fba11e0f80359c5dbf090676"},
+    {file = "winsdk-1.0.0b10-cp311-cp311-win_arm64.whl", hash = "sha256:e77bce44a9ff151562bd261b2a1a8255e258bb10696d0d31ef63267a27628af1"},
+    {file = "winsdk-1.0.0b10-cp312-cp312-win32.whl", hash = "sha256:775a55a71e05ec2aa262c1fd67d80f270d4186bbdbbee2f43c9c412cf76f0761"},
+    {file = "winsdk-1.0.0b10-cp312-cp312-win_amd64.whl", hash = "sha256:8231ce5f16e1fc88bb7dda0adf35633b5b26101eae3b0799083ca2177f03e4e5"},
+    {file = "winsdk-1.0.0b10-cp312-cp312-win_arm64.whl", hash = "sha256:f4ab469ada19b34ccfc69a148090f98b40a1da1da797b50b9cbba0c090c365a5"},
+    {file = "winsdk-1.0.0b10-cp38-cp38-win32.whl", hash = "sha256:786d6b50e4fcb8af2d701d7400c74e1c3f3ab7766ed1dfd516cdd6688072ea87"},
+    {file = "winsdk-1.0.0b10-cp38-cp38-win_amd64.whl", hash = "sha256:1d4fdd1f79b41b64fedfbc478a29112edf2076e1a61001eccb536c0568510e74"},
+    {file = "winsdk-1.0.0b10-cp39-cp39-win32.whl", hash = "sha256:4f04d3e50eeb8ca5fe4eb2e39785f3fa594199819acdfb23a10aaef4b97699ad"},
+    {file = "winsdk-1.0.0b10-cp39-cp39-win_amd64.whl", hash = "sha256:7948bc5d8a02d73b1db043788d32b2988b8e7e29a25e503c21d34478e630eaf1"},
+    {file = "winsdk-1.0.0b10-cp39-cp39-win_arm64.whl", hash = "sha256:342b1095cbd937865cee962676e279a1fd28896a0680724fcf9c65157e7ebdb7"},
+    {file = "winsdk-1.0.0b10.tar.gz", hash = "sha256:8f39ea759626797449371f857c9085b84bb9f3b6d493dc6525e2cedcb3d15ea2"},
+]
+
+[[package]]
 name = "zipp"
 version = "3.23.0"
 description = "Backport of pathlib-compatible object wrapper for zip files"
@@ -1052,4 +1101,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.9,<3.14"
-content-hash = "1758deb1af4f2d206340bcf140ec16d148eb18f63088fc8c12589e4f5fdd957a"
+content-hash = "4a89a9369ac34c4b83b722c1e6348b4be377a6a8b31845062060f52a1e1b8927"
