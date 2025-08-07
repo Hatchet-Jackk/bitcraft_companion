@@ -116,7 +116,10 @@ class ActiveCraftingProcessor(BaseProcessor):
                                             old_remaining_effort = max(0, old_total_effort - old_progress)
                                             
                                             if remaining_effort == 0 and old_remaining_effort > 0:
-                                                self._trigger_active_craft_notification(recipe_id)
+                                                # Only trigger notification if this craft belongs to the current player
+                                                owner_entity_id = insert_data.get("owner_entity_id")
+                                                if self._is_current_player(owner_entity_id):
+                                                    self._trigger_active_craft_notification(recipe_id)
                                 except Exception as e:
                                     logging.error(f"Error checking active craft completion status: {e}")
 
@@ -455,6 +458,7 @@ class ActiveCraftingProcessor(BaseProcessor):
             item_lookups = self._get_item_lookups()
             recipe_lookup = {r["id"]: r for r in self.reference_data.get("crafting_recipe_desc", [])}
             building_desc_lookup = {b["id"]: b["name"] for b in self.reference_data.get("building_desc", [])}
+            
 
             # Process each active crafting operation to extract individual items
             for action_id, action_data in self._progressive_action_data.items():
@@ -523,6 +527,30 @@ class ActiveCraftingProcessor(BaseProcessor):
                     # Process crafted items from this operation
                     crafted_items = recipe_info.get("crafted_item_stacks", [])
 
+                    if not crafted_items:
+                        logging.warning(f"Recipe {recipe_id} has empty crafted_item_stacks! Using recipe name fallback.")
+                        # Create fallback operation using recipe name
+                        fallback_item_name = re.sub(r"\{\d+\}", "", recipe_name).strip()
+                        
+                        raw_operation = {
+                            "item_name": fallback_item_name,
+                            "tier": 0,
+                            "quantity": craft_count,
+                            "tag": "",
+                            "crafter": crafter_name,
+                            "building_name": container_name,
+                            "remaining_effort": status_display,
+                            "progress_value": f"{current_effort}/{total_effort}",
+                            "accept_help": accepts_help,
+                            "action_id": action_id,
+                            "recipe_name": recipe_name,
+                            "preparation": preparation,
+                            "current_progress": current_effort,
+                            "total_progress": total_effort,
+                        }
+                        raw_operations.append(raw_operation)
+                        continue
+
                     for item_stack in crafted_items:
                         if isinstance(item_stack, list) and len(item_stack) >= 2:
                             item_id = item_stack[0]
@@ -534,25 +562,28 @@ class ActiveCraftingProcessor(BaseProcessor):
                             item_name = item_info.get("name", f"Unknown Item {item_id}")
                             item_tier = item_info.get("tier", 0)
                             item_tag = item_info.get("tag", "")
+                        else:
+                            logging.warning(f"Invalid item_stack format: {item_stack} - skipping")
+                            continue
 
-                            # Create raw operation
-                            raw_operation = {
-                                "item_name": item_name,
-                                "tier": item_tier,
-                                "quantity": total_quantity,
-                                "tag": item_tag,
-                                "crafter": crafter_name,
-                                "building_name": container_name,
-                                "remaining_effort": status_display,
-                                "progress_value": f"{current_effort}/{total_effort}",
-                                "accept_help": accepts_help,
-                                "action_id": action_id,
-                                "recipe_name": recipe_name,
-                                "preparation": preparation,
-                                "current_progress": current_effort,
-                                "total_progress": total_effort,
-                            }
-                            raw_operations.append(raw_operation)
+                        # Create raw operation
+                        raw_operation = {
+                            "item_name": item_name,
+                            "tier": item_tier,
+                            "quantity": total_quantity,
+                            "tag": item_tag,
+                            "crafter": crafter_name,
+                            "building_name": container_name,
+                            "remaining_effort": status_display,
+                            "progress_value": f"{current_effort}/{total_effort}",
+                            "accept_help": accepts_help,
+                            "action_id": action_id,
+                            "recipe_name": recipe_name,
+                            "preparation": preparation,
+                            "current_progress": current_effort,
+                            "total_progress": total_effort,
+                        }
+                        raw_operations.append(raw_operation)
 
                 except Exception as e:
                     logging.error(f"[ACTIVE_CRAFT_DEBUG] Exception processing action {action_id} crafted items: {e}")
@@ -722,8 +753,8 @@ class ActiveCraftingProcessor(BaseProcessor):
         try:
             item_lookups = {}
 
-            # Combine all item reference data
-            for data_source in ["resource_desc", "item_desc", "cargo_desc"]:
+            # Combine item reference data - exclude cargo_desc since active crafting only produces items/resources
+            for data_source in ["resource_desc", "item_desc"]:
                 items = self.reference_data.get(data_source, [])
                 for item in items:
                     item_id = item.get("id")
@@ -861,10 +892,38 @@ class ActiveCraftingProcessor(BaseProcessor):
     def _is_current_claim_member(self, owner_entity_id):
         """Check if the owner is a member of the current claim."""
         if not hasattr(self, "_claim_members") or not self._claim_members:
-            return True  # If no member data, process everything
+            return True  # For display purposes, if no member data available, show everything
 
         owner_id_str = str(owner_entity_id)
         return owner_id_str in self._claim_members
+
+    def _is_current_player(self, owner_entity_id):
+        """Check if the owner entity ID belongs to the current player."""
+        try:
+            # Get current player name from data service
+            data_service = self.services.get("data_service")
+            if not data_service or not hasattr(data_service, "client") or not data_service.client:
+                return False
+            
+            current_player_name = getattr(data_service.client, "player_name", None)
+            if not current_player_name:
+                return False
+            
+            # Get owner name from entity ID using claim members data
+            if not hasattr(self, "_claim_members") or not self._claim_members:
+                return False
+            
+            owner_id_str = str(owner_entity_id)
+            owner_name = self._claim_members.get(owner_id_str)
+            if not owner_name:
+                return False
+            
+            # Check if owner is the current player
+            return owner_name == current_player_name
+            
+        except Exception as e:
+            logging.error(f"Error checking if owner {owner_entity_id} is current player: {e}")
+            return False
 
     def _send_incremental_active_crafting_update(self, reducer_name, timestamp):
         """
@@ -937,10 +996,12 @@ class ActiveCraftingProcessor(BaseProcessor):
                     
                     if crafted_items and len(crafted_items) > 0:
                         first_item = crafted_items[0]
+                        
                         if isinstance(first_item, list) and len(first_item) >= 2:
                             item_id = first_item[0]
                             item_lookups = self._get_item_lookups()
                             item_info = item_lookups.get(item_id, {})
+                            
                             if item_info:
                                 return item_info.get("name", f"Item {item_id}")
                     else:

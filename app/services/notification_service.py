@@ -53,8 +53,10 @@ class NotificationService:
         try:
             # Default settings
             default_settings = {
-                "passive_crafts_enabled": True,
-                "active_crafts_enabled": True,
+                "notifications": {
+                    "passive_crafts_enabled": True,
+                    "active_crafts_enabled": True,
+                }
             }
             
             # TODO: Load from actual player_data.json when persistence is implemented
@@ -63,8 +65,10 @@ class NotificationService:
         except Exception as e:
             logging.error(f"Error loading notification settings: {e}")
             return {
-                "passive_crafts_enabled": True,
-                "active_crafts_enabled": True,
+                "notifications": {
+                    "passive_crafts_enabled": True,
+                    "active_crafts_enabled": True,
+                }
             }
     
     def update_settings(self, new_settings: Dict[str, Any]):
@@ -90,7 +94,7 @@ class NotificationService:
             quantity: Number of items completed
         """
         try:
-            if not self.settings.get("passive_crafts_enabled", True):
+            if not self.settings.get("notifications", {}).get("passive_crafts_enabled", True):
                 return
             
             title = "Passive Craft Complete!"
@@ -113,7 +117,7 @@ class NotificationService:
             quantity: Number of items completed
         """
         try:
-            if not self.settings.get("active_crafts_enabled", True):
+            if not self.settings.get("notifications", {}).get("active_crafts_enabled", True):
                 return
             
             title = "Active Craft Complete!"
