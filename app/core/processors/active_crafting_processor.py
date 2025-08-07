@@ -77,8 +77,23 @@ class ActiveCraftingProcessor(BaseProcessor):
                         insert_data = insert_operations[entity_id]
                         self._progressive_action_data[entity_id] = insert_data
 
+                        building_id = insert_data.get("building_entity_id")
+                        # Add missing building to building_data if it's not already there
+                        if not hasattr(self, "_building_data"):
+                            self._building_data = {}
+
+                        if building_id not in self._building_data:
+                            # Create a basic building entry - we'll populate it with known data
+                            self._building_data[building_id] = {
+                                "entity_id": building_id,
+                                "building_description_id": None,
+                                "claim_entity_id": None,
+                            }
+
                         if entity_id in delete_operations:
                             # This is an update (delete+insert)
+                            old_data = delete_operations[entity_id]
+                            old_progress = old_data.get("progress", 0)
                             progress = insert_data.get("progress", 0)
                             preparation = insert_data.get("preparation", False)
                             recipe_id = insert_data.get("recipe_id", 0)
@@ -87,6 +102,7 @@ class ActiveCraftingProcessor(BaseProcessor):
                         else:
                             # This is a new insert
                             recipe_id = insert_data.get("recipe_id", 0)
+                            progress = insert_data.get("progress", 0)
 
                         has_active_crafting_changes = True
 
@@ -99,27 +115,96 @@ class ActiveCraftingProcessor(BaseProcessor):
 
                             delete_data = delete_operations[entity_id]
                             recipe_id = delete_data.get("recipe_id", 0)
-                            
+
                             # Trigger notification for active craft completion
                             self._trigger_active_craft_notification(recipe_id)
-                            
+
                             has_active_crafting_changes = True
+
+                # Process public_progressive_action_state updates (accept help changes)
+                elif table_name == "public_progressive_action_state":
+                    # Initialize _public_actions if it doesn't exist
+                    if not hasattr(self, "_public_actions"):
+                        self._public_actions = set()
+
+                    # Process inserts (buildings now accepting help)
+                    for insert_str in inserts:
+                        try:
+                            # Parse the insert data
+                            if isinstance(insert_str, str):
+                                insert_data = json.loads(insert_str)
+                            else:
+                                insert_data = insert_str
+
+                            # Handle both array format [entity_id, building_entity_id, owner_entity_id] and object format
+                            building_entity_id = None
+                            if isinstance(insert_data, list) and len(insert_data) > 1:
+                                # Array format: [entity_id, building_entity_id, owner_entity_id]
+                                building_entity_id = insert_data[1]  # building_entity_id is at position 1
+                            elif isinstance(insert_data, dict):
+                                # Object format: {"building_entity_id": value}
+                                building_entity_id = insert_data.get("building_entity_id")
+
+                            if building_entity_id:
+                                self._public_actions.add(building_entity_id)
+
+                                # Ensure building exists in building_data for accept help buildings
+                                if not hasattr(self, "_building_data"):
+                                    self._building_data = {}
+
+                                if building_entity_id not in self._building_data:
+                                    # Create a basic building entry for accept help toggle buildings
+                                    self._building_data[building_entity_id] = {
+                                        "entity_id": building_entity_id,
+                                        "building_description_id": None,
+                                        "claim_entity_id": None,
+                                    }
+                        except Exception as e:
+                            logging.error(f"Error processing public action insert: {e}")
+
+                    # Process deletes (buildings no longer accepting help)
+                    for delete_str in deletes:
+                        try:
+                            # Parse the delete data
+                            if isinstance(delete_str, str):
+                                delete_data = json.loads(delete_str)
+                            else:
+                                delete_data = delete_str
+
+                            # Handle both array format [entity_id, building_entity_id, owner_entity_id] and object format
+                            building_entity_id = None
+                            if isinstance(delete_data, list) and len(delete_data) > 1:
+                                # Array format: [entity_id, building_entity_id, owner_entity_id]
+                                building_entity_id = delete_data[1]  # building_entity_id is at position 1
+                            elif isinstance(delete_data, dict):
+                                # Object format: {"building_entity_id": value}
+                                building_entity_id = delete_data.get("building_entity_id")
+
+                            if building_entity_id and building_entity_id in self._public_actions:
+                                self._public_actions.remove(building_entity_id)
+                        except Exception as e:
+                            logging.error(f"Error processing public action delete: {e}")
+
+                    if inserts or deletes:
+                        has_active_crafting_changes = True
 
                 # For other table types, do full refresh if we have changes
                 elif inserts or deletes:
                     self._log_transaction_debug("progressive_action", len(inserts), len(deletes), reducer_name)
                     has_active_crafting_changes = True
 
-            # Send incremental update for progressive_action_state, full refresh for others
+            # Send incremental update for progressive_action_state and public_progressive_action_state, full refresh for others
             if has_active_crafting_changes:
-                if table_name == "progressive_action_state":
+                if table_name in ["progressive_action_state", "public_progressive_action_state"]:
                     # Debug what data we have before sending incremental update
                     progressive_data_count = len(getattr(self, "_progressive_action_data", {}))
                     building_data_count = len(getattr(self, "_building_data", {}))
                     member_data_count = len(getattr(self, "_claim_members", {}))
+                    public_actions_count = len(getattr(self, "_public_actions", set()))
 
                     self._send_incremental_active_crafting_update(reducer_name, timestamp)
                 else:
+                    logging.info(f"[ACTIVE_CRAFT_DEBUG] Sending full refresh for table: {table_name}")
                     self._refresh_active_crafting()
 
         except Exception as e:
@@ -171,18 +256,34 @@ class ActiveCraftingProcessor(BaseProcessor):
             if not hasattr(self, "_progressive_action_data"):
                 self._progressive_action_data = {}
 
+            # DEBUG: Track target building during subscription processing
+            target_building = 360287970282671066
+            found_target_in_subscription = False
+            all_building_ids_in_subscription = set()
+
             for row in action_rows:
                 entity_id = row.get("entity_id")
+                building_id = row.get("building_entity_id")
+                owner_id = row.get("owner_entity_id")
+
+                # DEBUG: Track all buildings in subscription data
+                if building_id:
+                    all_building_ids_in_subscription.add(building_id)
+
+                # DEBUG: Check if target building is in subscription data
+                if building_id == target_building:
+                    found_target_in_subscription = True
+
                 if entity_id:
                     self._progressive_action_data[entity_id] = {
                         "entity_id": entity_id,
-                        "building_entity_id": row.get("building_entity_id"),
+                        "building_entity_id": building_id,
                         "function_type": row.get("function_type"),
                         "progress": row.get("progress"),
                         "recipe_id": row.get("recipe_id"),
                         "craft_count": row.get("craft_count"),
                         "last_crit_outcome": row.get("last_crit_outcome"),
-                        "owner_entity_id": row.get("owner_entity_id"),
+                        "owner_entity_id": owner_id,
                         "lock_expiration": row.get("lock_expiration"),
                         "preparation": row.get("preparation", False),
                     }
@@ -193,14 +294,21 @@ class ActiveCraftingProcessor(BaseProcessor):
     def _process_public_progressive_action_data(self, public_action_rows):
         """Process public_progressive_action_state data to track which buildings accept help."""
         try:
-            # Store public action data keyed by building_entity_id
+            # Initialize and clear the public actions set for fresh subscription data
             if not hasattr(self, "_public_actions"):
                 self._public_actions = set()
+            else:
+                # Clear existing data since subscription updates contain the full current state
+                self._public_actions.clear()
 
+            all_public_building_ids = []
+
+            # Add all buildings that currently accept help
             for row in public_action_rows:
                 building_entity_id = row.get("building_entity_id")
                 if building_entity_id:
                     self._public_actions.add(building_entity_id)
+                    all_public_building_ids.append(building_entity_id)
 
         except Exception as e:
             logging.error(f"Error processing public progressive action data: {e}")
@@ -295,6 +403,33 @@ class ActiveCraftingProcessor(BaseProcessor):
             # First collect all raw operations
             raw_operations = []
 
+            # DEBUG: Check what progressive action data we have
+            progressive_data = getattr(self, "_progressive_action_data", {})
+            building_data = getattr(self, "_building_data", {})
+            claim_members = getattr(self, "_claim_members", {})
+
+            # DEBUG: Log ALL progressive action building IDs to find the right one
+            all_building_ids = set()
+            for action_id, action_data in progressive_data.items():
+                building_id = action_data.get("building_entity_id")
+                if building_id:
+                    all_building_ids.add(building_id)
+
+            target_building = 360287970282671066
+            target_found_in_progressive = False
+            target_found_in_building_data = False
+
+            for action_id, action_data in progressive_data.items():
+                building_id = action_data.get("building_entity_id")
+                owner_id = action_data.get("owner_entity_id")
+                recipe_id = action_data.get("recipe_id")
+                if building_id == target_building:
+                    target_found_in_progressive = True
+
+            if target_building in building_data:
+                target_found_in_building_data = True
+                building_info = building_data[target_building]
+
             # Get reference data for lookups
             item_lookups = self._get_item_lookups()
             recipe_lookup = {r["id"]: r for r in self.reference_data.get("crafting_recipe_desc", [])}
@@ -302,18 +437,25 @@ class ActiveCraftingProcessor(BaseProcessor):
 
             # Process each active crafting operation to extract individual items
             for action_id, action_data in self._progressive_action_data.items():
-                building_id = action_data.get("building_entity_id")
-                recipe_id = action_data.get("recipe_id")
-                owner_id = action_data.get("owner_entity_id")
-                progress = action_data.get("progress", 0)
-                craft_count = action_data.get("craft_count", 1)
-                preparation = action_data.get("preparation", False)
+                try:
+                    building_id = action_data.get("building_entity_id")
+                    recipe_id = action_data.get("recipe_id")
+                    owner_id = action_data.get("owner_entity_id")
+                    progress = action_data.get("progress", 0)
+                    craft_count = action_data.get("craft_count", 1)
+                    preparation = action_data.get("preparation", False)
+
+                except Exception as e:
+                    continue
 
                 # Skip actions from players who are not current claim members
                 owner_id_str = str(owner_id)
                 if hasattr(self, "_claim_members") and self._claim_members:
                     if owner_id_str not in self._claim_members:
                         continue
+
+                if building_id == target_building:
+                    owner_name = self._claim_members.get(owner_id_str, f"Unknown-{owner_id}")
 
                 # Get building info
                 building_info = self._building_data.get(building_id, {})
@@ -336,11 +478,19 @@ class ActiveCraftingProcessor(BaseProcessor):
                 total_effort = recipe_actions_required * craft_count  # Total effort needed
                 current_effort = progress  # Current progress is the current effort
 
-                # Display progress as current_effort/total_effort
-                status_display = f"{total_effort - current_effort:,}"
-                # status_display = f"{current_effort:,}/{total_effort:,}"
-                if current_effort == total_effort:
-                    status_display = "READY"
+                # Validate progress values
+                if current_effort < 0:
+                    current_effort = 0
+                if total_effort <= 0:
+                    total_effort = 1
+                if current_effort > total_effort:
+                    current_effort = total_effort
+
+                # Calculate remaining effort
+                remaining_effort = max(0, total_effort - current_effort)
+
+                # Display remaining effort
+                status_display = f"{remaining_effort:,}" if remaining_effort > 0 else "READY"
 
                 # Check if this building accepts help
                 accepts_help = "Yes" if hasattr(self, "_public_actions") and building_id in self._public_actions else "No"
@@ -348,36 +498,44 @@ class ActiveCraftingProcessor(BaseProcessor):
                 # Get crafter name
                 crafter_name = self._get_player_name(owner_id)
 
-                # Process crafted items from this operation
-                crafted_items = recipe_info.get("crafted_item_stacks", [])
-                for item_stack in crafted_items:
-                    if isinstance(item_stack, list) and len(item_stack) >= 2:
-                        item_id = item_stack[0]
-                        base_quantity = item_stack[1]
-                        total_quantity = base_quantity * craft_count
+                try:
+                    # Process crafted items from this operation
+                    crafted_items = recipe_info.get("crafted_item_stacks", [])
 
-                        # Look up item details
-                        item_info = item_lookups.get(item_id, {})
-                        item_name = item_info.get("name", f"Unknown Item {item_id}")
-                        item_tier = item_info.get("tier", 0)
-                        item_tag = item_info.get("tag", "")
+                    for item_stack in crafted_items:
+                        if isinstance(item_stack, list) and len(item_stack) >= 2:
+                            item_id = item_stack[0]
+                            base_quantity = item_stack[1]
+                            total_quantity = base_quantity * craft_count
 
-                        # Create raw operation
-                        raw_operation = {
-                            "item_name": item_name,
-                            "tier": item_tier,
-                            "quantity": total_quantity,
-                            "tag": item_tag,
-                            "crafter": crafter_name,
-                            "building_name": container_name,
-                            "remaining_effort": status_display,
-                            "progress_value": f"{current_effort}/{total_effort}",
-                            "accept_help": accepts_help,
-                            "action_id": action_id,
-                            "recipe_name": recipe_name,
-                            "preparation": preparation,
-                        }
-                        raw_operations.append(raw_operation)
+                            # Look up item details
+                            item_info = item_lookups.get(item_id, {})
+                            item_name = item_info.get("name", f"Unknown Item {item_id}")
+                            item_tier = item_info.get("tier", 0)
+                            item_tag = item_info.get("tag", "")
+
+                            # Create raw operation
+                            raw_operation = {
+                                "item_name": item_name,
+                                "tier": item_tier,
+                                "quantity": total_quantity,
+                                "tag": item_tag,
+                                "crafter": crafter_name,
+                                "building_name": container_name,
+                                "remaining_effort": status_display,
+                                "progress_value": f"{current_effort}/{total_effort}",
+                                "accept_help": accepts_help,
+                                "action_id": action_id,
+                                "recipe_name": recipe_name,
+                                "preparation": preparation,
+                                "current_progress": current_effort,
+                                "total_progress": total_effort,
+                            }
+                            raw_operations.append(raw_operation)
+
+                except Exception as e:
+                    logging.error(f"[ACTIVE_CRAFT_DEBUG] Exception processing action {action_id} crafted items: {e}")
+                    continue
 
             # Now build the 3-level hierarchy
             return self._build_hierarchy(raw_operations)
@@ -665,7 +823,7 @@ class ActiveCraftingProcessor(BaseProcessor):
                 "entity_id": entity_id,
                 "building_entity_id": building_entity_id,
                 "function_type": function_type,
-                "remaining_effort": progress,
+                "progress": progress,
                 "recipe_id": recipe_id,
                 "craft_count": craft_count,
                 "last_crit_outcome": last_crit_outcome,
@@ -726,18 +884,21 @@ class ActiveCraftingProcessor(BaseProcessor):
 
         if hasattr(self, "_claim_members"):
             self._claim_members.clear()
-    
+
+        if hasattr(self, "_public_actions"):
+            self._public_actions.clear()
+
     def _trigger_active_craft_notification(self, recipe_id: int):
         """
         Trigger an active craft completion notification.
-        
+
         Args:
             recipe_id: Recipe ID of the completed item
         """
         try:
             # Get item name from recipe ID
             item_name = f"Recipe {recipe_id}"
-            
+
             # Try to get recipe name from reference data
             if self.reference_data:
                 recipes = self.reference_data.get("recipe_desc", [])
@@ -747,12 +908,12 @@ class ActiveCraftingProcessor(BaseProcessor):
                         # Clean up the item name (remove {0} placeholders)
                         item_name = item_name.replace("{0}", "").strip()
                         break
-            
+
             # Access notification service through data service
-            if hasattr(self, 'services') and self.services:
-                data_service = self.services.get('data_service')
-                if data_service and hasattr(data_service, 'notification_service'):
+            if hasattr(self, "services") and self.services:
+                data_service = self.services.get("data_service")
+                if data_service and hasattr(data_service, "notification_service"):
                     data_service.notification_service.show_active_craft_notification(item_name)
-                    
+
         except Exception as e:
             logging.error(f"Error triggering active craft notification: {e}")
