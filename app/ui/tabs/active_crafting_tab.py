@@ -258,6 +258,11 @@ class ActiveCraftingTab(ctk.CTkFrame):
         if isinstance(new_data, list):
             # Flatten hierarchical data into individual operations
             self.all_data = self._flatten_active_crafting_data(new_data)
+
+            accept_help_values = set()
+            for operation in self.all_data:
+                accept_help = operation.get("accept_help", "Unknown")
+                accept_help_values.add(accept_help)
         else:
             self.all_data = []
 
