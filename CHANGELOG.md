@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.14]
+### Added
+* Comprehensive test suite for data processing, export functionality, timers, UI components, and error handling
+* Enhanced WebSocket message logging with detailed transaction updates
+* Smart item lookup functionality with compound keys to prevent ID collisions
+* Preferred source handling for item lookup operations
+
+### Improved
+* Message routing system with enhanced logging for transaction updates and processor cache clearing
+* Task transaction processing with better insert/delete handling and validation
+* Inventory item lookup using compound keys to handle ID collisions across different data sources
+* MainWindow logging for better debugging of message processing
+* Item lookup functionality with compound keys and intelligent source selection
+
+### Technical
+* Implemented compound key system for reliable item identification
+* Enhanced processor cache clearing mechanisms
+* Improved transaction update handling throughout the application
+* Better error handling and validation in task processing
+
 ## [0.2.13]
 ### Changed
 * Omit banks from inventory tab
