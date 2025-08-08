@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.18] 
+### Improved
+* Traveler tasks expiration handling with proper None initialization and countdown logic
+
+### Fixed
+* Traveler tasks no longer writing to real player_data.json during tests by implementing proper path mocking
+* Traveler tasks show correct time at launch
+
+### Technical
+* Better separation of test and production environments
+
+## [0.2.17]
+### Changed
+* Removed redundant test job from CI workflow for improved efficiency
+* Enhanced CI workflows with better dependency installation and testing processes
+
 ## [0.2.16]
 ### Added
 * Comprehensive tests and GitHub Actions CI/CD pipeline for automated testing

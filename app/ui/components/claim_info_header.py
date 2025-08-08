@@ -32,7 +32,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
         self.tile_count = 0
         self.supplies_per_hour = 0
         self.time_remaining = "Calculating..."
-        self.traveler_tasks_expiration = 0
+        self.traveler_tasks_expiration = None
         self.task_refresh_time = "Unknown"
 
         # Load tile cost data from the app's data service
@@ -554,6 +554,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
             if hasattr(self, "_ready_state_detected"):
                 self._ready_state_detected = False
 
+            # Update expiration time
             self.traveler_tasks_expiration = expiration_time
             self._update_task_refresh_countdown()
 
@@ -568,12 +569,9 @@ class ClaimInfoHeader(ctk.CTkFrame):
     def _update_task_refresh_countdown(self):
         """Calculates and updates the task refresh countdown."""
         try:
-            if self.traveler_tasks_expiration <= 0:
-                # No expiration time set - reset to 4 hours as fallback
-                current_time = time.time()
-                self.traveler_tasks_expiration = current_time + (4 * 60 * 60)  # 4 hours
-                self.task_refresh_time = "4h 0m"
-                color = "#9C27B0"  # Purple for reset
+            if self.traveler_tasks_expiration is None:
+                self.task_refresh_time = "Loading..."
+                color = "#9C27B0"
             else:
                 current_time_seconds = time.time()
                 time_diff_seconds = self.traveler_tasks_expiration - current_time_seconds

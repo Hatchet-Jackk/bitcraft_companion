@@ -17,6 +17,11 @@ from tests.conftest import MockBitCraftClient
 
 class TestBitCraftClient:
     """Test BitCraft client functionality."""
+    
+    def setup_method(self):
+        """Setup method to ensure tests don't pollute real config files."""
+        # This will be applied globally via conftest.py's prevent_real_file_writes fixture
+        pass
 
     @patch('keyring.get_password', return_value=None)
     def test_initialization(self, mock_keyring):
@@ -138,13 +143,15 @@ class TestBitCraftClient:
         result = client.authenticate()
         assert result == False
 
-    def test_set_connection_parameters(self):
+    @patch.object(BitCraft, 'update_user_data_file')
+    def test_set_connection_parameters(self, mock_update):
         """Test setting connection parameters."""
         client = BitCraft()
         
         # Test setting host
         client.set_host("custom-host.example.com")
         assert client.host == "custom-host.example.com"
+        mock_update.assert_called_with("host", "custom-host.example.com")
         
         # Test setting region
         client.set_region("test-region")
@@ -163,7 +170,8 @@ class TestBitCraftClient:
         assert client.headers == {"Authorization": "Bearer test_token"}
 
     @patch('keyring.get_password', return_value=None)
-    def test_set_websocket_uri_missing_auth(self, mock_keyring):
+    @patch.object(BitCraft, 'update_user_data_file')
+    def test_set_websocket_uri_missing_auth(self, mock_update, mock_keyring):
         """Test WebSocket URI construction without auth token."""
         client = BitCraft()
         client.auth = None  # Ensure no auth token
