@@ -92,9 +92,6 @@ class DataService:
                     if hasattr(processor, "stop_real_time_timer"):
                         logging.info(f"Stopping timer for {processor.__class__.__name__}...")
                         processor.stop_real_time_timer()
-                    if hasattr(processor, "stop_progress_tracking"):
-                        logging.info(f"Stopping progress tracking for {processor.__class__.__name__}...")
-                        processor.stop_progress_tracking()
 
             if self.claim_manager:
                 logging.info("Saving claims cache...")
@@ -296,10 +293,6 @@ class DataService:
                 # Start timer for crafting processor (passive crafting)
                 if hasattr(processor, "start_real_time_timer"):
                     processor.start_real_time_timer(self._handle_timer_update)
-
-                # Start timer for active crafting processor
-                if hasattr(processor, "start_progress_tracking"):
-                    processor.start_progress_tracking(self._handle_timer_update)
 
             # Set up subscriptions for the current claim (same as before)
             setup_start = time.time()
