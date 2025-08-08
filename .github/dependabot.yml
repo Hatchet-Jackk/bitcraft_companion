@@ -1,7 +1,7 @@
 version: 2
 updates:
   # Enable version updates for Python dependencies managed by Poetry
-  - package-ecosystem: "pip"
+  - package-ecosystem: "poetry"
     directory: "/"
     schedule:
       interval: "weekly"

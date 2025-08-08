@@ -111,7 +111,7 @@ jobs:
         }
 
     - name: Upload build artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: bitcraft-companion-${{ needs.extract-version.outputs.version }}
         path: dist/*.exe
@@ -134,9 +134,59 @@ jobs:
         fetch-depth: 0  # Need full history for changelog
 
     - name: Download build artifact
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: bitcraft-companion-${{ needs.extract-version.outputs.version }}
         path: ./release-assets
 
-    
+    - name: List downloaded files
+      run: |
+        echo "Downloaded files:"
+        ls -la ./release-assets/
+        
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ needs.extract-version.outputs.tag }}
+        release_name: BitCraft Companion ${{ needs.extract-version.outputs.tag }}
+        body: |
+          ## BitCraft Companion ${{ needs.extract-version.outputs.version }}
+          
+          **Release Notes:**
+          - Automated release build from master branch
+          - Build size: ${{ needs.build.outputs.filesize }} MB
+          - Generated from commit: ${{ github.sha }}
+          
+          **Installation:**
+          1. Download the executable below
+          2. Run the application
+          3. Follow the authentication setup if this is your first time
+          
+          **Changes:**
+          See the [commit history](https://github.com/${{ github.repository }}/commits/${{ github.sha }}) for detailed changes since the last release.
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./release-assets/${{ needs.build.outputs.filename }}
+        asset_name: ${{ needs.build.outputs.filename }}
+        asset_content_type: application/octet-stream
+
+    - name: Release Summary
+      run: |
+        echo "## Release Created Successfully! 🎉" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Version:** ${{ needs.extract-version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Tag:** ${{ needs.extract-version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Executable:** ${{ needs.build.outputs.filename }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Size:** ${{ needs.build.outputs.filesize }} MB" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Release URL:** ${{ steps.create_release.outputs.html_url }}" >> $GITHUB_STEP_SUMMARY
