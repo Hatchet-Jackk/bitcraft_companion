@@ -37,12 +37,63 @@ class BitCraft:
         self.subscription_thread = None
         self._stop_subscription = threading.Event()
 
+        # Configure websockets logging to prevent Unicode encoding errors
+        self._configure_websocket_logging()
+
         # Load initial data
         self.load_user_data_from_file()
         self.email = self._get_credential_from_keyring("email")
         self.auth = self._get_credential_from_keyring("authorization_token")
 
-    # --- NEW: Centralized Query Method ---
+    def _configure_websocket_logging(self):
+        """Configure websockets library logging to handle Unicode safely."""
+        try:
+            # Get the websockets logger
+            ws_logger = logging.getLogger("websockets")
+
+            # Create a custom handler that handles Unicode encoding errors
+            class SafeStreamHandler(logging.StreamHandler):
+                def emit(self, record):
+                    try:
+                        super().emit(record)
+                    except UnicodeEncodeError as e:
+                        # Log the error safely without the problematic Unicode characters
+                        try:
+                            safe_msg = str(record.getMessage()).encode("ascii", "replace").decode("ascii")
+                            safe_record = logging.makeLogRecord(
+                                {
+                                    "name": record.name,
+                                    "level": record.levelno,
+                                    "msg": f"WebSocket message (Unicode chars replaced): {safe_msg}",
+                                    "args": (),
+                                }
+                            )
+                            super().emit(safe_record)
+                        except Exception:
+                            # Last resort - just log that there was an issue
+                            super().emit(
+                                logging.makeLogRecord(
+                                    {
+                                        "name": record.name,
+                                        "level": logging.WARNING,
+                                        "msg": "WebSocket logging failed due to Unicode encoding issue",
+                                        "args": (),
+                                    }
+                                )
+                            )
+
+            # Remove existing handlers and add our safe handler
+            for handler in ws_logger.handlers[:]:
+                ws_logger.removeHandler(handler)
+
+            safe_handler = SafeStreamHandler()
+            safe_handler.setLevel(logging.DEBUG)
+            ws_logger.addHandler(safe_handler)
+            ws_logger.setLevel(logging.DEBUG)
+
+        except Exception as e:
+            logging.warning(f"Failed to configure websockets logging: {e}")
+
     def query(self, query_string: str) -> list[dict] | None:
         """
         Sends a one-off SQL query over the WebSocket and returns all result rows.
@@ -553,13 +604,13 @@ class BitCraft:
                     # Log WebSocket message types for connection diagnostics
                     message_type = list(data.keys())[0] if data else "unknown"
                     logging.debug(f"[BitCraftClient] Received WebSocket message type: {message_type}")
-                    
+
                     # Add detailed logging for specific message types
                     if "TransactionUpdate" in data:
                         reducer_name = data.get("TransactionUpdate", {}).get("reducer_call", {}).get("reducer_name", "unknown")
                         status_keys = list(data.get("TransactionUpdate", {}).get("status", {}).keys())
                         logging.debug(f"[BitCraftClient] TransactionUpdate - Reducer: {reducer_name}, Status: {status_keys}")
-                    
+
                     # Call the DataService callback with the message
                     callback(data)
 

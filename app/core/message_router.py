@@ -97,19 +97,21 @@ class MessageRouter:
         except Exception as e:
             logging.error(f"Error processing transaction update: {e}")
 
-    def _process_subscription_update(self, subscription_data):
+    def _process_subscription_update(self, subscription_data, is_initial=False):
         """Process SubscriptionUpdate messages - batch updates."""
         try:
             database_update = subscription_data.get("database_update", {})
             tables = database_update.get("tables", [])
 
-            logging.info(f"Processing SubscriptionUpdate with {len(tables)} table updates")
+            update_type = "InitialSubscription" if is_initial else "SubscriptionUpdate"
+            logging.info(f"[MessageRouter] Processing {update_type} with {len(tables)} table updates")
 
             # Group table updates by processor
             processor_updates = {}
 
             for table_update in tables:
                 table_name = table_update.get("table_name", "")
+                logging.debug(f"[MessageRouter] {update_type} - Processing table: {table_name}")
 
                 processors = self.table_to_processors.get(table_name, [])
                 for processor in processors:
@@ -120,13 +122,14 @@ class MessageRouter:
             # Process updates for each processor
             for processor, updates in processor_updates.items():
                 try:
+                    logging.debug(f"[MessageRouter] {update_type} - Sending {len(updates)} table updates to {processor.__class__.__name__}")
                     for update in updates:
                         processor.process_subscription(update)
                 except Exception as e:
-                    logging.error(f"Error in {processor.__class__.__name__} processing subscription: {e}")
+                    logging.error(f"[MessageRouter] Error in {processor.__class__.__name__} processing {update_type}: {e}")
 
         except Exception as e:
-            logging.error(f"Error processing subscription update: {e}")
+            logging.error(f"[MessageRouter] Error processing {update_type}: {e}")
 
     def _process_initial_subscription(self, initial_data):
         """Process InitialSubscription messages - first data load."""
@@ -134,13 +137,17 @@ class MessageRouter:
             database_update = initial_data.get("database_update", {})
             tables = database_update.get("tables", [])
 
-            logging.info(f"Processing InitialSubscription with {len(tables)} table updates")
+            logging.info(f"[MessageRouter] Processing InitialSubscription with {len(tables)} table updates")
+            
+            # Log which tables are in the initial subscription
+            table_names = [table.get("table_name", "unknown") for table in tables]
+            logging.debug(f"[MessageRouter] InitialSubscription tables: {table_names}")
 
-            # Process similar to subscription update
-            self._process_subscription_update(initial_data)
+            # Process similar to subscription update but mark as initial
+            self._process_subscription_update(initial_data, is_initial=True)
 
         except Exception as e:
-            logging.error(f"Error processing initial subscription: {e}")
+            logging.error(f"[MessageRouter] Error processing initial subscription: {e}")
 
     def clear_all_processor_caches(self):
         """Clear caches in all processors to ensure fresh data on refresh."""

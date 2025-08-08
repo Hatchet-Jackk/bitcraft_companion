@@ -336,8 +336,10 @@ class DataService:
         All data comes through subscriptions - no one-off queries.
         """
         try:
+            logging.debug("[DataService] _setup_subscriptions_for_current_claim() called")
+            
             if not self.claim.claim_id or not self.player.user_id:
-                logging.warning("No claim ID or user ID available for subscriptions")
+                logging.warning("[DataService] No claim ID or user ID available for subscriptions")
                 return
 
             # Use query service to get all subscription queries
@@ -346,14 +348,21 @@ class DataService:
             query_service = QueryService(self.client)
             all_subscriptions = query_service.get_subscription_queries(self.player.user_id, self.claim.claim_id)
 
+            logging.debug(f"[DataService] Generated {len(all_subscriptions)} subscription queries")
+            for i, query in enumerate(all_subscriptions):
+                logging.debug(f"[DataService] Subscription {i+1}: {query[:50]}...")
+
             # Start subscriptions - ROUTE TO MESSAGE ROUTER
             if all_subscriptions:
+                logging.debug("[DataService] Starting subscription listener with message router")
                 self.client.start_subscription_listener(all_subscriptions, self.message_router.handle_message)
                 self.current_subscriptions = all_subscriptions
-                logging.info(f"Started {len(all_subscriptions)} subscriptions for claim {self.claim.claim_id}")
+                logging.info(f"[DataService] Started {len(all_subscriptions)} subscriptions for claim {self.claim.claim_id}")
+            else:
+                logging.warning("[DataService] No subscription queries generated")
 
         except Exception as e:
-            logging.error(f"Error setting up subscriptions: {e}")
+            logging.error(f"[DataService] Error setting up subscriptions: {e}")
 
     # Preserve existing methods that UI depends on
     def get_current_claim_info(self) -> dict:
@@ -457,28 +466,36 @@ class DataService:
     def refresh_current_claim_data(self):
         """Refresh all data for the current claim by restarting subscriptions."""
         try:
+            logging.debug("[DataService] refresh_current_claim_data() called")
+            
             if not self.claim or not self.claim.claim_id:
-                logging.warning("No current claim available for data refresh")
+                logging.warning("[DataService] No current claim available for data refresh")
                 return False
 
             if not self.player or not self.player.user_id:
-                logging.warning("No user ID available for data refresh")
+                logging.warning("[DataService] No user ID available for data refresh")
                 return False
 
-            logging.info(f"Refreshing data for current claim: {self.claim.claim_id}")
+            logging.info(f"[DataService] Refreshing data for current claim: {self.claim.claim_id}")
 
             # Clear all processor caches to ensure fresh data
             if hasattr(self, "message_router") and self.message_router:
+                logging.debug("[DataService] Clearing all processor caches before refresh")
                 self.message_router.clear_all_processor_caches()
+                logging.debug("[DataService] Processor caches cleared successfully")
+            else:
+                logging.warning("[DataService] No message router available for cache clearing")
 
             # Restart subscriptions for current claim (this will fetch all fresh data)
+            logging.debug("[DataService] Restarting subscriptions for fresh data")
             self._setup_subscriptions_for_current_claim()
+            logging.debug("[DataService] Subscriptions restarted successfully")
 
-            logging.info("Current claim data refresh completed successfully")
+            logging.info("[DataService] Current claim data refresh completed successfully")
             return True
 
         except Exception as e:
-            logging.error(f"Error refreshing current claim data: {e}")
+            logging.error(f"[DataService] Error refreshing current claim data: {e}")
             return False
 
     def refresh_claims_list(self):

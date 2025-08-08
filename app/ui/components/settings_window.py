@@ -405,14 +405,16 @@ class SettingsWindow(ctk.CTkToplevel):
             self.refresh_button.configure(state="disabled", text="Refreshing...")
 
             # Request current claim data refresh from the data service
+            logging.info("[Settings] Refresh claim data button clicked - starting refresh process")
             if hasattr(self.app, "data_service") and self.app.data_service:
+                logging.debug("[Settings] DataService found - calling refresh_current_claim_data()")
                 success = self.app.data_service.refresh_current_claim_data()
                 if success:
-                    logging.info("Current claim data refresh requested from settings")
+                    logging.info("[Settings] Current claim data refresh completed successfully")
                 else:
-                    logging.warning("Current claim data refresh failed from settings")
+                    logging.warning("[Settings] Current claim data refresh failed")
             else:
-                logging.error("Data service not available for claim data refresh")
+                logging.error("[Settings] Data service not available for claim data refresh")
 
             # Re-enable button after delay
             self.after(2000, lambda: self.refresh_button.configure(state="normal", text="Refresh Claim Data"))

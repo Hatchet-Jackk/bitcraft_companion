@@ -595,19 +595,25 @@ class ClaimInfoHeader(ctk.CTkFrame):
                 minutes = (total_seconds % 3600) // 60
                 seconds = total_seconds % 60
 
-                # Format display based on time remaining
-                if total_seconds < 60:  # less than 1 minute
+                # Format display based on time remaining - show largest relevant units
+                if total_seconds < 60:  # less than 1 minute - show seconds only
                     self.task_refresh_time = f"{seconds}s"
                     color = "#FF5722"  # Red for very soon
-                elif total_seconds < 3600:  # less than 1 hour
+                elif total_seconds < 1800:  # less than 30 minutes - show minutes and seconds
                     self.task_refresh_time = f"{minutes}m {seconds}s"
                     color = "#FF9800"  # Orange for soon
-                elif days == 0:  # same day
+                elif total_seconds < 3600:  # less than 1 hour - show minutes only
+                    self.task_refresh_time = f"{minutes}m"
+                    color = "#FF9800"  # Orange for soon
+                elif days == 0 and hours > 0:  # same day with hours - show hours and minutes
                     self.task_refresh_time = f"{hours}h {minutes}m"
                     color = "#FFC107"  # Amber for today
-                else:  # more than a day
+                elif days > 0:  # more than a day - show days and hours
                     self.task_refresh_time = f"{days}d {hours}h"
                     color = "#9C27B0"  # Purple for future
+                else:  # fallback
+                    self.task_refresh_time = f"{hours}h {minutes}m"
+                    color = "#FFC107"
 
             # Update the label with appropriate color
             self.task_refresh_label.configure(text=self.task_refresh_time, text_color=color)
