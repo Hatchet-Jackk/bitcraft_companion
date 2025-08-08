@@ -5,6 +5,114 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.16]
+### Added
+* Comprehensive tests and GitHub Actions CI/CD pipeline for automated testing
+* Enhanced WebSocket connection handling with comprehensive diagnostics and retry logic
+* Current active crafting data storage for improved progress tracking in ActiveCraftingProcessor
+* Enhanced logging across various components for improved traceability and debugging
+
+### Improved
+* WebSocket connection stability with retry mechanisms and Python version-specific handling
+* Crafting notifications to only alert for passive crafts belonging to the current player
+* Data handling by removing redundant subscription query methods from various services
+* Progress tracking by streamlining processor management and removing redundant logic
+* Python version requirement updated to >=3.10 for better compatibility
+
+### Removed
+* ClaimMembersService class and associated caching logic for simplified architecture
+* Redundant progress tracking logic from DataService
+* Redundant subscription query methods from various services
+
+### Technical
+* Enhanced WebSocket diagnostics with connection testing and error handling
+* Improved error logging and debugging capabilities
+* Streamlined data processing architecture
+* Better separation of concerns in service layer
+
+## [0.2.14]
+### Added
+* Comprehensive test suite for data processing, export functionality, timers, UI components, and error handling
+* Enhanced WebSocket message logging with detailed transaction updates
+* Smart item lookup functionality with compound keys to prevent ID collisions
+* Preferred source handling for item lookup operations
+
+### Improved
+* Message routing system with enhanced logging for transaction updates and processor cache clearing
+* Task transaction processing with better insert/delete handling and validation
+* Inventory item lookup using compound keys to handle ID collisions across different data sources
+* MainWindow logging for better debugging of message processing
+* Item lookup functionality with compound keys and intelligent source selection
+
+### Technical
+* Implemented compound key system for reliable item identification
+* Enhanced processor cache clearing mechanisms
+* Improved transaction update handling throughout the application
+* Better error handling and validation in task processing
+
+## [0.2.13]
+### Changed
+* Omit banks from inventory tab
+
+## [0.2.12]
+### Added
+* Settings persistence in player_data.json with robust error handling
+* Enhanced notification settings structure for better organization
+
+### Improved
+* Crafting processors notification handling and item tracking
+* Active crafting notifications with better bundling and timing
+* Settings loading and saving with proper fallback mechanisms
+* Error handling throughout settings management system
+
+## [0.2.11]
+### Fixed
+* Notification timing. Now they trigger when the tasks is READY not when you claim the item.
+* Notifications now bundle items to prevent notification spam for each item.
+
+## [0.2.10]
+### Fixed 
+* Update Accept Help value in real time
+
+### Added
+* Settings menu
+* Notifications
+* Move export and refresh claim to settings
+
+## [0.2.9]
+### Fixed
+* Traveler tasks no longer clear at login
+
+### Improved
+* Progress tracking in Active Tasks converted to Remaining Effort. The value counts down until craft is completed.
+
+## [0.2.7]
+### Patch
+* When exporting claim inventory, break out containers into their own rows for improved processing
+
+## [0.2.6]
+### Fixed
+* Build path references
+* Traveler task timeout reset failure
+
+## [0.2.5]
+### Improvements
+* Vastly improved network performance
+* Vastly improved data loading
+* Vastly improved claim switching performance
+* Data presentation in passive and active crafting tabs
+
+### Added
+* Real time countdowns for passive crafting
+* Real time countdown for traveler task resets
+* Logout and Quit buttons in main window
+* Accept help value in active crafting
+* Claim supply depletion value
+
+### Fixed
+* Re-added data export
+* Scrollbar colors now use the correct color when disabled
+
 ## [0.1.11]
 ### Fixed
 - Resolved issue where certain items were not appearing in the claim inventory
