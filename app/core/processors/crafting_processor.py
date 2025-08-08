@@ -720,11 +720,14 @@ class CraftingProcessor(BaseProcessor):
                     # Check if item just became ready - collect for bundled notification
                     if old_time_remaining != "READY" and new_time_remaining == "READY":
                         if entity_id not in self.notified_ready_items:
-                            recipe_id = operation.get("recipe_id")
-                            if recipe_id:
-                                item_name = self._get_item_name_from_recipe(recipe_id)
-                                newly_ready_items.append({"entity_id": entity_id, "recipe_id": recipe_id, "item_name": item_name})
-                                self.notified_ready_items.add(entity_id)
+                            # Only notify for crafts belonging to the current player
+                            owner_entity_id = operation.get("owner_entity_id")
+                            if owner_entity_id and self._is_current_player(owner_entity_id):
+                                recipe_id = operation.get("recipe_id")
+                                if recipe_id:
+                                    item_name = self._get_item_name_from_recipe(recipe_id)
+                                    newly_ready_items.append({"entity_id": entity_id, "recipe_id": recipe_id, "item_name": item_name})
+                            self.notified_ready_items.add(entity_id)
 
                 updated_operations.append(operation)
 
@@ -1484,6 +1487,34 @@ class CraftingProcessor(BaseProcessor):
 
         owner_id_str = str(owner_entity_id)
         return owner_id_str in self._claim_members
+
+    def _is_current_player(self, owner_entity_id):
+        """Check if the owner entity ID belongs to the current player."""
+        try:
+            # Get current player name from data service
+            data_service = self.services.get("data_service")
+            if not data_service or not hasattr(data_service, "client") or not data_service.client:
+                return False
+
+            current_player_name = getattr(data_service.client, "player_name", None)
+            if not current_player_name:
+                return False
+
+            # Get owner name from entity ID using claim members data
+            if not hasattr(self, "_claim_members") or not self._claim_members:
+                return False
+
+            owner_id_str = str(owner_entity_id)
+            owner_name = self._claim_members.get(owner_id_str)
+            if not owner_name:
+                return False
+
+            # Check if owner is the current player
+            return owner_name == current_player_name
+
+        except Exception as e:
+            logging.error(f"Error checking if owner {owner_entity_id} is current player: {e}")
+            return False
 
     def clear_cache(self):
         """Clear cached crafting data when switching claims."""
