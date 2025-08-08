@@ -45,7 +45,6 @@ class MessageRouter:
             message: The complete message from SpacetimeDB
         """
         try:
-            message_types = list(message.keys())
             if "TransactionUpdate" in message:
                 self._process_transaction_update(message["TransactionUpdate"])
             elif "SubscriptionUpdate" in message:
@@ -60,14 +59,16 @@ class MessageRouter:
 
     def _process_transaction_update(self, transaction_data):
         """Process TransactionUpdate messages - LIVE real-time updates."""
-        # with open("debug_ws_transaction_updates.json", "a") as log_file:
-        #     log_file.write(f"{json.dumps(transaction_data)}\n")
         try:
             status = transaction_data.get("status", {})
             reducer_call = transaction_data.get("reducer_call", {})
 
+            logging.debug(f"[MessageRouter] TRANSACTION DEBUG - Status keys: {list(status.keys())}")
+            logging.debug(f"[MessageRouter] Reducer call: {reducer_call.get('reducer_name', 'unknown')}")
+
             # Check if transaction was successful
             if "Committed" not in status:
+                logging.debug(f"[MessageRouter] Transaction not committed, status: {list(status.keys())}")
                 return
 
             reducer_name = reducer_call.get("reducer_name", "unknown")
@@ -76,13 +77,19 @@ class MessageRouter:
 
             # Process table updates
             tables = status.get("Committed", {}).get("tables", [])
+            logging.debug(f"[MessageRouter] Processing {len(tables)} table updates for reducer: {reducer_name}")
+            
             for table_update in tables:
                 table_name = table_update.get("table_name", "")
+                logging.debug(f"[MessageRouter] Table update - Name: {table_name}")
 
                 # Route to appropriate processors
                 processors = self.table_to_processors.get(table_name, [])
+                logging.debug(f"[MessageRouter] Found {len(processors)} processors for table {table_name}")
+                
                 for processor in processors:
                     try:
+                        logging.debug(f"[MessageRouter] Routing to {processor.__class__.__name__} for table {table_name}")
                         processor.process_transaction(table_update, reducer_name, timestamp_seconds)
                     except Exception as e:
                         logging.error(f"Error in {processor.__class__.__name__} processing transaction: {e}")
@@ -139,7 +146,7 @@ class MessageRouter:
         """Clear caches in all processors to ensure fresh data on refresh."""
         try:
             for processor in self.processors:
-                if hasattr(processor, 'clear_cache'):
+                if hasattr(processor, "clear_cache"):
                     processor.clear_cache()
                     logging.debug(f"Cleared cache for {processor.__class__.__name__}")
             logging.info(f"Cleared caches for {len(self.processors)} processors")
