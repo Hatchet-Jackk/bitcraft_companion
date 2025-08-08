@@ -128,6 +128,16 @@ jobs:
         $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
         Write-Host "Building PRODUCTION RELEASE: BitCraft Companion v${{ needs.extract-version.outputs.version }}"
         Write-Host "Creating distributable executable from master branch..."
+        Write-Host "Current directory: $(Get-Location)"
+        Write-Host "Checking for spec file..."
+        if (Test-Path "bitcraft_companion.spec") {
+          Write-Host "Found bitcraft_companion.spec"
+        } else {
+          Write-Host "bitcraft_companion.spec not found in current directory"
+          Write-Host "Files in current directory:"
+          Get-ChildItem | Select-Object Name
+          exit 1
+        }
         poetry run python -m PyInstaller --clean bitcraft_companion.spec
 
     - name: Verify build
