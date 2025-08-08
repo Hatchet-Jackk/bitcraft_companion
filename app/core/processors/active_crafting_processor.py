@@ -17,6 +17,13 @@ class ActiveCraftingProcessor(BaseProcessor):
     for active crafting (progressive action) changes.
     """
 
+    def __init__(self, data_queue, services, reference_data):
+        """Initialize the processor."""
+        super().__init__(data_queue, services, reference_data)
+
+        # Store current active crafting data for reference
+        self.current_active_crafting_data = []
+
     def get_table_names(self):
         """Return list of table names this processor handles."""
         return [
@@ -220,12 +227,6 @@ class ActiveCraftingProcessor(BaseProcessor):
             # Send incremental update for progressive_action_state and public_progressive_action_state, full refresh for others
             if has_active_crafting_changes:
                 if table_name in ["progressive_action_state", "public_progressive_action_state"]:
-                    # Debug what data we have before sending incremental update
-                    progressive_data_count = len(getattr(self, "_progressive_action_data", {}))
-                    building_data_count = len(getattr(self, "_building_data", {}))
-                    member_data_count = len(getattr(self, "_claim_members", {}))
-                    public_actions_count = len(getattr(self, "_public_actions", set()))
-
                     self._send_incremental_active_crafting_update(reducer_name, timestamp)
                 else:
                     logging.info(f"[ACTIVE_CRAFT_DEBUG] Sending full refresh for table: {table_name}")
@@ -409,6 +410,9 @@ class ActiveCraftingProcessor(BaseProcessor):
 
             # Convert dictionary to list format for UI
             crafting_list = self._format_crafting_for_ui(consolidated_crafting)
+
+            # Store current data for progress tracking
+            self.current_active_crafting_data = crafting_list
 
             # Send to UI
             self._queue_update("active_crafting_update", crafting_list)
@@ -996,6 +1000,9 @@ class ActiveCraftingProcessor(BaseProcessor):
             crafting_list = self._format_crafting_for_ui(consolidated_crafting)
 
             if crafting_list:
+                # Store current data for progress tracking
+                self.current_active_crafting_data = crafting_list
+
                 # Send targeted update with incremental flag
                 self._queue_update(
                     "active_crafting_update",
@@ -1073,3 +1080,4 @@ class ActiveCraftingProcessor(BaseProcessor):
         except Exception as e:
             logging.error(f"Error resolving item name for recipe {recipe_id}: {e}")
             return f"Recipe {recipe_id}"
+

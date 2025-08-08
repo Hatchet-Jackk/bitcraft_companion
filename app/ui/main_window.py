@@ -427,15 +427,15 @@ class MainWindow(ctk.CTk):
 
             # Log celebratory message
             count = len(completed_tasks)
-            logging.info(f"🎉 {count} task(s) completed!")
+            logging.info(f"{count} task(s) completed!")
 
             # Update window title briefly to show completion
             original_title = self.title()
             if count == 1:
                 task_name = completed_tasks[0].get("task_description", "Task")[:30]
-                self.title(f"🎉 Task completed: {task_name}... - {original_title}")
+                self.title(f"Task completed: {task_name}... - {original_title}")
             else:
-                self.title(f"🎉 {count} tasks completed! - {original_title}")
+                self.title(f"{count} tasks completed! - {original_title}")
 
             # Reset title after 3 seconds
             self.after(3000, lambda: self.title(original_title))
@@ -444,7 +444,7 @@ class MainWindow(ctk.CTk):
             for task in completed_tasks:
                 task_desc = task.get("task_description", "Unknown Task")
                 traveler_name = task.get("traveler_name", "Unknown Traveler")
-                logging.info(f"✅ Completed: {task_desc} for {traveler_name}")
+                logging.info(f"Completed: {task_desc} for {traveler_name}")
 
         except Exception as e:
             logging.error(f"Error celebrating task completions: {e}")
@@ -462,17 +462,11 @@ class MainWindow(ctk.CTk):
 
             # Log celebratory message
             count = len(completed_items)
-            logging.info(f"🎉 {count} crafting operation(s) completed!")
-
-            # You could add more celebration features here:
-            # - Play a completion sound
-            # - Show a brief notification popup
-            # - Flash the title bar
-            # - Send system notification
+            logging.info(f"{count} crafting operation(s) completed!")
 
             # Update window title briefly
             original_title = self.title()
-            self.title(f"🎉 {count} items ready! - {original_title}")
+            self.title(f"{count} items ready! - {original_title}")
 
             # Reset title after 3 seconds
             self.after(3000, lambda: self.title(original_title))
@@ -503,9 +497,9 @@ class MainWindow(ctk.CTk):
 
             # Add notification content
             if quantity == 1:
-                message = f"✅ {item_name} is ready!"
+                message = f"{item_name} is ready!"
             else:
-                message = f"✅ {quantity}x {item_name} ready!"
+                message = f"{quantity}x {item_name} ready!"
 
             label = ctk.CTkLabel(notification, text=message, font=ctk.CTkFont(size=14, weight="bold"), text_color="#4CAF50")
             label.pack(expand=True)

@@ -1,14 +1,8 @@
-"""
-Refactored DataService using MessageRouter and data processors.
-
-This is the clean coordinator that uses the new modular architecture
-while preserving the exact same UI queue interface and subscription patterns.
-"""
-
-import threading
-import queue
-import time
 import logging
+import queue
+import threading
+import time
+
 from .message_router import MessageRouter
 from .processors import InventoryProcessor, CraftingProcessor, TasksProcessor, ClaimsProcessor, ActiveCraftingProcessor
 from ..services.notification_service import NotificationService
@@ -92,9 +86,6 @@ class DataService:
                     if hasattr(processor, "stop_real_time_timer"):
                         logging.info(f"Stopping timer for {processor.__class__.__name__}...")
                         processor.stop_real_time_timer()
-                    if hasattr(processor, "stop_progress_tracking"):
-                        logging.info(f"Stopping progress tracking for {processor.__class__.__name__}...")
-                        processor.stop_progress_tracking()
 
             if self.claim_manager:
                 logging.info("Saving claims cache...")
@@ -147,16 +138,28 @@ class DataService:
             self.client.set_websocket_uri()
             logging.debug(f"[DataService] Connection configured for region: {region}")
 
-            # Connect WebSocket
+            # Test basic connectivity first
+            logging.debug("[DataService] Testing server connectivity...")
+            if not self.client.test_server_connectivity():
+                # Run full diagnostics if basic connectivity fails
+                logging.debug("[DataService] Running connection diagnostics...")
+                self.client.diagnose_connection_issues()
+
+                error_msg = "Server connectivity test failed. Check your internet connection and try again."
+                logging.error(f"[DataService] {error_msg}")
+                self.data_queue.put({"type": "connection_status", "data": {"status": "failed", "reason": error_msg}})
+                return
+
+            # Connect WebSocket with retry logic
             try:
                 ws_start = time.time()
-                logging.debug("[DataService] Attempting WebSocket connection")
-                self.client.connect_websocket()
+                logging.debug("[DataService] Attempting WebSocket connection with retry")
+                self.client.connect_websocket_with_retry(max_retries=3, base_delay=2.0)
                 ws_time = time.time() - ws_start
                 logging.debug(f"[DataService] WebSocket connection established in {ws_time:.3f}s")
                 self.data_queue.put({"type": "connection_status", "data": {"status": "connected"}})
             except Exception as e:
-                logging.error(f"[DataService] WebSocket connection failed: {e}")
+                logging.error(f"[DataService] WebSocket connection failed after retries: {e}")
                 self.data_queue.put({"type": "connection_status", "data": {"status": "failed", "reason": str(e)}})
                 return
 
@@ -297,10 +300,6 @@ class DataService:
                 if hasattr(processor, "start_real_time_timer"):
                     processor.start_real_time_timer(self._handle_timer_update)
 
-                # Start timer for active crafting processor
-                if hasattr(processor, "start_progress_tracking"):
-                    processor.start_progress_tracking(self._handle_timer_update)
-
             # Set up subscriptions for the current claim (same as before)
             setup_start = time.time()
             logging.info("[DataService] Setting up data subscriptions...")
@@ -337,7 +336,7 @@ class DataService:
         """
         try:
             logging.debug("[DataService] _setup_subscriptions_for_current_claim() called")
-            
+
             if not self.claim.claim_id or not self.player.user_id:
                 logging.warning("[DataService] No claim ID or user ID available for subscriptions")
                 return
@@ -467,7 +466,7 @@ class DataService:
         """Refresh all data for the current claim by restarting subscriptions."""
         try:
             logging.debug("[DataService] refresh_current_claim_data() called")
-            
+
             if not self.claim or not self.claim.claim_id:
                 logging.warning("[DataService] No current claim available for data refresh")
                 return False
