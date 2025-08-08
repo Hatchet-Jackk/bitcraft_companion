@@ -52,6 +52,7 @@ jobs:
 
     - name: Run tests
       run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
         Write-Host "Running full test suite on dev merge..."
         poetry run pytest tests/ -v --tb=short
 
@@ -78,7 +79,7 @@ jobs:
       run: |
         if (Test-Path "dist\*.exe") {
           $exe = Get-ChildItem "dist\*.exe" | Select-Object -First 1
-          Write-Host " validation successful!"
+          Write-Host "Build validation successful!"
           Write-Host "Executable: $($exe.Name)"
           Write-Host "Size: $([math]::Round($exe.Length/1MB, 2)) MB"
         } else {
@@ -91,7 +92,7 @@ jobs:
         Write-Host ""
         Write-Host "Dev branch validation completed successfully!"
         Write-Host "Tests passed"
-        Write-Host " validated"
+        Write-Host "Build validated"
         Write-Host "Version: ${{ steps.version.outputs.version }}"
         Write-Host ""
-        Write-Host "Ready for release when merged to master! "
+        Write-Host "Ready for release when merged to master!"
