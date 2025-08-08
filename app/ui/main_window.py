@@ -74,7 +74,7 @@ class MainWindow(ctk.CTk):
     def __init__(self, data_service: DataService):
         super().__init__()
         logging.info("Initializing main application window")
-        
+
         # Log window geometry and display info
         try:
             screen_width = self.winfo_screenwidth()
@@ -82,7 +82,7 @@ class MainWindow(ctk.CTk):
             logging.debug(f"Screen dimensions: {screen_width}x{screen_height}")
         except Exception as e:
             logging.debug(f"Error getting screen dimensions: {e}")
-        
+
         self.title("Bitcraft Companion")
         self.geometry("900x600")
         logging.debug("Main window geometry set to 900x600")
@@ -97,7 +97,7 @@ class MainWindow(ctk.CTk):
         self.grid_rowconfigure(3, weight=1)
 
         self.data_service = data_service
-        
+
         # Initialize notification service with this app instance
         self.data_service.set_main_app(self)
         self.tabs: Dict[str, ctk.CTkFrame] = {}
@@ -778,7 +778,7 @@ class MainWindow(ctk.CTk):
                 message_count += 1
                 msg_type = message.get("type")
                 msg_data = message.get("data")
-                
+
                 # Log data type and size for debugging
                 data_size = len(msg_data) if isinstance(msg_data, (dict, list)) else "unknown"
                 logging.debug(f"Processing message {message_count}: {msg_type} (data size: {data_size})")
@@ -789,7 +789,7 @@ class MainWindow(ctk.CTk):
                         self.tabs["Claim Inventory"].update_data(msg_data)
                         update_time = time.time() - start_time
                         logging.debug(f"Inventory tab update took {update_time:.3f}s")
-                        
+
                         # Track that we've received inventory data
                         if self.is_loading:
                             self.received_data_types.add("inventory")
@@ -837,6 +837,9 @@ class MainWindow(ctk.CTk):
                         self.tabs["Passive Crafting"].update_timer_only(msg_data or {})
 
                 elif msg_type == "tasks_update":
+                    logging.debug(
+                        f"MAIN WINDOW: Processing tasks_update with {len(msg_data) if isinstance(msg_data, list) else 'invalid'} items"
+                    )
                     if "Traveler's Tasks" in self.tabs:
                         self.tabs["Traveler's Tasks"].update_data(msg_data)
 
@@ -849,6 +852,8 @@ class MainWindow(ctk.CTk):
                         if self.is_loading:
                             self.received_data_types.add("tasks")
                             self._check_all_data_loaded()
+                    else:
+                        logging.warning("MAIN WINDOW: Traveler's Tasks tab not found for tasks_update")
 
                 elif msg_type == "claim_info_update":
                     self.claim_info.update_claim_data(msg_data)
