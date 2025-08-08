@@ -258,6 +258,14 @@ def get_mock_claim_data() -> Dict[str, Any]:
 
 # ========== PYTEST FIXTURES ==========
 
+@pytest.fixture(autouse=True)
+def prevent_real_file_writes():
+    """Prevent tests from writing to real player_data.json but allow mocking."""
+    # Only mock the file path to redirect writes to a safe location
+    with patch('app.core.data_paths.get_user_data_path', return_value='/tmp/test_player_data.json'):
+        yield
+
+
 @pytest.fixture
 def mock_bitcraft_client():
     """Provide a mock BitCraft client."""
