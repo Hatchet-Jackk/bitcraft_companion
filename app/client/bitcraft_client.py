@@ -551,8 +551,15 @@ class BitCraft:
                     data = json.loads(msg)
 
                     # Log WebSocket message types for connection diagnostics
-                    logging.info(f"Received WebSocket message: {list(data.keys())}")
-
+                    message_type = list(data.keys())[0] if data else "unknown"
+                    logging.debug(f"[BitCraftClient] Received WebSocket message type: {message_type}")
+                    
+                    # Add detailed logging for specific message types
+                    if "TransactionUpdate" in data:
+                        reducer_name = data.get("TransactionUpdate", {}).get("reducer_call", {}).get("reducer_name", "unknown")
+                        status_keys = list(data.get("TransactionUpdate", {}).get("status", {}).keys())
+                        logging.debug(f"[BitCraftClient] TransactionUpdate - Reducer: {reducer_name}, Status: {status_keys}")
+                    
                     # Call the DataService callback with the message
                     callback(data)
 
