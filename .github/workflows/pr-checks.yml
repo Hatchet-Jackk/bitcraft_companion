@@ -6,8 +6,21 @@ on:
 
 jobs:
   version-check:
-    name: Verify Version Bump
-    runs-on: ubuntu-latest
+    name: Verify Version Bump    - name: Install dependencies
+      run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        poetry install
+
+    - name: Run tests
+      run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        Write-Host "Running full test suite..."
+        poetry run pytest tests/ -v --tb=short
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "Tests failed! Please fix failing tests before merge."
+          exit 1
+        }
+        Write-Host "All tests passed! Ready for merge.": ubuntu-latest
     steps:
     - name: Checkout PR
       uses: actions/checkout@v4
@@ -106,8 +119,10 @@ jobs:
         virtualenvs-in-project: true
         installer-parallel: true
 
-    - name: Configure Poetry
+    - name: Add Poetry to PATH and Configure
       run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        [Environment]::SetEnvironmentVariable("PATH", $env:PATH, [EnvironmentVariableTarget]::Process)
         poetry config virtualenvs.create true
         poetry config virtualenvs.in-project true
 
@@ -151,19 +166,26 @@ jobs:
         virtualenvs-in-project: true
         installer-parallel: true
 
-    - name: Configure Poetry
+    - name: Add Poetry to PATH and Configure
       run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        [Environment]::SetEnvironmentVariable("PATH", $env:PATH, [EnvironmentVariableTarget]::Process)
         poetry config virtualenvs.create true
         poetry config virtualenvs.in-project true
 
     - name: Install dependencies
-      run: poetry install
+      run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        poetry install
 
     - name: Add PyInstaller
-      run: poetry add --group dev pyinstaller
+      run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        poetry add --group dev pyinstaller
 
     - name: Test build process
       run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
         Write-Host "Testing executable build process..."
         poetry run python -m PyInstaller --clean bitcraft_companion.spec
         

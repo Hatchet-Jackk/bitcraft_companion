@@ -2,9 +2,43 @@ name: Build and Release
 
 on:
   push:
-    branches: [ master, main ]  
+    branches: [ master, main ]     - name: Install dependencies
+      ru        installer-parallel: true
 
-jobs:
+    - name: Add Poetry to PATH and Configure
+      run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        [Environment]::SetEnvironmentVariable("PATH", $env:PATH, [EnvironmentVariableTarget]::Process)
+        poetry config virtualenvs.create true
+        poetry config virtualenvs.in-project true
+
+    - name: Install dependencies
+      run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        poetry install
+
+    - name: Add PyInstaller
+      run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        poetry add --group dev pyinstaller
+
+    - name: Build executable
+      run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        Write-Host "Building PRODUCTION RELEASE: BitCraft Companion v${{ needs.extract-version.outputs.version }}"
+        Write-Host "Creating distributable executable from master branch..."
+        poetry run python -m PyInstaller --clean bitcraft_companion.spec:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        poetry install
+
+    - name: Run tests
+      run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        Write-Host "MASTER BRANCH RELEASE - Running full test suite before release..."
+        poetry run pytest tests/ -v --tb=short
+
+    - name: Test results
+      run: |
+        Write-Host "All tests passed! Proceeding with PRODUCTION RELEASE build."
   extract-version:
     name: Extract Version
     runs-on: ubuntu-latest
@@ -57,8 +91,10 @@ jobs:
         virtualenvs-in-project: true
         installer-parallel: true
 
-    - name: Configure Poetry
+    - name: Add Poetry to PATH and Configure
       run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        [Environment]::SetEnvironmentVariable("PATH", $env:PATH, [EnvironmentVariableTarget]::Process)
         poetry config virtualenvs.create true
         poetry config virtualenvs.in-project true
 

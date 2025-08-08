@@ -2,7 +2,23 @@ name: Dev Branch Validation
 
 on:
   push:
-    branches: [ dev ]
+      - name: Install dependencies
+      run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        poetry install
+
+    - name: Run tests
+      run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        Write-Host "Running full test suite on dev merge..."
+        poetry run pytest tests/ -v --tb=short
+
+    - name: Test build process
+      run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        Write-Host "🔨 Validating build process..."
+        poetry add --group dev pyinstaller
+        poetry run python -m PyInstaller --clean bitcraft_companion.spec dev ]
 
 jobs:
   validate-merge:
@@ -32,8 +48,10 @@ jobs:
         virtualenvs-in-project: true
         installer-parallel: true
 
-    - name: Configure Poetry
+    - name: Add Poetry to PATH and Configure
       run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        [Environment]::SetEnvironmentVariable("PATH", $env:PATH, [EnvironmentVariableTarget]::Process)
         poetry config virtualenvs.create true
         poetry config virtualenvs.in-project true
 
