@@ -35,5 +35,6 @@ player_data.json
 *.xlsx
 *.txt
 *.log
-.*
+
 *.zip
+*.back

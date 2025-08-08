@@ -24,6 +24,12 @@ class TasksProcessor(BaseProcessor):
         self._task_states = {}
         self._task_descriptions = {}
         self._player_state = {}
+        
+        # Reset buffering to handle race conditions during task resets
+        self._reset_in_progress = False
+        self._reset_timestamp = None
+        self._reset_tables_updated = set()  # Track which tables have been updated during reset
+        self._buffered_ui_update = False    # Track if we need to send a buffered update
 
     def get_table_names(self):
         """Return list of table names this processor handles."""
@@ -31,7 +37,7 @@ class TasksProcessor(BaseProcessor):
 
     def process_transaction(self, table_update, reducer_name, timestamp):
         """
-        Handle traveler_task_state transactions.
+        Handle traveler_task_state and traveler_task_desc transactions.
 
         Process incremental changes and update cached data without wiping UI.
         """
@@ -51,120 +57,24 @@ class TasksProcessor(BaseProcessor):
                     logging.info(f"TASK TRANSACTION: {len(inserts)} inserts, {len(deletes)} deletes - {reducer_name}")
                     data_changed = True
 
-                    # Collect all deletes and inserts by task_id to handle replacements properly
-                    task_deletes = {}
-                    task_inserts = {}
-
-                    # Parse deletes first
-                    for delete_str in deletes:
-                        try:
-                            import json
-
-                            if isinstance(delete_str, str):
-                                delete_data = json.loads(delete_str)
-                            else:
-                                delete_data = list(delete_str)
-
-                            if table_name == "traveler_task_state" and isinstance(delete_data, list) and len(delete_data) >= 5:
-                                task_id = delete_data[3] if len(delete_data) > 3 else None
-                                if task_id:
-                                    task_deletes[task_id] = delete_data
-                                    logging.debug(f"[TasksProcessor] Collected delete for task_id={task_id}")
-
-                        except Exception as e:
-                            logging.warning(f"Error parsing task transaction delete: {e}")
-
-                    # Parse inserts
-                    for insert_str in inserts:
-                        try:
-                            import json
-
-                            if isinstance(insert_str, str):
-                                task_data = json.loads(insert_str)
-                            else:
-                                task_data = list(insert_str)
-
-                            if table_name == "traveler_task_state" and isinstance(task_data, list) and len(task_data) >= 5:
-                                task_id = task_data[3] if len(task_data) > 3 else None
-                                if task_id:
-                                    task_inserts[task_id] = task_data
-                                    logging.debug(f"[TasksProcessor] Collected insert for task_id={task_id}")
-
-                        except Exception as e:
-                            logging.warning(f"Error parsing task transaction insert: {e}")
-
-                    # Process as replacements (delete + insert = update) or pure operations
-                    all_task_ids = set(task_deletes.keys()) | set(task_inserts.keys())
-
-                    for task_id in all_task_ids:
-                        has_delete = task_id in task_deletes
-                        has_insert = task_id in task_inserts
-
-                        if has_delete and has_insert:
-                            # Update task with new data
-                            task_data = task_inserts[task_id]
-                            entity_id = task_data[0] if len(task_data) > 0 else None
-                            player_entity_id = task_data[1] if len(task_data) > 1 else None
-                            traveler_id = task_data[2] if len(task_data) > 2 else None
-                            completed = task_data[4] if len(task_data) > 4 else False
-
-                            logging.debug(f"[TasksProcessor] REPLACEMENT for task_id={task_id}: completed={completed}")
-
-                            # Validate parsed data
-                            if not self._validate_task_data(entity_id, player_entity_id, traveler_id, task_id, completed):
-                                logging.warning(f"[TasksProcessor] Invalid replacement data, skipping: task_id={task_id}")
-                                continue
-
-                            # Update cached task state
-                            if hasattr(self, "_task_states"):
-                                old_completed = self._task_states.get(task_id, {}).get("completed", False)
-
-                                self._task_states[task_id] = {
-                                    "entity_id": entity_id,
-                                    "player_entity_id": player_entity_id,
-                                    "traveler_id": traveler_id,
-                                    "completed": completed,
-                                }
-
-                                # Detect newly completed tasks
-                                if not old_completed and completed:
-                                    completed_tasks.append(
-                                        {"task_id": task_id, "traveler_id": traveler_id, "reducer_name": reducer_name}
-                                    )
-
-                        elif has_insert and not has_delete:
-                            # New task
-                            task_data = task_inserts[task_id]
-                            entity_id = task_data[0] if len(task_data) > 0 else None
-                            player_entity_id = task_data[1] if len(task_data) > 1 else None
-                            traveler_id = task_data[2] if len(task_data) > 2 else None
-                            completed = task_data[4] if len(task_data) > 4 else False
-
-                            logging.debug(f"[TasksProcessor] NEW TASK task_id={task_id}: completed={completed}")
-
-                            # Validate and add new task
-                            if self._validate_task_data(entity_id, player_entity_id, traveler_id, task_id, completed):
-                                if hasattr(self, "_task_states"):
-                                    self._task_states[task_id] = {
-                                        "entity_id": entity_id,
-                                        "player_entity_id": player_entity_id,
-                                        "traveler_id": traveler_id,
-                                        "completed": completed,
-                                    }
-
-                        elif has_delete and not has_insert:
-                            # Remove task completely
-                            logging.debug(f"[TasksProcessor] DELETE task_id={task_id}")
-                            if hasattr(self, "_task_states") and task_id in self._task_states:
-                                del self._task_states[task_id]
+                    # Handle different table types
+                    if table_name == "traveler_task_state":
+                        self._process_task_state_transaction(update, completed_tasks)
+                    elif table_name == "traveler_task_desc":
+                        self._process_task_desc_transaction(update)
 
             # Log task completions with safe encoding
             for completed_task in completed_tasks:
                 logging.info(f"[TasksProcessor] Task {completed_task['task_id']} completed via {completed_task['reducer_name']}")
 
+            # Check if this looks like a reset (large number of operations)
+            total_operations = sum(len(update.get("inserts", [])) + len(update.get("deletes", [])) for update in updates)
+            if total_operations >= 10:  # Reset threshold
+                self._handle_reset_start(table_name)
+            
             # Only refresh UI if data actually changed and we have cached data to send
             if data_changed:
-                self._refresh_tasks()
+                self._refresh_tasks(table_name)
 
         except Exception as e:
             logging.error(f"Error handling tasks transaction: {e}")
@@ -209,40 +119,39 @@ class TasksProcessor(BaseProcessor):
         except Exception as e:
             logging.error(f"Error handling tasks subscription: {e}")
 
-    def _refresh_tasks(self):
+    def _refresh_tasks(self, table_name=None):
         """
         Send current cached tasks data to UI instead of wiping it.
         Called during transactions to update UI without losing data.
         """
         try:
-            # Debug cache state
-            has_task_states = hasattr(self, "_task_states") and self._task_states
-            has_task_descriptions = hasattr(self, "_task_descriptions") and self._task_descriptions
-
-            logging.info(
-                f"TASK CACHE DEBUG: task_states={len(self._task_states) if has_task_states else 0}, "
-                f"task_descriptions={len(self._task_descriptions) if has_task_descriptions else 0}"
-            )
-
-            # Send current cached task data if we have task states (descriptions can be fetched if missing)
-            if has_task_states:
-                # If we don't have task descriptions, try to fetch them quickly
-                if not has_task_descriptions:
-                    logging.warning("TASK REFRESH: Missing task descriptions, attempting to fetch...")
-                    self._fetch_missing_task_descriptions()
-                    has_task_descriptions = hasattr(self, "_task_descriptions") and self._task_descriptions
-
-                # Proceed if we now have both or if we have task states with basic fallback descriptions
-                if has_task_descriptions:
-                    formatted_tasks = self._format_combined_task_data()
-                    logging.info(f"TASK UI UPDATE: Sending {len(formatted_tasks)} travelers to UI")
-                    self._queue_update("tasks_update", formatted_tasks, {"transaction_update": True})
-                    logging.debug("Refreshed tasks UI with cached data")
+            # Check if we should buffer this update during a reset
+            if self._reset_in_progress:
+                if table_name:
+                    self._reset_tables_updated.add(table_name)
+                    logging.debug(f"TASK RESET: Table {table_name} updated, buffering UI refresh")
+                
+                # Check if reset is complete (both key tables updated)
+                if "traveler_task_state" in self._reset_tables_updated and "traveler_task_desc" in self._reset_tables_updated:
+                    logging.info("TASK RESET: Both task tables updated, completing reset")
+                    self._complete_reset()
+                    return
                 else:
-                    logging.warning("TASK REFRESH: Still missing descriptions after fetch attempt")
-            else:
-                # Only send empty data if we truly have no cached data
-                logging.warning(f"TASK REFRESH BLOCKED: task_states={has_task_states}, task_descriptions={has_task_descriptions}")
+                    # Mark that we need to update UI once reset completes
+                    self._buffered_ui_update = True
+                    logging.debug(f"TASK RESET: Buffering update, waiting for remaining tables")
+                    return
+            
+            # Check for timeout during reset
+            if self._reset_in_progress and self._reset_timestamp:
+                time_since_reset = time.time() - self._reset_timestamp
+                if time_since_reset > 1.0:  # 1 second timeout
+                    logging.warning(f"TASK RESET: Timeout after {time_since_reset:.3f}s, forcing UI update")
+                    self._complete_reset()
+                    return
+
+            # Normal UI refresh (not during reset)
+            self._do_ui_refresh()
 
         except Exception as e:
             logging.error(f"Error refreshing tasks: {e}")
@@ -653,6 +562,82 @@ class TasksProcessor(BaseProcessor):
             logging.error(f"Error validating task data: {e}")
             return False
 
+    def _handle_reset_start(self, table_name):
+        """
+        Handle the start of a task reset sequence.
+        """
+        try:
+            if not self._reset_in_progress:
+                logging.info(f"TASK RESET: Detected reset starting with table {table_name}")
+                self._reset_in_progress = True
+                self._reset_timestamp = time.time()
+                self._reset_tables_updated.clear()
+                self._buffered_ui_update = False
+            
+            # Add this table to the updated set
+            if table_name:
+                self._reset_tables_updated.add(table_name)
+                
+        except Exception as e:
+            logging.error(f"Error handling reset start: {e}")
+    
+    def _complete_reset(self):
+        """
+        Complete the reset sequence and refresh UI.
+        """
+        try:
+            logging.info("TASK RESET: Completing reset and refreshing UI")
+            
+            # Clear reset state
+            self._reset_in_progress = False
+            self._reset_timestamp = None
+            self._reset_tables_updated.clear()
+            
+            # Perform the UI refresh if it was buffered
+            if self._buffered_ui_update:
+                self._buffered_ui_update = False
+                self._do_ui_refresh()
+            
+        except Exception as e:
+            logging.error(f"Error completing reset: {e}")
+    
+    def _do_ui_refresh(self):
+        """
+        Actually perform the UI refresh (extracted from original _refresh_tasks).
+        """
+        try:
+            # Debug cache state
+            has_task_states = hasattr(self, "_task_states") and self._task_states
+            has_task_descriptions = hasattr(self, "_task_descriptions") and self._task_descriptions
+
+            logging.info(
+                f"TASK CACHE DEBUG: task_states={len(self._task_states) if has_task_states else 0}, "
+                f"task_descriptions={len(self._task_descriptions) if has_task_descriptions else 0}"
+            )
+
+            # Send current cached task data if we have task states (descriptions can be fetched if missing)
+            if has_task_states:
+                # If we don't have task descriptions, try to fetch them quickly
+                if not has_task_descriptions:
+                    logging.warning("TASK REFRESH: Missing task descriptions, attempting to fetch...")
+                    self._fetch_missing_task_descriptions()
+                    has_task_descriptions = hasattr(self, "_task_descriptions") and self._task_descriptions
+
+                # Proceed if we now have both or if we have task states with basic fallback descriptions
+                if has_task_descriptions:
+                    formatted_tasks = self._format_combined_task_data()
+                    logging.info(f"TASK UI UPDATE: Sending {len(formatted_tasks)} travelers to UI")
+                    self._queue_update("tasks_update", formatted_tasks, {"transaction_update": True})
+                    logging.debug("Refreshed tasks UI with cached data")
+                else:
+                    logging.warning("TASK REFRESH: Still missing descriptions after fetch attempt")
+            else:
+                # Only send empty data if we truly have no cached data
+                logging.warning(f"TASK REFRESH BLOCKED: task_states={has_task_states}, task_descriptions={has_task_descriptions}")
+
+        except Exception as e:
+            logging.error(f"Error in UI refresh: {e}")
+
     def clear_cache(self):
         """Clear cached tasks data when switching claims."""
         super().clear_cache()
@@ -666,3 +651,240 @@ class TasksProcessor(BaseProcessor):
 
         if hasattr(self, "_player_state"):
             self._player_state.clear()
+            
+        # Clear reset state
+        self._reset_in_progress = False
+        self._reset_timestamp = None
+        self._reset_tables_updated.clear()
+        self._buffered_ui_update = False
+
+    def _process_task_state_transaction(self, update, completed_tasks):
+        """
+        Process traveler_task_state transaction update.
+        """
+        try:
+            inserts = update.get("inserts", [])
+            deletes = update.get("deletes", [])
+            
+            # Collect all deletes and inserts by task_id to handle replacements properly
+            task_deletes = {}
+            task_inserts = {}
+
+            # Parse deletes first
+            for delete_str in deletes:
+                try:
+                    import json
+
+                    if isinstance(delete_str, str):
+                        delete_data = json.loads(delete_str)
+                    else:
+                        delete_data = list(delete_str)
+
+                    if isinstance(delete_data, list) and len(delete_data) >= 5:
+                        task_id = delete_data[3] if len(delete_data) > 3 else None
+                        if task_id:
+                            task_deletes[task_id] = delete_data
+                            logging.debug(f"[TasksProcessor] Collected delete for task_id={task_id}")
+
+                except Exception as e:
+                    logging.warning(f"Error parsing task transaction delete: {e}")
+
+            # Parse inserts
+            for insert_str in inserts:
+                try:
+                    import json
+
+                    if isinstance(insert_str, str):
+                        task_data = json.loads(insert_str)
+                    else:
+                        task_data = list(insert_str)
+
+                    if isinstance(task_data, list) and len(task_data) >= 5:
+                        task_id = task_data[3] if len(task_data) > 3 else None
+                        if task_id:
+                            task_inserts[task_id] = task_data
+                            logging.debug(f"[TasksProcessor] Collected insert for task_id={task_id}")
+
+                except Exception as e:
+                    logging.warning(f"Error parsing task transaction insert: {e}")
+
+            # Process as replacements (delete + insert = update) or pure operations
+            all_task_ids = set(task_deletes.keys()) | set(task_inserts.keys())
+
+            for task_id in all_task_ids:
+                has_delete = task_id in task_deletes
+                has_insert = task_id in task_inserts
+
+                if has_delete and has_insert:
+                    # Update task with new data
+                    task_data = task_inserts[task_id]
+                    entity_id = task_data[0] if len(task_data) > 0 else None
+                    player_entity_id = task_data[1] if len(task_data) > 1 else None
+                    traveler_id = task_data[2] if len(task_data) > 2 else None
+                    completed = task_data[4] if len(task_data) > 4 else False
+
+                    logging.debug(f"[TasksProcessor] REPLACEMENT for task_id={task_id}: completed={completed}")
+
+                    # Validate parsed data
+                    if not self._validate_task_data(entity_id, player_entity_id, traveler_id, task_id, completed):
+                        logging.warning(f"[TasksProcessor] Invalid replacement data, skipping: task_id={task_id}")
+                        continue
+
+                    # Update cached task state
+                    if hasattr(self, "_task_states"):
+                        old_completed = self._task_states.get(task_id, {}).get("completed", False)
+
+                        self._task_states[task_id] = {
+                            "entity_id": entity_id,
+                            "player_entity_id": player_entity_id,
+                            "traveler_id": traveler_id,
+                            "completed": completed,
+                        }
+
+                        # Detect newly completed tasks
+                        if not old_completed and completed:
+                            completed_tasks.append(
+                                {"task_id": task_id, "traveler_id": traveler_id, "reducer_name": "task_update"}
+                            )
+
+                elif has_insert and not has_delete:
+                    # New task
+                    task_data = task_inserts[task_id]
+                    entity_id = task_data[0] if len(task_data) > 0 else None
+                    player_entity_id = task_data[1] if len(task_data) > 1 else None
+                    traveler_id = task_data[2] if len(task_data) > 2 else None
+                    completed = task_data[4] if len(task_data) > 4 else False
+
+                    logging.debug(f"[TasksProcessor] NEW TASK task_id={task_id}: completed={completed}")
+
+                    # Validate and add new task
+                    if self._validate_task_data(entity_id, player_entity_id, traveler_id, task_id, completed):
+                        if hasattr(self, "_task_states"):
+                            self._task_states[task_id] = {
+                                "entity_id": entity_id,
+                                "player_entity_id": player_entity_id,
+                                "traveler_id": traveler_id,
+                                "completed": completed,
+                            }
+
+                elif has_delete and not has_insert:
+                    # Remove task completely
+                    logging.debug(f"[TasksProcessor] DELETE task_id={task_id}")
+                    if hasattr(self, "_task_states") and task_id in self._task_states:
+                        del self._task_states[task_id]
+
+        except Exception as e:
+            logging.error(f"Error processing task state transaction: {e}")
+
+    def _process_task_desc_transaction(self, update):
+        """
+        Process traveler_task_desc transaction update.
+        """
+        try:
+            inserts = update.get("inserts", [])
+            deletes = update.get("deletes", [])
+            
+            # Collect all deletes and inserts by task_id
+            desc_deletes = {}
+            desc_inserts = {}
+
+            # Parse deletes first  
+            for delete_str in deletes:
+                try:
+                    import json
+
+                    if isinstance(delete_str, str):
+                        delete_data = json.loads(delete_str)
+                    else:
+                        delete_data = list(delete_str)
+
+                    if isinstance(delete_data, list) and len(delete_data) >= 1:
+                        task_id = delete_data[0] if len(delete_data) > 0 else None  # id is first field
+                        if task_id:
+                            desc_deletes[task_id] = delete_data
+                            logging.debug(f"[TasksProcessor] Collected desc delete for task_id={task_id}")
+
+                except Exception as e:
+                    logging.warning(f"Error parsing task desc transaction delete: {e}")
+
+            # Parse inserts
+            for insert_str in inserts:
+                try:
+                    import json
+
+                    if isinstance(insert_str, str):
+                        desc_data = json.loads(insert_str)
+                    else:
+                        desc_data = dict(insert_str)
+
+                    # Handle both dict and list formats
+                    if isinstance(desc_data, dict):
+                        task_id = desc_data.get("id")
+                    elif isinstance(desc_data, list) and len(desc_data) >= 1:
+                        task_id = desc_data[0]
+                    else:
+                        continue
+
+                    if task_id:
+                        desc_inserts[task_id] = desc_data
+                        logging.debug(f"[TasksProcessor] Collected desc insert for task_id={task_id}")
+
+                except Exception as e:
+                    logging.warning(f"Error parsing task desc transaction insert: {e}")
+
+            # Process descriptions
+            all_desc_ids = set(desc_deletes.keys()) | set(desc_inserts.keys())
+
+            for task_id in all_desc_ids:
+                has_delete = task_id in desc_deletes
+                has_insert = task_id in desc_inserts
+
+                if has_delete and has_insert:
+                    # Update description
+                    desc_data = desc_inserts[task_id]
+                    logging.debug(f"[TasksProcessor] DESC REPLACEMENT for task_id={task_id}")
+                    self._update_task_description_cache(task_id, desc_data)
+
+                elif has_insert and not has_delete:
+                    # New description
+                    desc_data = desc_inserts[task_id]
+                    logging.debug(f"[TasksProcessor] NEW DESC for task_id={task_id}")
+                    self._update_task_description_cache(task_id, desc_data)
+
+                elif has_delete and not has_insert:
+                    # Remove description
+                    logging.debug(f"[TasksProcessor] DELETE DESC for task_id={task_id}")
+                    if hasattr(self, "_task_descriptions") and task_id in self._task_descriptions:
+                        del self._task_descriptions[task_id]
+
+        except Exception as e:
+            logging.error(f"Error processing task desc transaction: {e}")
+
+    def _update_task_description_cache(self, task_id, desc_data):
+        """
+        Update task description cache with new data.
+        """
+        try:
+            if not hasattr(self, "_task_descriptions"):
+                self._task_descriptions = {}
+
+            if isinstance(desc_data, dict):
+                self._task_descriptions[task_id] = {
+                    "description": desc_data.get("description", f"Task {task_id}"),
+                    "level_requirement": desc_data.get("level_requirement", {}),
+                    "required_items": desc_data.get("required_items", []),
+                    "rewarded_items": desc_data.get("rewarded_items", []),
+                    "rewarded_experience": desc_data.get("rewarded_experience", {}),
+                }
+            else:
+                # Fallback for list format - create basic entry
+                self._task_descriptions[task_id] = {
+                    "description": f"Task {task_id}",
+                    "level_requirement": {},
+                    "required_items": [],
+                    "rewarded_items": [],
+                    "rewarded_experience": {},
+                }
+
+        except Exception as e:
+            logging.error(f"Error updating task description cache for task {task_id}: {e}")

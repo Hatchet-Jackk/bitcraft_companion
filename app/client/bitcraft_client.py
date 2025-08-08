@@ -555,10 +555,6 @@ class BitCraft:
                     subprotocols=[self.proto],
                     max_size=None,
                     max_queue=None,
-                    open_timeout=30,
-                    close_timeout=10,
-                    ping_timeout=20,
-                    ping_interval=None,
                 )
 
                 # Try to receive the first message with a timeout
