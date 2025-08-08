@@ -30,6 +30,12 @@ jobs:
         version: latest
         virtualenvs-create: true
         virtualenvs-in-project: true
+        installer-parallel: true
+
+    - name: Configure Poetry
+      run: |
+        poetry config virtualenvs.create true
+        poetry config virtualenvs.in-project true
 
     - name: Cache dependencies
       uses: actions/cache@v3
@@ -42,12 +48,12 @@ jobs:
 
     - name: Run tests
       run: |
-        Write-Host "🧪 Running full test suite on dev merge..."
+        Write-Host "Running full test suite on dev merge..."
         poetry run pytest tests/ -v --tb=short
 
     - name: Test build process
       run: |
-        Write-Host "🔨 Validating build process..."
+        Write-Host "Validating build process..."
         poetry add --group dev pyinstaller
         poetry run python -m PyInstaller --clean bitcraft_companion.spec
 
@@ -55,20 +61,20 @@ jobs:
       run: |
         if (Test-Path "dist\*.exe") {
           $exe = Get-ChildItem "dist\*.exe" | Select-Object -First 1
-          Write-Host "✅ Build validation successful!"
+          Write-Host " validation successful!"
           Write-Host "Executable: $($exe.Name)"
           Write-Host "Size: $([math]::Round($exe.Length/1MB, 2)) MB"
         } else {
-          Write-Host "❌ Build validation failed - no executable found"
+          Write-Host "Build validation failed - no executable found"
           exit 1
         }
 
     - name: Dev validation summary
       run: |
         Write-Host ""
-        Write-Host "🎉 Dev branch validation completed successfully!"
-        Write-Host "✅ Tests passed"
-        Write-Host "✅ Build validated"
-        Write-Host "📦 Version: ${{ steps.version.outputs.version }}"
+        Write-Host "Dev branch validation completed successfully!"
+        Write-Host "Tests passed"
+        Write-Host " validated"
+        Write-Host "Version: ${{ steps.version.outputs.version }}"
         Write-Host ""
-        Write-Host "Ready for release when merged to master! 🚀"
+        Write-Host "Ready for release when merged to master! "

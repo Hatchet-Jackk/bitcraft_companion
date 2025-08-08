@@ -40,24 +40,24 @@ jobs:
         echo "  PR branch:  $NEW_VERSION"
         
         if [ "$OLD_VERSION" = "$NEW_VERSION" ]; then
-          echo "❌ VERSION CHECK FAILED"
+          echo "VERSION CHECK FAILED"
           echo "Version must be updated in pyproject.toml before merging"
           echo "Current version: $OLD_VERSION"
           echo "Please increment the version (e.g., to $OLD_VERSION.1 or next minor/major version)"
           exit 1
         fi
         
-        echo "✅ Version updated from $OLD_VERSION to $NEW_VERSION"
+        echo "Version updated from $OLD_VERSION to $NEW_VERSION"
 
     - name: Validate version format
       run: |
         VERSION="${{ steps.pr-version.outputs.new_version }}"
         if [[ ! $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-          echo "❌ Invalid version format: $VERSION"
+          echo "Invalid version format: $VERSION"
           echo "Version must follow semantic versioning (e.g., 1.2.3)"
           exit 1
         fi
-        echo "✅ Version format is valid: $VERSION"
+        echo "Version format is valid: $VERSION"
 
     - name: Check version increase
       run: |
@@ -77,13 +77,13 @@ jobs:
         NEW_NUMERIC=$((NEW_MAJOR * 10000 + NEW_MINOR * 100 + NEW_PATCH))
         
         if [ $NEW_NUMERIC -le $OLD_NUMERIC ]; then
-          echo "❌ Version must be higher than current version"
+          echo "Version must be higher than current version"
           echo "Current: $OLD_VERSION ($OLD_NUMERIC)"
           echo "New:     $NEW_VERSION ($NEW_NUMERIC)"
           exit 1
         fi
         
-        echo "✅ Version properly incremented"
+        echo "Version properly incremented"
 
   test:
     name: Run Tests
@@ -104,6 +104,12 @@ jobs:
         version: latest
         virtualenvs-create: true
         virtualenvs-in-project: true
+        installer-parallel: true
+
+    - name: Configure Poetry
+      run: |
+        poetry config virtualenvs.create true
+        poetry config virtualenvs.in-project true
 
     - name: Cache dependencies
       uses: actions/cache@v3
@@ -116,18 +122,13 @@ jobs:
 
     - name: Run tests
       run: |
-        echo "Running full test suite..."
+        Write-Host "Running full test suite..."
         poetry run pytest tests/ -v --tb=short
-      
-    - name: Test results summary
-      if: always()
-      run: |
-        if [ $? -eq 0 ]; then
-          echo "✅ All tests passed! Ready for merge."
-        else
-          echo "❌ Tests failed! Please fix failing tests before merge."
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "Tests failed! Please fix failing tests before merge."
           exit 1
-        fi
+        }
+        Write-Host "All tests passed! Ready for merge."
 
   build-test:
     name: Test Build Process
@@ -148,6 +149,12 @@ jobs:
         version: latest
         virtualenvs-create: true
         virtualenvs-in-project: true
+        installer-parallel: true
+
+    - name: Configure Poetry
+      run: |
+        poetry config virtualenvs.create true
+        poetry config virtualenvs.in-project true
 
     - name: Install dependencies
       run: poetry install
@@ -157,18 +164,18 @@ jobs:
 
     - name: Test build process
       run: |
-        echo "Testing executable build process..."
+        Write-Host "Testing executable build process..."
         poetry run python -m PyInstaller --clean bitcraft_companion.spec
         
     - name: Verify build output
       run: |
         if (Test-Path "dist\*.exe") {
           $exe = Get-ChildItem "dist\*.exe" | Select-Object -First 1
-          Write-Host "✅ Build test successful!"
+          Write-Host " test successful!"
           Write-Host "Generated: $($exe.Name)"
           Write-Host "Size: $([math]::Round($exe.Length/1MB, 2)) MB"
         } else {
-          Write-Host "❌ Build test failed - no executable generated"
+          Write-Host "Build test failed - no executable generated"
           exit 1
         }
 
@@ -189,14 +196,14 @@ jobs:
         
         echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
         echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-        echo "| Version Bump | $( [ "$VERSION_STATUS" = "success" ] && echo "✅ Passed" || echo "❌ Failed" ) |" >> $GITHUB_STEP_SUMMARY
-        echo "| Tests | $( [ "$TEST_STATUS" = "success" ] && echo "✅ Passed" || echo "❌ Failed" ) |" >> $GITHUB_STEP_SUMMARY
-        echo "| Build Test | $( [ "$BUILD_STATUS" = "success" ] && echo "✅ Passed" || echo "❌ Failed" ) |" >> $GITHUB_STEP_SUMMARY
+        echo "| Version Bump | $( [ "$VERSION_STATUS" = "success" ] && echo "Passed" || echo "Failed" ) |" >> $GITHUB_STEP_SUMMARY
+        echo "| Tests | $( [ "$TEST_STATUS" = "success" ] && echo "Passed" || echo "Failed" ) |" >> $GITHUB_STEP_SUMMARY
+        echo "| Build Test | $( [ "$BUILD_STATUS" = "success" ] && echo "Passed" || echo "Failed" ) |" >> $GITHUB_STEP_SUMMARY
         
         if [ "$VERSION_STATUS" = "success" ] && [ "$TEST_STATUS" = "success" ] && [ "$BUILD_STATUS" = "success" ]; then
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "🎉 **All checks passed! This PR is ready to merge.**" >> $GITHUB_STEP_SUMMARY
+          echo "**All checks passed! This PR is ready to merge.**" >> $GITHUB_STEP_SUMMARY
         else
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "❌ **Some checks failed. Please fix issues before merging.**" >> $GITHUB_STEP_SUMMARY
+          echo "**Some checks failed. Please fix issues before merging.**" >> $GITHUB_STEP_SUMMARY
         fi

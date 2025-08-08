@@ -428,8 +428,8 @@ class ClaimInfoHeader(ctk.CTkFrame):
 
         else:
             # No claims - show error state
-            self.claim_dropdown.configure(values=["❌ No Claims Available"], state="disabled")
-            self.claim_dropdown.set("❌ No Claims Available")
+            self.claim_dropdown.configure(values=["No Claims Available"], state="disabled")
+            self.claim_dropdown.set("No Claims Available")
 
         logging.info(f"Updated available claims: {len(claims_list)} claims, current: {current_claim_id}")
 

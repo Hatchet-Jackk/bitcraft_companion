@@ -2,7 +2,7 @@ name: Build and Release
 
 on:
   push:
-    branches: [ master, main ]  # Support both common main branch names
+    branches: [ master, main ]  
 
 jobs:
   extract-version:
@@ -29,12 +29,12 @@ jobs:
       run: |
         TAG="${{ steps.get-version.outputs.tag }}"
         if git tag --list | grep -q "^$TAG$"; then
-          echo "❌ Tag $TAG already exists!"
+          echo "Tag $TAG already exists!"
           echo "This version has already been released."
           echo "Please update the version in pyproject.toml"
           exit 1
         fi
-        echo "✅ Tag $TAG is available for release"
+        echo "Tag $TAG is available for release"
 
   test:
     name: Run Tests
@@ -55,6 +55,12 @@ jobs:
         version: latest
         virtualenvs-create: true
         virtualenvs-in-project: true
+        installer-parallel: true
+
+    - name: Configure Poetry
+      run: |
+        poetry config virtualenvs.create true
+        poetry config virtualenvs.in-project true
 
     - name: Cache dependencies
       uses: actions/cache@v3
@@ -67,12 +73,12 @@ jobs:
 
     - name: Run tests
       run: |
-        echo "🚀 MASTER BRANCH RELEASE - Running full test suite before release..."
+        Write-Host " MASTER BRANCH RELEASE - Running full test suite before release..."
         poetry run pytest tests/ -v --tb=short
 
     - name: Test results
       run: |
-        echo "✅ All tests passed! Proceeding with PRODUCTION RELEASE build."
+        Write-Host "All tests passed! Proceeding with PRODUCTION RELEASE build."
 
   build:
     name: Build Executable
@@ -93,6 +99,12 @@ jobs:
         version: latest
         virtualenvs-create: true
         virtualenvs-in-project: true
+        installer-parallel: true
+
+    - name: Configure Poetry
+      run: |
+        poetry config virtualenvs.create true
+        poetry config virtualenvs.in-project true
 
     - name: Install dependencies
       run: poetry install
@@ -102,8 +114,8 @@ jobs:
 
     - name: Build executable
       run: |
-        echo "🏗️ Building PRODUCTION RELEASE: BitCraft Companion v${{ needs.extract-version.outputs.version }}"
-        echo "📦 Creating distributable executable from master branch..."
+        Write-Host "Building PRODUCTION RELEASE: BitCraft Companion v${{ needs.extract-version.outputs.version }}"
+        Write-Host "Creating distributable executable from master branch..."
         poetry run python -m PyInstaller --clean bitcraft_companion.spec
 
     - name: Verify build
@@ -117,11 +129,11 @@ jobs:
           echo "filename=$filename" >> $env:GITHUB_OUTPUT
           echo "filesize=$filesize" >> $env:GITHUB_OUTPUT
           
-          Write-Host "✅ Build successful!"
+          Write-Host " successful!"
           Write-Host "Executable: $filename"
           Write-Host "Size: $filesize MB"
         } else {
-          Write-Host "❌ Build failed - no executable found"
+          Write-Host "Build failed - no executable found"
           exit 1
         }
 
@@ -185,7 +197,7 @@ $COMMITS
 ## Technical Details
 - **Version**: $VERSION  
 - **File Size**: ${{ needs.build.outputs.filesize }} MB
-- **Tests Passed**: ✅ All 120+ tests validated
+- **Tests Passed**: All 120+ tests validated
 - **Build Date**: $(date -u +%Y-%m-%d)
 - **Python Version**: 3.10+"
 
@@ -220,7 +232,7 @@ $COMMITS
 
     - name: Release Summary
       run: |
-        echo "## 🚀 Release Created Successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "##  Release Created Successfully!" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "**Version**: ${{ needs.extract-version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
         echo "**Tag**: ${{ needs.extract-version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
@@ -228,7 +240,7 @@ $COMMITS
         echo "**Size**: ${{ needs.build.outputs.filesize }} MB" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Download Link:" >> $GITHUB_STEP_SUMMARY
-        echo "[📥 Download BitCraft Companion ${{ needs.extract-version.outputs.tag }}](https://github.com/${{ github.repository }}/releases/tag/${{ needs.extract-version.outputs.tag }})" >> $GITHUB_STEP_SUMMARY
+        echo "[Download BitCraft Companion ${{ needs.extract-version.outputs.tag }}](https://github.com/${{ github.repository }}/releases/tag/${{ needs.extract-version.outputs.tag }})" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Changelog:" >> $GITHUB_STEP_SUMMARY
         echo "${{ steps.changelog.outputs.changelog }}" >> $GITHUB_STEP_SUMMARY
@@ -241,17 +253,17 @@ $COMMITS
     steps:
     - name: Success notification
       run: |
-        echo "🎉🚀 PRODUCTION RELEASE SUCCESSFUL!"
+        echo "PRODUCTION RELEASE SUCCESSFUL!"
         echo ""
         echo "BitCraft Companion ${{ needs.extract-version.outputs.tag }} has been released from master branch!"
         echo ""
-        echo "✅ Master branch tests passed"
-        echo "✅ Production build completed" 
-        echo "✅ GitHub release created"
-        echo "✅ Executable uploaded and ready for download"
+        echo "Master branch tests passed"
+        echo "Production build completed" 
+        echo "GitHub release created"
+        echo "Executable uploaded and ready for download"
         echo ""
-        echo "📥 Download the latest release:"
+        echo "Download the latest release:"
         echo "https://github.com/${{ github.repository }}/releases/tag/${{ needs.extract-version.outputs.tag }}"
         echo ""
-        echo "🔗 View all releases:"
+        echo "View all releases:"
         echo "https://github.com/${{ github.repository }}/releases"
