@@ -6,21 +6,8 @@ on:
 
 jobs:
   version-check:
-    name: Verify Version Bump    - name: Install dependencies
-      run: |
-        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
-        poetry install
-
-    - name: Run tests
-      run: |
-        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
-        Write-Host "Running full test suite..."
-        poetry run pytest tests/ -v --tb=short
-        if ($LASTEXITCODE -ne 0) {
-          Write-Host "Tests failed! Please fix failing tests before merge."
-          exit 1
-        }
-        Write-Host "All tests passed! Ready for merge.": ubuntu-latest
+    name: Verify Version Bump
+    runs-on: ubuntu-latest
     steps:
     - name: Checkout PR
       uses: actions/checkout@v4
@@ -133,17 +120,20 @@ jobs:
         key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
 
     - name: Install dependencies
-      run: poetry install
+      run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        poetry install
 
     - name: Run tests
       run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
         Write-Host "Running full test suite..."
         poetry run pytest tests/ -v --tb=short
         if ($LASTEXITCODE -ne 0) {
-          Write-Host "Tests failed! Please fix failing tests before merge."
+          Write-Host "❌ Tests failed! Please fix failing tests before merge."
           exit 1
         }
-        Write-Host "All tests passed! Ready for merge."
+        Write-Host "✅ All tests passed! Ready for merge."
 
   build-test:
     name: Test Build Process
@@ -193,7 +183,7 @@ jobs:
       run: |
         if (Test-Path "dist\*.exe") {
           $exe = Get-ChildItem "dist\*.exe" | Select-Object -First 1
-          Write-Host " test successful!"
+          Write-Host "✅ Build test successful!"
           Write-Host "Generated: $($exe.Name)"
           Write-Host "Size: $([math]::Round($exe.Length/1MB, 2)) MB"
         } else {

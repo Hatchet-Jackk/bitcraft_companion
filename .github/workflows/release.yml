@@ -2,43 +2,9 @@ name: Build and Release
 
 on:
   push:
-    branches: [ master, main ]     - name: Install dependencies
-      ru        installer-parallel: true
+    branches: [ master, main ]  
 
-    - name: Add Poetry to PATH and Configure
-      run: |
-        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
-        [Environment]::SetEnvironmentVariable("PATH", $env:PATH, [EnvironmentVariableTarget]::Process)
-        poetry config virtualenvs.create true
-        poetry config virtualenvs.in-project true
-
-    - name: Install dependencies
-      run: |
-        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
-        poetry install
-
-    - name: Add PyInstaller
-      run: |
-        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
-        poetry add --group dev pyinstaller
-
-    - name: Build executable
-      run: |
-        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
-        Write-Host "Building PRODUCTION RELEASE: BitCraft Companion v${{ needs.extract-version.outputs.version }}"
-        Write-Host "Creating distributable executable from master branch..."
-        poetry run python -m PyInstaller --clean bitcraft_companion.spec:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
-        poetry install
-
-    - name: Run tests
-      run: |
-        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
-        Write-Host "MASTER BRANCH RELEASE - Running full test suite before release..."
-        poetry run pytest tests/ -v --tb=short
-
-    - name: Test results
-      run: |
-        Write-Host "All tests passed! Proceeding with PRODUCTION RELEASE build."
+jobs:
   extract-version:
     name: Extract Version
     runs-on: ubuntu-latest
@@ -105,11 +71,14 @@ on:
         key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
 
     - name: Install dependencies
-      run: poetry install
+      run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        poetry install
 
     - name: Run tests
       run: |
-        Write-Host " MASTER BRANCH RELEASE - Running full test suite before release..."
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        Write-Host "MASTER BRANCH RELEASE - Running full test suite before release..."
         poetry run pytest tests/ -v --tb=short
 
     - name: Test results
@@ -137,19 +106,26 @@ on:
         virtualenvs-in-project: true
         installer-parallel: true
 
-    - name: Configure Poetry
+    - name: Add Poetry to PATH and Configure
       run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        [Environment]::SetEnvironmentVariable("PATH", $env:PATH, [EnvironmentVariableTarget]::Process)
         poetry config virtualenvs.create true
         poetry config virtualenvs.in-project true
 
     - name: Install dependencies
-      run: poetry install
+      run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        poetry install
 
     - name: Add PyInstaller
-      run: poetry add --group dev pyinstaller
+      run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+        poetry add --group dev pyinstaller
 
     - name: Build executable
       run: |
+        $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
         Write-Host "Building PRODUCTION RELEASE: BitCraft Companion v${{ needs.extract-version.outputs.version }}"
         Write-Host "Creating distributable executable from master branch..."
         poetry run python -m PyInstaller --clean bitcraft_companion.spec
@@ -165,7 +141,7 @@ on:
           echo "filename=$filename" >> $env:GITHUB_OUTPUT
           echo "filesize=$filesize" >> $env:GITHUB_OUTPUT
           
-          Write-Host " successful!"
+          Write-Host "Build successful!"
           Write-Host "Executable: $filename"
           Write-Host "Size: $filesize MB"
         } else {
@@ -233,7 +209,7 @@ $COMMITS
 ## Technical Details
 - **Version**: $VERSION  
 - **File Size**: ${{ needs.build.outputs.filesize }} MB
-- **Tests Passed**: All 120+ tests validated
+- **Tests Passed**: All tests validated
 - **Build Date**: $(date -u +%Y-%m-%d)
 - **Python Version**: 3.10+"
 
@@ -268,7 +244,7 @@ $COMMITS
 
     - name: Release Summary
       run: |
-        echo "##  Release Created Successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "## Release Created Successfully!" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "**Version**: ${{ needs.extract-version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
         echo "**Tag**: ${{ needs.extract-version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
