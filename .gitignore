@@ -38,3 +38,4 @@ player_data.json
 
 *.zip
 *.back
+.cl*
