@@ -24,12 +24,12 @@ class TasksProcessor(BaseProcessor):
         self._task_states = {}
         self._task_descriptions = {}
         self._player_state = {}
-        
+
         # Reset buffering to handle race conditions during task resets
         self._reset_in_progress = False
         self._reset_timestamp = None
-        self._reset_tables_updated = set()  # Track which tables have been updated during reset
-        self._buffered_ui_update = False    # Track if we need to send a buffered update
+        self._reset_tables_updated = set()
+        self._buffered_ui_update = False
 
     def get_table_names(self):
         """Return list of table names this processor handles."""
@@ -62,6 +62,8 @@ class TasksProcessor(BaseProcessor):
                         self._process_task_state_transaction(update, completed_tasks)
                     elif table_name == "traveler_task_desc":
                         self._process_task_desc_transaction(update)
+                    elif table_name == "player_state":
+                        self._process_player_state_transaction(update, reducer_name)
 
             # Log task completions with safe encoding
             for completed_task in completed_tasks:
@@ -71,13 +73,27 @@ class TasksProcessor(BaseProcessor):
             total_operations = sum(len(update.get("inserts", [])) + len(update.get("deletes", [])) for update in updates)
             if total_operations >= 10:  # Reset threshold
                 self._handle_reset_start(table_name)
-            
+
             # Only refresh UI if data actually changed and we have cached data to send
             if data_changed:
                 self._refresh_tasks(table_name)
 
         except Exception as e:
             logging.error(f"Error handling tasks transaction: {e}")
+
+    def process_subscription_with_context(self, table_update, is_initial=False):
+        """
+        Handle subscription updates with context about whether it's InitialSubscription.
+        This allows us to distinguish between InitialSubscription and regular SubscriptionUpdate.
+        """
+        # Store the context for use in processing methods
+        self._current_subscription_context = {"is_initial": is_initial}
+        try:
+            # Call the regular subscription processing
+            self.process_subscription(table_update)
+        finally:
+            # Clean up context
+            self._current_subscription_context = None
 
     def process_subscription(self, table_update):
         """
@@ -130,7 +146,7 @@ class TasksProcessor(BaseProcessor):
                 if table_name:
                     self._reset_tables_updated.add(table_name)
                     logging.debug(f"TASK RESET: Table {table_name} updated, buffering UI refresh")
-                
+
                 # Check if reset is complete (both key tables updated)
                 if "traveler_task_state" in self._reset_tables_updated and "traveler_task_desc" in self._reset_tables_updated:
                     logging.info("TASK RESET: Both task tables updated, completing reset")
@@ -141,7 +157,7 @@ class TasksProcessor(BaseProcessor):
                     self._buffered_ui_update = True
                     logging.debug(f"TASK RESET: Buffering update, waiting for remaining tables")
                     return
-            
+
             # Check for timeout during reset
             if self._reset_in_progress and self._reset_timestamp:
                 time_since_reset = time.time() - self._reset_timestamp
@@ -220,8 +236,23 @@ class TasksProcessor(BaseProcessor):
                     # Send the expiration time to the claim info header
                     expiration_time = row.get("traveler_tasks_expiration", 0)
                     if expiration_time > 0:
-                        # Debug the timestamp we're receiving (expiration_time is in SECONDS)
-                        self._queue_update("player_state_update", {"traveler_tasks_expiration": expiration_time})
+                        # Check if this is from InitialSubscription by looking for subscription context
+                        context = getattr(self, "_current_subscription_context", {})
+                        is_initial = context.get("is_initial", False)
+
+                        logging.debug(
+                            f"[TasksProcessor] SUBSCRIPTION - Player state expiration: {expiration_time}, is_initial: {is_initial}"
+                        )
+
+                        # Send subscription-based update to UI with source context
+                        self._queue_update(
+                            "player_state_update",
+                            {
+                                "traveler_tasks_expiration": expiration_time,
+                                "is_initial_subscription": is_initial,
+                                "source": "subscription",
+                            },
+                        )
 
         except Exception as e:
             logging.error(f"Error processing player state data: {e}")
@@ -573,34 +604,34 @@ class TasksProcessor(BaseProcessor):
                 self._reset_timestamp = time.time()
                 self._reset_tables_updated.clear()
                 self._buffered_ui_update = False
-            
+
             # Add this table to the updated set
             if table_name:
                 self._reset_tables_updated.add(table_name)
-                
+
         except Exception as e:
             logging.error(f"Error handling reset start: {e}")
-    
+
     def _complete_reset(self):
         """
         Complete the reset sequence and refresh UI.
         """
         try:
             logging.info("TASK RESET: Completing reset and refreshing UI")
-            
+
             # Clear reset state
             self._reset_in_progress = False
             self._reset_timestamp = None
             self._reset_tables_updated.clear()
-            
+
             # Perform the UI refresh if it was buffered
             if self._buffered_ui_update:
                 self._buffered_ui_update = False
                 self._do_ui_refresh()
-            
+
         except Exception as e:
             logging.error(f"Error completing reset: {e}")
-    
+
     def _do_ui_refresh(self):
         """
         Actually perform the UI refresh (extracted from original _refresh_tasks).
@@ -651,7 +682,7 @@ class TasksProcessor(BaseProcessor):
 
         if hasattr(self, "_player_state"):
             self._player_state.clear()
-            
+
         # Clear reset state
         self._reset_in_progress = False
         self._reset_timestamp = None
@@ -665,7 +696,7 @@ class TasksProcessor(BaseProcessor):
         try:
             inserts = update.get("inserts", [])
             deletes = update.get("deletes", [])
-            
+
             # Collect all deletes and inserts by task_id to handle replacements properly
             task_deletes = {}
             task_inserts = {}
@@ -783,12 +814,12 @@ class TasksProcessor(BaseProcessor):
         try:
             inserts = update.get("inserts", [])
             deletes = update.get("deletes", [])
-            
+
             # Collect all deletes and inserts by task_id
             desc_deletes = {}
             desc_inserts = {}
 
-            # Parse deletes first  
+            # Parse deletes first
             for delete_str in deletes:
                 try:
                     import json
@@ -888,3 +919,59 @@ class TasksProcessor(BaseProcessor):
 
         except Exception as e:
             logging.error(f"Error updating task description cache for task {task_id}: {e}")
+
+    def _process_player_state_transaction(self, update, reducer_name):
+        """
+        Process player_state transaction update.
+        Handles real-time updates to traveler_tasks_expiration from transaction messages.
+        """
+        try:
+            inserts = update.get("inserts", [])
+            deletes = update.get("deletes", [])
+
+            logging.debug(
+                f"[TasksProcessor] PLAYER_STATE TRANSACTION: {len(inserts)} inserts, {len(deletes)} deletes - {reducer_name}"
+            )
+
+            # Process inserts (new or updated player state)
+            for insert_str in inserts:
+                try:
+                    import json
+
+                    if isinstance(insert_str, str):
+                        player_data = json.loads(insert_str)
+                    else:
+                        player_data = dict(insert_str)
+
+                    entity_id = player_data.get("entity_id")
+                    traveler_tasks_expiration = player_data.get("traveler_tasks_expiration", 0)
+
+                    if entity_id and traveler_tasks_expiration > 0:
+                        # Update cached player state
+                        if not hasattr(self, "_player_state"):
+                            self._player_state = {}
+
+                        self._player_state[entity_id] = {
+                            "traveler_tasks_expiration": traveler_tasks_expiration,
+                        }
+
+                        logging.debug(
+                            f"[TasksProcessor] TRANSACTION - Updated player_state expiration: {traveler_tasks_expiration} via {reducer_name}"
+                        )
+
+                        # Send transaction-based update to UI
+                        self._queue_update(
+                            "player_state_update",
+                            {
+                                "traveler_tasks_expiration": traveler_tasks_expiration,
+                                "is_initial_subscription": False,
+                                "source": "transaction",
+                                "reducer_name": reducer_name,
+                            },
+                        )
+
+                except Exception as e:
+                    logging.warning(f"Error parsing player state transaction insert: {e}")
+
+        except Exception as e:
+            logging.error(f"Error processing player state transaction: {e}")

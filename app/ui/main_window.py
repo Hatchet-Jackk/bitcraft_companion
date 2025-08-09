@@ -152,10 +152,18 @@ class MainWindow(ctk.CTk):
         self.show_tab("Claim Inventory")
 
         # Ensure loading overlay is visible on top and lock tab buttons
-        self.show_loading()
+        # Just show the overlay and set initial state
+        logging.info(f"[LOADING STATE] Showing initial loading overlay")
+        self.loading_overlay.grid(row=0, column=0, sticky="nsew")
+        self.loading_overlay.tkraise()
         self._set_tab_buttons_state("disabled")
 
+        # Start loading animation
+        if hasattr(self, "loading_indicator"):
+            self._start_loading_animation()
+
         # Start data processing with enhanced timer support and resize detection
+        logging.debug("Starting data processing loop with enhanced timer support")
         self.after(100, self.process_data_queue)
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.bind("<Configure>", self._on_window_configure)
@@ -278,6 +286,7 @@ class MainWindow(ctk.CTk):
 
     def _start_loading_animation(self):
         """Starts the loading dots animation."""
+        logging.debug("Starting loading animation")
         self.loading_animation_state = 0
         self._animate_loading_dots()
 
@@ -301,9 +310,12 @@ class MainWindow(ctk.CTk):
         except Exception as e:
             logging.error(f"Error in loading animation: {e}")
 
-    def show_loading(self):
+    def show_loading(self, reset_data_tracking=True):
         """Shows the loading overlay with minimum display time for better UX."""
+        logging.info(f"[LOADING STATE] Showing loading overlay - reset_data_tracking: {reset_data_tracking}")
         self.is_loading = True
+        if reset_data_tracking:
+            self.received_data_types = set()  # Reset data tracking when showing loading for claim switch
         self.loading_start_time = time.time()
         self.loading_overlay.grid(row=0, column=0, sticky="nsew")
         self.loading_overlay.tkraise()
@@ -332,6 +344,7 @@ class MainWindow(ctk.CTk):
 
     def _actually_hide_loading(self):
         """Actually hides the loading overlay."""
+        logging.info(f"[LOADING STATE] Hiding loading overlay - data types received: {self.received_data_types}")
         self.is_loading = False
         self.loading_overlay.grid_remove()
         self._set_tab_buttons_state("normal")
@@ -755,10 +768,21 @@ class MainWindow(ctk.CTk):
         """
         try:
             traveler_tasks_expiration = msg_data.get("traveler_tasks_expiration", 0)
+            is_initial_subscription = msg_data.get("is_initial_subscription", False)
+            source = msg_data.get("source", "unknown")
+            reducer_name = msg_data.get("reducer_name", "")
+
+            logging.debug(
+                f"[MainWindow] Player state update: expiration={traveler_tasks_expiration}, source={source}, is_initial={is_initial_subscription}, reducer={reducer_name}"
+            )
 
             if traveler_tasks_expiration > 0:
-                # Update the claim info header with the expiration time
-                self.claim_info.update_task_refresh_expiration(traveler_tasks_expiration)
+                # Update the claim info header with the expiration time and context
+                self.claim_info.update_task_refresh_expiration(
+                    traveler_tasks_expiration,
+                    is_initial_subscription=is_initial_subscription,
+                    source=source,
+                )
 
         except Exception as e:
             logging.error(f"Error handling player state update: {e}")
@@ -780,6 +804,11 @@ class MainWindow(ctk.CTk):
                 if msg_type == "inventory_update":
                     if "Claim Inventory" in self.tabs:
                         start_time = time.time()
+
+                        # Log inventory data details for debugging
+                        data_size = len(msg_data) if isinstance(msg_data, dict) else "unknown"
+                        logging.debug(f"Processing inventory update: {data_size} items, loading state: {self.is_loading}")
+
                         self.tabs["Claim Inventory"].update_data(msg_data)
                         update_time = time.time() - start_time
                         logging.debug(f"Inventory tab update took {update_time:.3f}s")
@@ -787,8 +816,12 @@ class MainWindow(ctk.CTk):
                         # Track that we've received inventory data
                         if self.is_loading:
                             self.received_data_types.add("inventory")
-                            logging.debug(f"Received inventory data - progress: {self.received_data_types}")
+                            logging.info(
+                                f"[LOADING STATE] Received inventory data - progress: {self.received_data_types}/{self.expected_data_types}"
+                            )
                             self._check_all_data_loaded()
+                        else:
+                            logging.debug(f"Inventory update processed while not in loading state")
 
                 elif msg_type == "crafting_update":
                     if "Passive Crafting" in self.tabs:
@@ -920,12 +953,23 @@ class MainWindow(ctk.CTk):
         Check if all expected data types have been received and hide loading if so.
         Only hides loading if we're not in the middle of a claim switch.
         """
+        logging.debug(
+            f"[LOADING STATE] Checking data completeness - is_loading: {self.is_loading}, received: {self.received_data_types}, expected: {self.expected_data_types}"
+        )
+
         if self.is_loading and self.received_data_types >= self.expected_data_types:
             # Only hide loading if we have actual data and not switching claims
-            if not self.claim_info.claim_switching:
-                logging.info(f"All initial data loaded: {self.received_data_types}")
+            claim_switching = getattr(self.claim_info, "claim_switching", False)
+            logging.info(f"[LOADING STATE] All data received! Claim switching: {claim_switching}")
+
+            if not claim_switching:
+                logging.info(f"[LOADING STATE] Hiding loading overlay - all initial data loaded: {self.received_data_types}")
                 self.hide_loading()
-            # else:
+            else:
+                logging.info(f"[LOADING STATE] Not hiding loading overlay - claim switch in progress")
+        else:
+            missing_types = self.expected_data_types - self.received_data_types
+            logging.debug(f"[LOADING STATE] Still waiting for data types: {missing_types}")
 
     def _reset_loading_state_for_switch(self):
         """Resets loading state for a new claim switch."""
