@@ -8,7 +8,7 @@
 - **Start Date:**  
 - **End Date:**  
 - **Tasks:**
-        - [ ] Fix Travler task timer to show "Loading" when starting without data
+        - [x] Fix Travler task timer at startup
         - [ ] UI graphical improvements
         - [ ] Quick filters
         - [ ] Member management
@@ -43,6 +43,6 @@
 
 | Milestone      | Start Date | End Date   | Status     |
 | -------------- | ---------- | ---------- | ---------- |
-| Milestone 1    |            |            | Planned    |
+| Milestone 1    | 2025-08-09 |            | Started    |
 | Milestone 2    |            |            | Planned    |
 | Milestone 3    |            |            | Planned    |
