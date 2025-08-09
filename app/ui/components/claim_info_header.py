@@ -542,20 +542,36 @@ class ClaimInfoHeader(ctk.CTkFrame):
         except Exception as e:
             logging.error(f"Error initializing header with claims: {e}")
 
-    def update_task_refresh_expiration(self, expiration_time: int):
+    def update_task_refresh_expiration(
+        self,
+        expiration_time: int,
+        is_initial_subscription: bool = False,
+        source: str = "unknown",
+    ):
         """
         Updates the traveler tasks expiration time and starts countdown.
 
         Args:
             expiration_time: Seconds since Unix epoch when tasks refresh
+            is_initial_subscription: True if this data came from InitialSubscription
+            source: Source of the update (subscription, transaction)
         """
         try:
+            logging.debug(
+                f"[ClaimInfoHeader] Timer update: expiration={expiration_time}, is_initial={is_initial_subscription}, source={source}"
+            )
+
             # Reset ready state detection when new expiration time comes in
             if hasattr(self, "_ready_state_detected"):
                 self._ready_state_detected = False
 
-            # Update expiration time
+            # Update expiration time - always accept the new value
             self.traveler_tasks_expiration = expiration_time
+
+            # Mark the source of this update for timer logic
+            self._last_update_source = source
+            self._from_initial_subscription = is_initial_subscription
+
             self._update_task_refresh_countdown()
 
             # Start periodic updates if not already running
@@ -577,10 +593,22 @@ class ClaimInfoHeader(ctk.CTkFrame):
                 time_diff_seconds = self.traveler_tasks_expiration - current_time_seconds
 
                 if time_diff_seconds <= 0:
-                    # Timer expired - reset to 4 hours and continue countdown
-                    logging.info("Task refresh timer expired - resetting to 4 hours")
-                    self.traveler_tasks_expiration = current_time_seconds + (4 * 60 * 60)  # 4 hours
-                    time_diff_seconds = 4 * 60 * 60  # Start fresh countdown
+                    # Timer expired - check source to determine behavior
+                    source = getattr(self, "_last_update_source", "unknown")
+                    is_initial = getattr(self, "_from_initial_subscription", False)
+
+                    if source == "subscription" and is_initial:
+                        # This is from InitialSubscription - show as ready, don't auto-reset
+                        logging.debug(f"Task refresh timer from InitialSubscription shows expired - displaying as ready")
+                        self.task_refresh_time = "-"
+                        color = "#940796"  # Purple for no content
+                        self.task_refresh_label.configure(text=self.task_refresh_time, text_color=color)
+                        return
+                    else:
+                        # Auto-reset for transactions or non-initial subscriptions
+                        logging.info(f"Task refresh timer expired (source: {source}) - resetting to 4 hours")
+                        self.traveler_tasks_expiration = current_time_seconds + (4 * 60 * 60)  # 4 hours
+                        time_diff_seconds = 4 * 60 * 60  # Start fresh countdown
 
                     # Reset ready state detection for next cycle
                     if hasattr(self, "_ready_state_detected"):
