@@ -446,8 +446,7 @@ class ActiveCraftingProcessor(BaseProcessor):
                 owner_id = action_data.get("owner_entity_id")
                 recipe_id = action_data.get("recipe_id")
 
-            # Get reference data for lookups
-            item_lookups = self._get_item_lookups()
+            # Use shared item lookup service
             recipe_lookup = {r["id"]: r for r in self.reference_data.get("crafting_recipe_desc", [])}
             building_desc_lookup = {b["id"]: b["name"] for b in self.reference_data.get("building_desc", [])}
 
@@ -545,9 +544,9 @@ class ActiveCraftingProcessor(BaseProcessor):
                             base_quantity = item_stack[1]
                             total_quantity = base_quantity * craft_count
 
-                            # Look up item details using smart lookup with preferred source
+                            # Look up item details using shared lookup service with preferred source
                             preferred_source = self._determine_preferred_item_source(recipe_info)
-                            item_info = self._lookup_item_by_id(item_lookups, item_id, preferred_source)
+                            item_info = self.item_lookup_service.lookup_item_by_id(item_id, preferred_source)
                             item_name = (
                                 item_info.get("name", f"Unknown Item {item_id}") if item_info else f"Unknown Item {item_id}"
                             )
@@ -734,74 +733,6 @@ class ActiveCraftingProcessor(BaseProcessor):
             logging.error(f"Error formatting hierarchy for UI: {e}")
             return {}
 
-    def _get_item_lookups(self):
-        """
-        Create combined item lookup dictionary from all reference data sources.
-
-        Uses compound keys to prevent ID conflicts between tables.
-        Example: item_id 1050001 exists in both item_desc and cargo_desc as different items.
-
-        Returns:
-            Dictionary mapping both (item_id, table_source) and item_id to item details
-        """
-        try:
-            item_lookups = {}
-
-            # Combine all item reference data with compound keys to prevent overwrites
-            for data_source in ["resource_desc", "item_desc", "cargo_desc"]:
-                items = self.reference_data.get(data_source, [])
-                for item in items:
-                    item_id = item.get("id")
-                    if item_id is not None:
-                        # Use compound key (item_id, table_source) to prevent overwrites
-                        compound_key = (item_id, data_source)
-                        item_lookups[compound_key] = item
-
-                        # Also maintain simple item_id lookup for backwards compatibility
-                        # Priority: item_desc > cargo_desc > resource_desc
-                        if item_id not in item_lookups or data_source == "item_desc":
-                            item_lookups[item_id] = item
-
-            return item_lookups
-
-        except Exception as e:
-            logging.error(f"Error creating item lookups: {e}")
-            return {}
-
-    def _lookup_item_by_id(self, item_lookups, item_id, preferred_source=None):
-        """
-        Smart item lookup that handles both compound keys and simple keys.
-
-        Args:
-            item_lookups: The lookup dictionary from _get_item_lookups()
-            item_id: The item ID to look up
-            preferred_source: Preferred table source ("item_desc", "cargo_desc", "resource_desc")
-
-        Returns:
-            Item details dictionary or None if not found
-        """
-        try:
-            # Try preferred source first if specified
-            if preferred_source:
-                compound_key = (item_id, preferred_source)
-                if compound_key in item_lookups:
-                    return item_lookups[compound_key]
-
-            # Try simple item_id lookup (uses priority system)
-            if item_id in item_lookups:
-                return item_lookups[item_id]
-
-            # Try all compound keys if simple lookup failed
-            for source in ["item_desc", "cargo_desc", "resource_desc"]:
-                compound_key = (item_id, source)
-                if compound_key in item_lookups:
-                    return item_lookups[compound_key]
-
-            return None
-
-        except Exception as e:
-            logging.error(f"Error looking up item {item_id}: {e}")
-            return None
 
     def _determine_preferred_item_source(self, recipe_info):
         """
@@ -1065,8 +996,7 @@ class ActiveCraftingProcessor(BaseProcessor):
 
                         if isinstance(first_item, list) and len(first_item) >= 2:
                             item_id = first_item[0]
-                            item_lookups = self._get_item_lookups()
-                            item_info = self._lookup_item_by_id(item_lookups, item_id)
+                            item_info = self.item_lookup_service.lookup_item_by_id(item_id)
 
                             if item_info:
                                 return item_info.get("name", f"Item {item_id}")
