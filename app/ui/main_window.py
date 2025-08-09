@@ -768,10 +768,21 @@ class MainWindow(ctk.CTk):
         """
         try:
             traveler_tasks_expiration = msg_data.get("traveler_tasks_expiration", 0)
+            is_initial_subscription = msg_data.get("is_initial_subscription", False)
+            source = msg_data.get("source", "unknown")
+            reducer_name = msg_data.get("reducer_name", "")
+
+            logging.debug(
+                f"[MainWindow] Player state update: expiration={traveler_tasks_expiration}, source={source}, is_initial={is_initial_subscription}, reducer={reducer_name}"
+            )
 
             if traveler_tasks_expiration > 0:
-                # Update the claim info header with the expiration time
-                self.claim_info.update_task_refresh_expiration(traveler_tasks_expiration)
+                # Update the claim info header with the expiration time and context
+                self.claim_info.update_task_refresh_expiration(
+                    traveler_tasks_expiration,
+                    is_initial_subscription=is_initial_subscription,
+                    source=source,
+                )
 
         except Exception as e:
             logging.error(f"Error handling player state update: {e}")
