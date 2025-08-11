@@ -7,6 +7,15 @@ from .message_router import MessageRouter
 from .processors import InventoryProcessor, CraftingProcessor, TasksProcessor, ClaimsProcessor, ActiveCraftingProcessor
 from .utils import ItemLookupService
 from ..services.notification_service import NotificationService
+from ..client.bitcraft_client import BitCraft
+from ..client.query_service import QueryService
+from ..models.player import Player
+from ..models.claim import Claim
+from ..services.inventory_service import InventoryService
+from ..services.passive_crafting_service import PassiveCraftingService
+from ..services.traveler_tasks_service import TravelerTasksService
+from ..services.active_crafting_service import ActiveCraftingService
+from ..services.claim_service import ClaimService
 
 
 class DataService:
@@ -19,25 +28,8 @@ class DataService:
     """
 
     def __init__(self):
-        # Import here to prevent circular dependencies
-        from ..client.bitcraft_client import BitCraft
-        from ..models.player import Player
-        from ..models.claim import Claim
-        from ..services.inventory_service import InventoryService
-        from ..services.passive_crafting_service import PassiveCraftingService
-        from ..services.traveler_tasks_service import TravelerTasksService
-        from ..services.active_crafting_service import ActiveCraftingService
-
-        self.BitCraftClass = BitCraft
-        self.PlayerClass = Player
-        self.ClaimClass = Claim
-        self.InventoryServiceClass = InventoryService
-        self.PassiveCraftingServiceClass = PassiveCraftingService
-        self.TravelerTasksServiceClass = TravelerTasksService
-        self.ActiveCraftingServiceClass = ActiveCraftingService
-
         # Instantiate the client immediately to load saved user data
-        self.client = self.BitCraftClass()
+        self.client = BitCraft()
 
         self.player = None
         self.claim = None
@@ -243,7 +235,7 @@ class DataService:
         """
         try:
             # Set player
-            self.player = self.PlayerClass(player_name)
+            self.player = Player(player_name)
             logging.debug(f"[DataService] Player instance created: {player_name}")
 
             # Load reference data
@@ -272,9 +264,6 @@ class DataService:
 
             # Initialize claim manager
             logging.debug("[DataService] Initializing claim manager")
-            from ..services.claim_service import ClaimService
-            from ..client.query_service import QueryService
-
             query_service = QueryService(self.client)
             self.claim_manager = ClaimService(self.client, query_service)
 
@@ -316,7 +305,7 @@ class DataService:
                 return None, None, None
 
             logging.info(f"[DataService] Setting active claim: {current_claim.get('name', 'Unknown')}")
-            self.claim = self.ClaimClass(
+            self.claim = Claim(
                 client=self.client,
                 reference_data=reference_data,
             )
@@ -341,11 +330,6 @@ class DataService:
         """
         try:
             # Initialize services for processors
-            from ..services.inventory_service import InventoryService
-            from ..services.passive_crafting_service import PassiveCraftingService
-            from ..services.traveler_tasks_service import TravelerTasksService
-            from ..services.active_crafting_service import ActiveCraftingService
-
             inventory_service = InventoryService(bitcraft_client=self.client, claim_instance=self.claim)
             passive_crafting_service = PassiveCraftingService(
                 bitcraft_client=self.client,
@@ -452,8 +436,6 @@ class DataService:
                 return
 
             # Use query service to get all subscription queries
-            from ..client.query_service import QueryService
-
             query_service = QueryService(self.client)
             all_subscriptions = query_service.get_subscription_queries(self.player.user_id, self.claim.claim_id)
 
@@ -525,7 +507,7 @@ class DataService:
 
             # Update claim instance
             reference_data = self.client.load_full_reference_data()
-            self.claim = self.ClaimClass(
+            self.claim = Claim(
                 client=self.client,
                 reference_data=reference_data,
             )
