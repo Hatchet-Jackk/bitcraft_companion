@@ -9,11 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 * Comprehensive tests for UI tab sorting logic
 * Player state transaction processing and subscription context handling for traveler task
+* Update login failure message to provide clearer instructions for users
+* Update subscription queries to include traveler task timers for improved data retrieval
 
 ### Improved
 * Player state update handling with source tracking and initial subscription logic
-* Task refresh expiration handling with source tracking and initial subscription logic
+* Enhance task refresh timer logic for improved state handling and user feedback
 * Improve column sorting. Now mixed value columns sort logically
+* Refactor item lookup logic to use shared item lookup service across processors
+* Refactor task refresh expiration logic for improved logging and state management
+* Enhance `TasksProcessor` to handle `traveler_task_loop_timer` data for improved task timing management
+* Fixed child jobs breaking into sub-jobs in the passive crafting tab
 
 ### Fixed 
 * Traveler task timer showing incorrect timer at launch when tasks refresh while Companion is closed
