@@ -6,6 +6,7 @@ from datetime import datetime
 import json
 import time
 import logging
+import threading
 from .base_processor import BaseProcessor
 
 
@@ -34,10 +35,20 @@ class TasksProcessor(BaseProcessor):
 
         # Task timer data from traveler_task_loop_timer
         self._task_timer_data = {}
+        
+        # Timer management for one-off queries
+        self._timer_thread = None
+        self._timer_stop_event = threading.Event()
+        self._ui_update_callback = None
+        self._last_timer_query_time = 0
+        self._current_task_expiration = 0
+        
+        # Configuration - can be adjusted for testing
+        self.TASK_TIMER_VERIFICATION_INTERVAL = 1800  # 30 minutes in seconds
 
     def get_table_names(self):
         """Return list of table names this processor handles."""
-        return ["traveler_task_state", "traveler_task_desc", "player_state", "traveler_task_loop_timer"]
+        return ["traveler_task_state", "traveler_task_desc", "player_state"]
 
     def process_transaction(self, table_update, reducer_name, timestamp):
         """
@@ -68,8 +79,6 @@ class TasksProcessor(BaseProcessor):
                         self._process_task_desc_transaction(update)
                     elif table_name == "player_state":
                         self._process_player_state_transaction(update, reducer_name)
-                    elif table_name == "traveler_task_loop_timer":
-                        self._process_task_timer_transaction(update, reducer_name)
 
             # Log task completions with safe encoding
             for completed_task in completed_tasks:
@@ -134,8 +143,6 @@ class TasksProcessor(BaseProcessor):
                 self._process_task_desc_data(table_rows)
             elif table_name == "player_state":
                 self._process_player_state_data(table_rows)
-            elif table_name == "traveler_task_loop_timer":
-                self._process_task_timer_data(table_rows)
 
             # Try to send formatted tasks if we have both data types
             self._send_tasks_update()
@@ -242,104 +249,8 @@ class TasksProcessor(BaseProcessor):
         except Exception as e:
             logging.error(f"Error processing player state data: {e}")
 
-    def _process_task_timer_data(self, timer_rows):
-        """
-        Process traveler_task_loop_timer data to get real timer information.
-        """
-        try:
-            for row in timer_rows:
-                scheduled_id = row.get("scheduled_id")
-                scheduled_at = row.get("scheduled_at")
-
-                if scheduled_at and isinstance(scheduled_at, list) and len(scheduled_at) > 1:
-                    # Extract timestamp from format: [1, {"__timestamp_micros_since_unix_epoch__": 1754913600048146}]
-                    timestamp_data = scheduled_at[1]
-                    if isinstance(timestamp_data, dict):
-                        timestamp_micros = timestamp_data.get("__timestamp_micros_since_unix_epoch__", 0)
-                        if timestamp_micros:
-                            # Convert microseconds to seconds
-                            expiration_time = timestamp_micros / 1_000_000
-
-                            # Store timer data
-                            self._task_timer_data[scheduled_id] = expiration_time
-
-                            current_time = time.time()
-                            time_diff = expiration_time - current_time
-
-                            logging.info(
-                                f"[TasksProcessor] Real task timer: scheduled_id={scheduled_id}, expires in {time_diff:.1f}s"
-                            )
-
-                            # Check if this is from InitialSubscription by looking for subscription context
-                            context = getattr(self, "_current_subscription_context", {})
-                            is_initial = context.get("is_initial", False)
-
-                            # Send timer update to UI
-                            update_data = {
-                                "traveler_tasks_expiration": expiration_time,
-                                "is_initial_subscription": is_initial,
-                                "source": "traveler_task_loop_timer",
-                            }
-                            logging.debug(f"[TasksProcessor] Sending real timer update to UI: {update_data}")
-                            self._queue_update("player_state_update", update_data)
-
-        except Exception as e:
-            logging.error(f"Error processing task timer data: {e}")
-
-    def _process_task_timer_transaction(self, update, reducer_name):
-        """
-        Process traveler_task_loop_timer transaction updates.
-        """
-        try:
-            inserts = update.get("inserts", [])
-            deletes = update.get("deletes", [])
-
-            logging.debug(
-                f"[TasksProcessor] TASK_TIMER TRANSACTION: {len(inserts)} inserts, {len(deletes)} deletes - {reducer_name}"
-            )
-
-            for insert_str in inserts:
-                try:
-
-                    if isinstance(insert_str, str):
-                        timer_data = json.loads(insert_str)
-                    else:
-                        timer_data = dict(insert_str)
-
-                    scheduled_id = timer_data.get("scheduled_id")
-                    scheduled_at = timer_data.get("scheduled_at")
-
-                    if scheduled_at and isinstance(scheduled_at, list) and len(scheduled_at) > 1:
-                        timestamp_data = scheduled_at[1]
-                        if isinstance(timestamp_data, dict):
-                            timestamp_micros = timestamp_data.get("__timestamp_micros_since_unix_epoch__", 0)
-                            if timestamp_micros:
-                                expiration_time = timestamp_micros / 1_000_000
-                                self._task_timer_data[scheduled_id] = expiration_time
-
-                                current_time = time.time()
-                                time_diff = expiration_time - current_time
-
-                                logging.info(
-                                    f"[TasksProcessor] Timer transaction update: scheduled_id={scheduled_id}, expires in {time_diff:.1f}s"
-                                )
-
-                                # Send timer update to UI
-                                self._queue_update(
-                                    "player_state_update",
-                                    {
-                                        "traveler_tasks_expiration": expiration_time,
-                                        "is_initial_subscription": False,
-                                        "source": "traveler_task_loop_timer_transaction",
-                                        "reducer_name": reducer_name,
-                                    },
-                                )
-
-                except Exception as e:
-                    logging.warning(f"Error parsing task timer transaction insert: {e}")
-
-        except Exception as e:
-            logging.error(f"Error processing task timer transaction: {e}")
+    # NOTE: Subscription-based timer processing methods removed
+    # Timer data now handled by one-off queries in start_real_time_timer()
 
     def _send_tasks_update(self):
         """
@@ -706,6 +617,10 @@ class TasksProcessor(BaseProcessor):
         # Clear timer data
         if hasattr(self, "_task_timer_data"):
             self._task_timer_data.clear()
+        
+        # Reset timer state for new claim
+        self._last_timer_query_time = 0
+        self._current_task_expiration = 0
 
     def _process_task_state_transaction(self, update, completed_tasks):
         """
@@ -1004,3 +919,191 @@ class TasksProcessor(BaseProcessor):
 
         except Exception as e:
             logging.error(f"Error processing player state transaction: {e}")
+
+    def start_real_time_timer(self, ui_update_callback):
+        """
+        Start the real-time timer with one-off queries for task timer data.
+        
+        Args:
+            ui_update_callback: Callback function to send timer updates to UI
+        """
+        try:
+            if self._timer_thread and self._timer_thread.is_alive():
+                logging.warning("[TasksProcessor] Timer already running, stopping previous timer first")
+                self.stop_real_time_timer()
+            
+            self._ui_update_callback = ui_update_callback
+            self._timer_stop_event.clear()
+            
+            # Initial query for task timer data
+            self._query_task_timer_data(is_initial=True)
+            
+            # Start timer thread for periodic verification
+            self._timer_thread = threading.Thread(
+                target=self._timer_loop,
+                daemon=True
+            )
+            self._timer_thread.start()
+            
+            logging.info(f"[TasksProcessor] Real-time timer started with {self.TASK_TIMER_VERIFICATION_INTERVAL}s verification interval")
+            
+        except Exception as e:
+            logging.error(f"[TasksProcessor] Error starting real-time timer: {e}")
+
+    def stop_real_time_timer(self):
+        """Stop the real-time timer thread."""
+        try:
+            if self._timer_thread and self._timer_thread.is_alive():
+                logging.info("[TasksProcessor] Stopping real-time timer...")
+                self._timer_stop_event.set()
+                self._timer_thread.join(timeout=2.0)
+                
+                if self._timer_thread.is_alive():
+                    logging.warning("[TasksProcessor] Timer thread did not stop within timeout")
+                else:
+                    logging.info("[TasksProcessor] Real-time timer stopped successfully")
+                    
+            self._timer_thread = None
+            self._ui_update_callback = None
+            
+        except Exception as e:
+            logging.error(f"[TasksProcessor] Error stopping real-time timer: {e}")
+
+    def _timer_loop(self):
+        """
+        Main timer loop that handles periodic verification and zero-second refresh.
+        """
+        try:
+            logging.info("[TasksProcessor] Timer loop started")
+            
+            while not self._timer_stop_event.is_set():
+                current_time = time.time()
+                
+                # Check if we need periodic verification
+                time_since_last_query = current_time - self._last_timer_query_time
+                if time_since_last_query >= self.TASK_TIMER_VERIFICATION_INTERVAL:
+                    logging.info(f"[TasksProcessor] Periodic verification: {time_since_last_query:.1f}s since last query")
+                    self._query_task_timer_data(is_verification=True)
+                
+                # Check for zero-second refresh
+                if self._current_task_expiration > 0:
+                    time_remaining = self._current_task_expiration - current_time
+                    
+                    # If timer expired or about to expire (within 1 second)
+                    if time_remaining <= 1.0:
+                        logging.info("[TasksProcessor] Timer at zero seconds, checking for task reset")
+                        self._query_task_timer_data(is_zero_refresh=True)
+                
+                # Sleep for 1 second before next check
+                if not self._timer_stop_event.wait(1.0):
+                    continue
+                    
+        except Exception as e:
+            logging.error(f"[TasksProcessor] Error in timer loop: {e}")
+        finally:
+            logging.info("[TasksProcessor] Timer loop stopped")
+
+    def _query_task_timer_data(self, is_initial=False, is_verification=False, is_zero_refresh=False):
+        """
+        Query task timer data using one-off query instead of subscriptions.
+        
+        Args:
+            is_initial: True if this is the initial query at startup
+            is_verification: True if this is a periodic verification query
+            is_zero_refresh: True if this is a zero-second refresh query
+        """
+        try:
+            client = self.services.get("client") if self.services else None
+            if not client:
+                logging.warning("[TasksProcessor] No client available for timer query")
+                return
+            
+            query_type = "initial" if is_initial else ("verification" if is_verification else ("zero-refresh" if is_zero_refresh else "unknown"))
+            logging.debug(f"[TasksProcessor] Querying task timer data ({query_type})")
+            
+            # Query the traveler_task_loop_timer table
+            query_string = "SELECT * FROM traveler_task_loop_timer;"
+            results = client.query(query_string)
+            
+            if results:
+                previous_expiration = self._current_task_expiration
+                
+                # Process the results same way as subscription data
+                self._process_timer_query_results(results, query_type)
+                
+                # Log verification results
+                if is_verification and previous_expiration > 0:
+                    current_time = time.time()
+                    app_calculated_remaining = previous_expiration - current_time
+                    server_remaining = self._current_task_expiration - current_time if self._current_task_expiration > 0 else 0
+                    
+                    time_difference = abs(app_calculated_remaining - server_remaining)
+                    if time_difference > 5:  # Log if difference > 5 seconds
+                        logging.warning(
+                            f"[TasksProcessor] Timer discrepancy detected! "
+                            f"App calculated: {app_calculated_remaining:.1f}s, "
+                            f"Server actual: {server_remaining:.1f}s, "
+                            f"Difference: {time_difference:.1f}s"
+                        )
+                    else:
+                        logging.info(
+                            f"[TasksProcessor] Timer verification OK - "
+                            f"Difference: {time_difference:.1f}s"
+                        )
+                
+                # Update last query time
+                self._last_timer_query_time = time.time()
+                
+            else:
+                logging.warning(f"[TasksProcessor] No results from timer query ({query_type})")
+                
+        except Exception as e:
+            logging.error(f"[TasksProcessor] Error querying task timer data: {e}")
+
+    def _process_timer_query_results(self, results, query_type):
+        """
+        Process timer query results and send updates to UI.
+        
+        Args:
+            results: Query results from traveler_task_loop_timer
+            query_type: String describing the type of query for logging
+        """
+        try:
+            for row in results:
+                scheduled_id = row.get("scheduled_id")
+                scheduled_at = row.get("scheduled_at")
+
+                if scheduled_at and isinstance(scheduled_at, list) and len(scheduled_at) > 1:
+                    # Extract timestamp from format: [1, {"__timestamp_micros_since_unix_epoch__": 1754913600048146}]
+                    timestamp_data = scheduled_at[1]
+                    if isinstance(timestamp_data, dict):
+                        timestamp_micros = timestamp_data.get("__timestamp_micros_since_unix_epoch__", 0)
+                        if timestamp_micros:
+                            # Convert microseconds to seconds
+                            expiration_time = timestamp_micros / 1_000_000
+                            
+                            # Store timer data
+                            self._task_timer_data[scheduled_id] = expiration_time
+                            self._current_task_expiration = expiration_time
+
+                            current_time = time.time()
+                            time_diff = expiration_time - current_time
+
+                            logging.info(
+                                f"[TasksProcessor] Task timer from query ({query_type}): "
+                                f"scheduled_id={scheduled_id}, expires in {time_diff:.1f}s"
+                            )
+
+                            # Send traveler task timer update to UI
+                            timer_data = {
+                                "traveler_tasks_expiration": expiration_time,
+                                "source": f"one_off_query_{query_type}",
+                                "query_type": query_type,
+                                "is_initial": (query_type == "initial")
+                            }
+                            
+                            logging.debug(f"[TasksProcessor] Sending traveler task timer update: {timer_data}")
+                            self._queue_update("traveler_task_timer_update", timer_data)
+                                
+        except Exception as e:
+            logging.error(f"[TasksProcessor] Error processing timer query results: {e}")

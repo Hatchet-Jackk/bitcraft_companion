@@ -102,8 +102,6 @@ class QueryService:
     def get_subscription_queries(self, user_id: str, claim_id: str) -> List[str]:
         """Get all subscription queries for a claim - matching your DataManager pattern."""
         queries = [
-            # Get traveler task timers
-            ("SELECT * FROM traveler_task_loop_timer;"),
             # Get traveler tasks for player
             ("SELECT * FROM traveler_task_state WHERE player_entity_id = '{user_id}';".format(user_id=user_id)),
             # Get claim buildings
