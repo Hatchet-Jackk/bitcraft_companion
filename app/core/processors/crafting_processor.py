@@ -18,6 +18,11 @@ class CraftingProcessor(BaseProcessor):
     for passive crafting changes with built-in timer functionality.
     """
 
+    # Time bucketing configuration for stable grouping (prevents job count flickering)
+    # Jobs within this time window will be grouped together for display
+    # Adjust as needed: 1=no bucketing, 5=5-second windows, 10=larger windows
+    TIME_GROUPING_BUCKET_SECONDS = 5
+
     def __init__(self, data_queue, services, reference_data):
         """Initialize the processor with timer functionality."""
         super().__init__(data_queue, services, reference_data)
@@ -33,6 +38,10 @@ class CraftingProcessor(BaseProcessor):
 
         # Track items that have already been notified as ready to prevent duplicates
         self.notified_ready_items = set()
+        
+        # Sticky child group cache - prevents child row flickering
+        # Key: f"{item_name}|{crafter}", Value: Dict of stable child groups
+        self._child_groups_cache = {}
 
     def get_table_names(self):
         """Return list of table names this processor handles."""
@@ -887,6 +896,8 @@ class CraftingProcessor(BaseProcessor):
                 # Calculate time remaining
                 status_code = status[0] if status and len(status) > 0 else 0
                 time_remaining_display = "READY"
+                remaining_seconds = 0  
+                
                 if status_code == 1 and timestamp_micros:  # IN_PROGRESS
                     current_time_micros = int(time.time() * 1_000_000)
                     elapsed_micros = current_time_micros - timestamp_micros
@@ -938,6 +949,7 @@ class CraftingProcessor(BaseProcessor):
                         "crafter": crafter_name,
                         "building_name": container_name,
                         "time_remaining": time_remaining_display,
+                        "remaining_seconds": remaining_seconds,  
                         "entity_id": craft_id,  # This is the entity_id for timer updates
                         "craft_id": craft_id,
                         "recipe_name": recipe_name,
@@ -962,6 +974,8 @@ class CraftingProcessor(BaseProcessor):
             Dictionary with hierarchical structure for UI
         """
         try:
+            # Clean up completed operations from sticky child groups cache
+            self._cleanup_completed_operations(raw_operations)
             hierarchy = {}
 
             # Group by item name + crafter first (Level 1)
@@ -1001,19 +1015,20 @@ class CraftingProcessor(BaseProcessor):
                     building_type = op["building_name"]
                 hierarchy[item_crafter_key]["unique_building_types"].add(building_type)
 
-                # Group by building + time remaining (Level 2)
-                building_time_key = f"{op['building_name']}|{op['time_remaining']}"
-                if building_time_key not in hierarchy[item_crafter_key]["buildings"]:
-                    hierarchy[item_crafter_key]["buildings"][building_time_key] = {
+                # Use sticky child grouping to prevent flickering
+                child_group_key = self._assign_to_sticky_child_group(op, item_crafter_key)
+                
+                if child_group_key not in hierarchy[item_crafter_key]["buildings"]:
+                    hierarchy[item_crafter_key]["buildings"][child_group_key] = {
                         "building_name": op["building_name"],
                         "time_remaining": op["time_remaining"],
                         "quantity": 0,
                         "operations": [],
                     }
 
-                # Add to building/time group
-                hierarchy[item_crafter_key]["buildings"][building_time_key]["quantity"] += op["quantity"]
-                hierarchy[item_crafter_key]["buildings"][building_time_key]["operations"].append(op)
+                # Add to sticky child group
+                hierarchy[item_crafter_key]["buildings"][child_group_key]["quantity"] += op["quantity"]
+                hierarchy[item_crafter_key]["buildings"][child_group_key]["operations"].append(op)
 
             # Convert to UI format
             return self._format_hierarchy_for_ui(hierarchy)
@@ -1083,23 +1098,23 @@ class CraftingProcessor(BaseProcessor):
                     entity_ids = [op.get("entity_id") for op in original_operations if op.get("entity_id")]
 
                     # Create single consolidated child row for this building + time combination
-                    child_operations.append(
-                        {
-                            "item": item_name,
-                            "tier": group_data["tier"],
-                            "quantity": total_quantity,  # Consolidated quantity
-                            "tag": group_data["tag"],
-                            "time_remaining": building_data["time_remaining"],
-                            "crafter": crafter,
-                            "building_name": self._add_building_suffix(
-                                building_data["building_name"], group_data["unique_buildings"]
-                            ),
-                            "entity_ids": entity_ids,  # Multiple entity IDs for timer updates
-                            "entity_id": entity_ids[0] if entity_ids else None,  # Primary entity ID for compatibility
-                            "is_expandable": False,
-                            "expansion_level": 1,
-                        }
-                    )
+                    child_row = {
+                        "item": item_name,
+                        "tier": group_data["tier"],
+                        "quantity": total_quantity,  # Consolidated quantity
+                        "tag": group_data["tag"],
+                        "time_remaining": building_data["time_remaining"],
+                        "crafter": crafter,
+                        "building_name": self._add_building_suffix(
+                            building_data["building_name"], group_data["unique_buildings"]
+                        ),
+                        "entity_ids": entity_ids,  # Multiple entity IDs for timer updates
+                        "entity_id": entity_ids[0] if entity_ids else None,  # Primary entity ID for compatibility
+                        "is_expandable": False,
+                        "expansion_level": 1,
+                    }
+                    
+                    child_operations.append(child_row)
 
                 # Determine if parent should be expandable
                 parent_is_expandable = len(group_data["buildings"]) > 1
@@ -1377,6 +1392,133 @@ class CraftingProcessor(BaseProcessor):
             logging.warning(f"Error formatting time {seconds}: {e}")
             return "Unknown"
 
+    def _get_time_bucket(self, remaining_seconds):
+        """
+        Get time bucket for grouping jobs with similar completion times.
+        
+        This prevents job count flickering when jobs are only seconds apart
+        by grouping them into time buckets for display purposes.
+        
+        Args:
+            remaining_seconds: Time remaining in seconds
+            
+        Returns:
+            int: Bucketed time in seconds for consistent grouping
+        """
+        try:
+            if self.TIME_GROUPING_BUCKET_SECONDS <= 1:
+                return remaining_seconds  # No bucketing
+            
+            # Round to nearest bucket interval
+            return round(remaining_seconds / self.TIME_GROUPING_BUCKET_SECONDS) * self.TIME_GROUPING_BUCKET_SECONDS
+            
+        except Exception as e:
+            logging.warning(f"Error calculating time bucket for {remaining_seconds}s: {e}")
+            return remaining_seconds  # Fallback to original time
+
+    def _assign_to_sticky_child_group(self, operation, item_crafter_key):
+        """
+        Assign operation to a sticky child group, preventing child row flickering.
+        
+        Once operations are assigned to a child group, they stay in that group
+        regardless of timing changes. New operations either join existing groups
+        or create new ones if they don't match.
+        
+        Args:
+            operation: The crafting operation to assign
+            item_crafter_key: The parent key (item_name|crafter)
+            
+        Returns:
+            str: Child group key for building hierarchy
+        """
+        try:
+            # Initialize cache for this item+crafter if needed
+            if item_crafter_key not in self._child_groups_cache:
+                self._child_groups_cache[item_crafter_key] = {}
+            
+            cache = self._child_groups_cache[item_crafter_key]
+            entity_id = operation.get("entity_id")
+            building_name = operation["building_name"]
+            remaining_seconds = operation.get("remaining_seconds", 0)
+            
+            # If we've seen this specific operation before, return its existing group
+            for group_key, group_info in cache.items():
+                if entity_id in group_info.get("entity_ids", set()):
+                    # Update the group's display time to most recent
+                    group_info["time_remaining"] = operation["time_remaining"]
+                    return group_key
+            
+            # This is a new operation - try to find a matching group
+            matching_group_key = None
+            for group_key, group_info in cache.items():
+                # Match criteria: same building + within time tolerance
+                if (group_info["building_name"] == building_name and
+                    abs(group_info["reference_seconds"] - remaining_seconds) <= self.TIME_GROUPING_BUCKET_SECONDS):
+                    matching_group_key = group_key
+                    break
+            
+            if matching_group_key:
+                # Add to existing group
+                cache[matching_group_key]["entity_ids"].add(entity_id)
+                # Update display time to the most recent
+                cache[matching_group_key]["time_remaining"] = operation["time_remaining"]
+                return matching_group_key
+            else:
+                # Create new group
+                group_counter = len(cache)
+                new_group_key = f"{building_name}|group_{group_counter}"
+                cache[new_group_key] = {
+                    "building_name": building_name,
+                    "reference_seconds": remaining_seconds,  # Reference time for matching new operations
+                    "time_remaining": operation["time_remaining"],  # Display time
+                    "entity_ids": {entity_id}
+                }
+                return new_group_key
+                
+        except Exception as e:
+            logging.warning(f"Error assigning sticky child group: {e}")
+            # Fallback to original logic
+            return f"{operation['building_name']}|{operation['time_remaining']}"
+
+    def _cleanup_completed_operations(self, current_operations):
+        """
+        Clean up completed operations from sticky child groups cache.
+        
+        Removes entity_ids that are no longer present in current operations,
+        and cleans up empty groups.
+        
+        Args:
+            current_operations: List of current active operations
+        """
+        try:
+            # Get set of current entity_ids
+            current_entity_ids = {op.get("entity_id") for op in current_operations if op.get("entity_id")}
+            
+            # Clean up each cached item+crafter group
+            for item_crafter_key in list(self._child_groups_cache.keys()):
+                cache = self._child_groups_cache[item_crafter_key]
+                
+                # Clean up each child group
+                for group_key in list(cache.keys()):
+                    group_info = cache[group_key]
+                    
+                    # Remove completed entity_ids
+                    group_info["entity_ids"] = {
+                        eid for eid in group_info["entity_ids"] 
+                        if eid in current_entity_ids
+                    }
+                    
+                    # Remove empty groups
+                    if not group_info["entity_ids"]:
+                        del cache[group_key]
+                
+                # Remove empty item+crafter caches
+                if not cache:
+                    del self._child_groups_cache[item_crafter_key]
+                    
+        except Exception as e:
+            logging.warning(f"Error cleaning up completed operations: {e}")
+
     def _is_current_claim_member(self, owner_entity_id):
         """Check if the owner is a member of the current claim."""
         if not hasattr(self, "_claim_members") or not self._claim_members:
@@ -1433,3 +1575,7 @@ class CraftingProcessor(BaseProcessor):
         # Clear notification tracking to prevent stale notifications after claim switch
         if hasattr(self, "notified_ready_items"):
             self.notified_ready_items.clear()
+            
+        # Clear sticky child groups cache
+        if hasattr(self, "_child_groups_cache"):
+            self._child_groups_cache.clear()
