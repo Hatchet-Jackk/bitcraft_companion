@@ -3,6 +3,7 @@ Tasks processor for handling traveler_task_state table updates.
 """
 
 from datetime import datetime
+import json
 import time
 import logging
 from .base_processor import BaseProcessor
@@ -184,7 +185,6 @@ class TasksProcessor(BaseProcessor):
         Process traveler_task_state data to store task assignments with traveler info.
         """
         try:
-            # Ensure task state cache exists (should be initialized in __init__)
             if not hasattr(self, "_task_states") or self._task_states is None:
                 self._task_states = {}
 
@@ -206,7 +206,6 @@ class TasksProcessor(BaseProcessor):
         Process traveler_task_desc data to store task descriptions.
         """
         try:
-            # Ensure task description cache exists (should be initialized in __init__)
             if not hasattr(self, "_task_descriptions") or self._task_descriptions is None:
                 self._task_descriptions = {}
 
@@ -229,7 +228,6 @@ class TasksProcessor(BaseProcessor):
         Process player_state data (kept for compatibility but timer now comes from traveler_task_loop_timer).
         """
         try:
-            # Ensure player state cache exists (should be initialized in __init__)
             if not hasattr(self, "_player_state") or self._player_state is None:
                 self._player_state = {}
 
@@ -302,7 +300,6 @@ class TasksProcessor(BaseProcessor):
 
             for insert_str in inserts:
                 try:
-                    import json
 
                     if isinstance(insert_str, str):
                         timer_data = json.loads(insert_str)
@@ -725,7 +722,6 @@ class TasksProcessor(BaseProcessor):
             # Parse deletes first
             for delete_str in deletes:
                 try:
-                    import json
 
                     if isinstance(delete_str, str):
                         delete_data = json.loads(delete_str)
@@ -744,7 +740,6 @@ class TasksProcessor(BaseProcessor):
             # Parse inserts
             for insert_str in inserts:
                 try:
-                    import json
 
                     if isinstance(insert_str, str):
                         task_data = json.loads(insert_str)
@@ -843,7 +838,6 @@ class TasksProcessor(BaseProcessor):
             # Parse deletes first
             for delete_str in deletes:
                 try:
-                    import json
 
                     if isinstance(delete_str, str):
                         delete_data = json.loads(delete_str)
@@ -862,7 +856,6 @@ class TasksProcessor(BaseProcessor):
             # Parse inserts
             for insert_str in inserts:
                 try:
-                    import json
 
                     if isinstance(insert_str, str):
                         desc_data = json.loads(insert_str)
@@ -956,7 +949,6 @@ class TasksProcessor(BaseProcessor):
 
             for insert_str in inserts:
                 try:
-                    import json
 
                     if isinstance(insert_str, str):
                         player_data = json.loads(insert_str)
