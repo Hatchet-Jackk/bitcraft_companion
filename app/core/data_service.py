@@ -7,7 +7,6 @@ from .message_router import MessageRouter
 from .processors import InventoryProcessor, CraftingProcessor, TasksProcessor, ClaimsProcessor, ActiveCraftingProcessor
 from .utils import ItemLookupService
 from ..services.notification_service import NotificationService
-from ..client.bitcraft_client import BitCraft
 from ..client.query_service import QueryService
 from ..models.player import Player
 from ..models.claim import Claim
@@ -28,6 +27,9 @@ class DataService:
     """
 
     def __init__(self):
+        # Import BitCraft lazily to avoid circular dependency with core.__init__.py
+        from ..client.bitcraft_client import BitCraft
+        
         # Instantiate the client immediately to load saved user data
         self.client = BitCraft()
 
