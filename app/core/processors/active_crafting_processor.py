@@ -4,7 +4,6 @@ Active crafting processor for handling progressive_action_state table updates.
 
 import re
 import json
-import time
 import logging
 from .base_processor import BaseProcessor
 
@@ -733,7 +732,6 @@ class ActiveCraftingProcessor(BaseProcessor):
             logging.error(f"Error formatting hierarchy for UI: {e}")
             return {}
 
-
     def _determine_preferred_item_source(self, recipe_info):
         """
         Determine the preferred item source based on recipe context.
@@ -1010,4 +1008,3 @@ class ActiveCraftingProcessor(BaseProcessor):
         except Exception as e:
             logging.error(f"Error resolving item name for recipe {recipe_id}: {e}")
             return f"Recipe {recipe_id}"
-
