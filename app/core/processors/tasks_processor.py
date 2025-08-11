@@ -2,7 +2,7 @@
 Tasks processor for handling traveler_task_state table updates.
 """
 
-import ast
+from datetime import datetime
 import time
 import logging
 from .base_processor import BaseProcessor
@@ -31,9 +31,12 @@ class TasksProcessor(BaseProcessor):
         self._reset_tables_updated = set()
         self._buffered_ui_update = False
 
+        # Task timer data from traveler_task_loop_timer
+        self._task_timer_data = {}
+
     def get_table_names(self):
         """Return list of table names this processor handles."""
-        return ["traveler_task_state", "traveler_task_desc", "player_state"]
+        return ["traveler_task_state", "traveler_task_desc", "player_state", "traveler_task_loop_timer"]
 
     def process_transaction(self, table_update, reducer_name, timestamp):
         """
@@ -64,6 +67,8 @@ class TasksProcessor(BaseProcessor):
                         self._process_task_desc_transaction(update)
                     elif table_name == "player_state":
                         self._process_player_state_transaction(update, reducer_name)
+                    elif table_name == "traveler_task_loop_timer":
+                        self._process_task_timer_transaction(update, reducer_name)
 
             # Log task completions with safe encoding
             for completed_task in completed_tasks:
@@ -128,6 +133,8 @@ class TasksProcessor(BaseProcessor):
                 self._process_task_desc_data(table_rows)
             elif table_name == "player_state":
                 self._process_player_state_data(table_rows)
+            elif table_name == "traveler_task_loop_timer":
+                self._process_task_timer_data(table_rows)
 
             # Try to send formatted tasks if we have both data types
             self._send_tasks_update()
@@ -219,7 +226,7 @@ class TasksProcessor(BaseProcessor):
 
     def _process_player_state_data(self, player_state_rows):
         """
-        Process player_state data to extract traveler_tasks_expiration.
+        Process player_state data (kept for compatibility but timer now comes from traveler_task_loop_timer).
         """
         try:
             # Ensure player state cache exists (should be initialized in __init__)
@@ -232,30 +239,110 @@ class TasksProcessor(BaseProcessor):
                     self._player_state[entity_id] = {
                         "traveler_tasks_expiration": row.get("traveler_tasks_expiration", 0),
                     }
-
-                    # Send the expiration time to the claim info header
-                    expiration_time = row.get("traveler_tasks_expiration", 0)
-                    if expiration_time > 0:
-                        # Check if this is from InitialSubscription by looking for subscription context
-                        context = getattr(self, "_current_subscription_context", {})
-                        is_initial = context.get("is_initial", False)
-
-                        logging.debug(
-                            f"[TasksProcessor] SUBSCRIPTION - Player state expiration: {expiration_time}, is_initial: {is_initial}"
-                        )
-
-                        # Send subscription-based update to UI with source context
-                        self._queue_update(
-                            "player_state_update",
-                            {
-                                "traveler_tasks_expiration": expiration_time,
-                                "is_initial_subscription": is_initial,
-                                "source": "subscription",
-                            },
-                        )
+                    logging.debug(f"[TasksProcessor] Cached player_state for entity {entity_id}")
 
         except Exception as e:
             logging.error(f"Error processing player state data: {e}")
+
+    def _process_task_timer_data(self, timer_rows):
+        """
+        Process traveler_task_loop_timer data to get real timer information.
+        """
+        try:
+            for row in timer_rows:
+                scheduled_id = row.get("scheduled_id")
+                scheduled_at = row.get("scheduled_at")
+
+                if scheduled_at and isinstance(scheduled_at, list) and len(scheduled_at) > 1:
+                    # Extract timestamp from format: [1, {"__timestamp_micros_since_unix_epoch__": 1754913600048146}]
+                    timestamp_data = scheduled_at[1]
+                    if isinstance(timestamp_data, dict):
+                        timestamp_micros = timestamp_data.get("__timestamp_micros_since_unix_epoch__", 0)
+                        if timestamp_micros:
+                            # Convert microseconds to seconds
+                            expiration_time = timestamp_micros / 1_000_000
+
+                            # Store timer data
+                            self._task_timer_data[scheduled_id] = expiration_time
+
+                            current_time = time.time()
+                            time_diff = expiration_time - current_time
+
+                            logging.info(
+                                f"[TasksProcessor] Real task timer: scheduled_id={scheduled_id}, expires in {time_diff:.1f}s"
+                            )
+
+                            # Check if this is from InitialSubscription by looking for subscription context
+                            context = getattr(self, "_current_subscription_context", {})
+                            is_initial = context.get("is_initial", False)
+
+                            # Send timer update to UI
+                            update_data = {
+                                "traveler_tasks_expiration": expiration_time,
+                                "is_initial_subscription": is_initial,
+                                "source": "traveler_task_loop_timer",
+                            }
+                            logging.debug(f"[TasksProcessor] Sending real timer update to UI: {update_data}")
+                            self._queue_update("player_state_update", update_data)
+
+        except Exception as e:
+            logging.error(f"Error processing task timer data: {e}")
+
+    def _process_task_timer_transaction(self, update, reducer_name):
+        """
+        Process traveler_task_loop_timer transaction updates.
+        """
+        try:
+            inserts = update.get("inserts", [])
+            deletes = update.get("deletes", [])
+
+            logging.debug(
+                f"[TasksProcessor] TASK_TIMER TRANSACTION: {len(inserts)} inserts, {len(deletes)} deletes - {reducer_name}"
+            )
+
+            for insert_str in inserts:
+                try:
+                    import json
+
+                    if isinstance(insert_str, str):
+                        timer_data = json.loads(insert_str)
+                    else:
+                        timer_data = dict(insert_str)
+
+                    scheduled_id = timer_data.get("scheduled_id")
+                    scheduled_at = timer_data.get("scheduled_at")
+
+                    if scheduled_at and isinstance(scheduled_at, list) and len(scheduled_at) > 1:
+                        timestamp_data = scheduled_at[1]
+                        if isinstance(timestamp_data, dict):
+                            timestamp_micros = timestamp_data.get("__timestamp_micros_since_unix_epoch__", 0)
+                            if timestamp_micros:
+                                expiration_time = timestamp_micros / 1_000_000
+                                self._task_timer_data[scheduled_id] = expiration_time
+
+                                current_time = time.time()
+                                time_diff = expiration_time - current_time
+
+                                logging.info(
+                                    f"[TasksProcessor] Timer transaction update: scheduled_id={scheduled_id}, expires in {time_diff:.1f}s"
+                                )
+
+                                # Send timer update to UI
+                                self._queue_update(
+                                    "player_state_update",
+                                    {
+                                        "traveler_tasks_expiration": expiration_time,
+                                        "is_initial_subscription": False,
+                                        "source": "traveler_task_loop_timer_transaction",
+                                        "reducer_name": reducer_name,
+                                    },
+                                )
+
+                except Exception as e:
+                    logging.warning(f"Error parsing task timer transaction insert: {e}")
+
+        except Exception as e:
+            logging.error(f"Error processing task timer transaction: {e}")
 
     def _send_tasks_update(self):
         """
@@ -415,8 +502,6 @@ class TasksProcessor(BaseProcessor):
         except Exception as e:
             logging.error(f"Error formatting required items: {e}")
             return []
-
-
 
     def _fetch_missing_task_descriptions(self):
         """
@@ -620,6 +705,10 @@ class TasksProcessor(BaseProcessor):
         self._reset_timestamp = None
         self._reset_tables_updated.clear()
         self._buffered_ui_update = False
+
+        # Clear timer data
+        if hasattr(self, "_task_timer_data"):
+            self._task_timer_data.clear()
 
     def _process_task_state_transaction(self, update, completed_tasks):
         """
@@ -865,7 +954,6 @@ class TasksProcessor(BaseProcessor):
                 f"[TasksProcessor] PLAYER_STATE TRANSACTION: {len(inserts)} inserts, {len(deletes)} deletes - {reducer_name}"
             )
 
-            # Process inserts (new or updated player state)
             for insert_str in inserts:
                 try:
                     import json
@@ -886,6 +974,23 @@ class TasksProcessor(BaseProcessor):
                         self._player_state[entity_id] = {
                             "traveler_tasks_expiration": traveler_tasks_expiration,
                         }
+
+                        current_time = time.time()
+                        time_diff = current_time - traveler_tasks_expiration
+                        hours_old = time_diff / 3600
+
+                        expiration_readable = datetime.fromtimestamp(traveler_tasks_expiration).strftime("%Y-%m-%d %H:%M:%S")
+                        current_readable = datetime.fromtimestamp(current_time).strftime("%Y-%m-%d %H:%M:%S")
+
+                        logging.debug(f"[TasksProcessor] TasksProcessor TRANSACTION player_state:")
+                        logging.debug(f"[TasksProcessor]   Entity ID: {entity_id}")
+                        logging.debug(f"[TasksProcessor]   Raw expiration: {traveler_tasks_expiration}")
+                        logging.debug(f"[TasksProcessor]   Expiration time: {expiration_readable}")
+                        logging.debug(f"[TasksProcessor]   Current time: {current_readable}")
+                        logging.debug(
+                            f"[TasksProcessor]   Age: {hours_old:.2f} hours {'(STALE!)' if hours_old > 4.5 else '(fresh)'}"
+                        )
+                        logging.debug(f"[TasksProcessor]   Reducer: {reducer_name}")
 
                         logging.debug(
                             f"[TasksProcessor] TRANSACTION - Updated player_state expiration: {traveler_tasks_expiration} via {reducer_name}"
