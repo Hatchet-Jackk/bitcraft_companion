@@ -436,10 +436,13 @@ class DataService:
         except Exception as e:
             logging.error(f"Error handling timer update: {e}")
 
-    def _setup_subscriptions_for_current_claim(self):
+    def _setup_subscriptions_for_current_claim(self, context="startup"):
         """
         Sets up subscriptions for the currently active claim using query service.
         All data comes through subscriptions - no one-off queries.
+
+        Args:
+            context: "startup" for initial app startup, "refresh" for claim refresh
         """
         try:
             logging.debug("[DataService] _setup_subscriptions_for_current_claim() called")
@@ -540,7 +543,7 @@ class DataService:
                 processor.claim = self.claim
 
             # Restart subscriptions for new claim (this automatically replaces existing subscriptions)
-            self._setup_subscriptions_for_current_claim()
+            self._setup_subscriptions_for_current_claim(context="claim_switch")
 
             # Notify UI that claim switching completed successfully
             self.data_queue.put(
@@ -594,7 +597,7 @@ class DataService:
 
             # Restart subscriptions for current claim (this will fetch all fresh data)
             logging.debug("[DataService] Restarting subscriptions for fresh data")
-            self._setup_subscriptions_for_current_claim()
+            self._setup_subscriptions_for_current_claim(context="refresh")
             logging.debug("[DataService] Subscriptions restarted successfully")
 
             logging.info("[DataService] Current claim data refresh completed successfully")
