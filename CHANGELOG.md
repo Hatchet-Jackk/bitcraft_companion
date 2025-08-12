@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.20] - Unreleased
+## [0.2.20]
 ### Added
 * Comprehensive tests for UI tab sorting logic
 * Player state transaction processing and subscription context handling for traveler task
@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Improve column sorting. Now mixed value columns sort logically
 * Refactor item lookup logic to use shared item lookup service across processors
 * Refactor task refresh expiration logic for improved logging and state management
-* Enhance `TasksProcessor` to handle `traveler_task_loop_timer` data for improved task timing management
+* Improve traveler task timer reliability at start up
 * Fixed child jobs breaking into sub-jobs in the passive crafting tab
 
 ### Fixed 

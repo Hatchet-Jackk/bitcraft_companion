@@ -120,7 +120,7 @@ class TestTasksProcessor:
         processor = TasksProcessor(mock_data_queue, mock_services, mock_reference_data)
 
         table_names = processor.get_table_names()
-        expected_tables = ["traveler_task_state", "traveler_task_desc", "traveler_task_loop_timer", "player_state"]
+        expected_tables = ["traveler_task_state", "traveler_task_desc", "player_state"]
 
         assert set(table_names) == set(expected_tables)
 
