@@ -36,6 +36,7 @@ class BaseProcessor(ABC):
         self.traveler_tasks_service = services.get("traveler_tasks_service")
         self.active_crafting_service = services.get("active_crafting_service")
         self.claim_manager = services.get("claim_manager")
+        self.item_lookup_service = services.get("item_lookup_service")
 
     @abstractmethod
     def process_transaction(self, table_update, reducer_name, timestamp):

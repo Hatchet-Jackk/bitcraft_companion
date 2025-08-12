@@ -561,10 +561,6 @@ class ClaimInfoHeader(ctk.CTkFrame):
                 f"[ClaimInfoHeader] Timer update: expiration={expiration_time}, is_initial={is_initial_subscription}, source={source}"
             )
 
-            # Reset ready state detection when new expiration time comes in
-            if hasattr(self, "_ready_state_detected"):
-                self._ready_state_detected = False
-
             # Update expiration time - always accept the new value
             self.traveler_tasks_expiration = expiration_time
 
@@ -593,26 +589,27 @@ class ClaimInfoHeader(ctk.CTkFrame):
                 time_diff_seconds = self.traveler_tasks_expiration - current_time_seconds
 
                 if time_diff_seconds <= 0:
-                    # Timer expired - check source to determine behavior
-                    source = getattr(self, "_last_update_source", "unknown")
-                    is_initial = getattr(self, "_from_initial_subscription", False)
+                    # Timer expired - tasks are refreshing, wait for server to provide new expiration
+                    import datetime
 
-                    if source == "subscription" and is_initial:
-                        # This is from InitialSubscription - show as ready, don't auto-reset
-                        logging.debug(f"Task refresh timer from InitialSubscription shows expired - displaying as ready")
-                        self.task_refresh_time = "-"
-                        color = "#940796"  # Purple for no content
-                        self.task_refresh_label.configure(text=self.task_refresh_time, text_color=color)
-                        return
-                    else:
-                        # Auto-reset for transactions or non-initial subscriptions
-                        logging.info(f"Task refresh timer expired (source: {source}) - resetting to 4 hours")
-                        self.traveler_tasks_expiration = current_time_seconds + (4 * 60 * 60)  # 4 hours
-                        time_diff_seconds = 4 * 60 * 60  # Start fresh countdown
+                    current_dt = datetime.datetime.fromtimestamp(current_time_seconds)
+                    expiration_dt = datetime.datetime.fromtimestamp(self.traveler_tasks_expiration)
 
-                    # Reset ready state detection for next cycle
-                    if hasattr(self, "_ready_state_detected"):
-                        self._ready_state_detected = False
+                    # Check how long we've been in expired state
+                    expired_duration = abs(time_diff_seconds)
+
+                    if expired_duration < 60:  # Less than 1 minute - show refreshing
+                        self.task_refresh_time = "Refreshing..."
+                        color = "#FF9800"  # Orange for activity/refreshing state
+                    else:  # More than 1 minute - show waiting for server
+                        logging.warning(
+                            f"Task refresh timer expired over 1 minute ago: current={current_dt}, expiration={expiration_dt}, expired_for={expired_duration:.1f}s - waiting for server"
+                        )
+                        self.task_refresh_time = "Waiting for server..."
+                        color = "#9E9E9E"  # Gray for waiting/inactive state
+
+                    self.task_refresh_label.configure(text=self.task_refresh_time, text_color=color)
+                    return
 
                 # Continue with normal countdown display logic...
                 total_seconds = int(time_diff_seconds)
@@ -682,8 +679,6 @@ class ClaimInfoHeader(ctk.CTkFrame):
         try:
             # Access the data service through the main app to request fresh data
             if hasattr(self.app, "data_service") and self.app.data_service:
-                # For now, just log that we would request fresh data
-                # In the future, we could add a method to the data service to re-query player_state
 
                 # As a fallback, schedule a check in 30 seconds to see if data has updated
                 self.after(30000, self._check_for_updated_expiration)
@@ -698,14 +693,9 @@ class ClaimInfoHeader(ctk.CTkFrame):
         This is a fallback method when we can't directly request fresh data.
         """
         try:
-            # This will be called 30 seconds after hitting "Ready"
-            # If we're still showing "Ready" and the timer hasn't been updated,
-            # we might need to reset our ready state detection to try again
-            if hasattr(self, "_ready_state_detected") and self._ready_state_detected:
-                current_time = time.time()
-                if self.traveler_tasks_expiration > 0 and self.traveler_tasks_expiration <= current_time:
-                    # Still in Ready state - reset detection so it can trigger again
-                    self._ready_state_detected = False
+            # This method is called periodically to check if we need to refresh player state
+            # when tasks might be refreshing (no longer needed with improved logic)
+            pass
         except Exception as e:
             logging.error(f"Error checking for updated expiration: {e}")
 

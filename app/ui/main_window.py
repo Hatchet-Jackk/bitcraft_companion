@@ -787,6 +787,39 @@ class MainWindow(ctk.CTk):
         except Exception as e:
             logging.error(f"Error handling player state update: {e}")
 
+    def _handle_traveler_task_timer_update(self, msg_data):
+        """
+        Handles traveler_task_timer_update messages from TasksProcessor one-off queries.
+        Updates the task refresh countdown in the claim info header.
+
+        Args:
+            msg_data: Message data containing traveler task timer information
+        """
+        try:
+            traveler_tasks_expiration = msg_data.get("traveler_tasks_expiration", 0)
+            is_initial = msg_data.get("is_initial", False)
+            source = msg_data.get("source", "unknown")
+            query_type = msg_data.get("query_type", "unknown")
+
+            logging.debug(
+                f"[MainWindow] Traveler task timer update: expiration={traveler_tasks_expiration}, "
+                f"source={source}, query_type={query_type}, is_initial={is_initial}"
+            )
+
+            if traveler_tasks_expiration > 0:
+                # Update the claim info header with the timer
+                self.claim_info.update_task_refresh_expiration(
+                    traveler_tasks_expiration,
+                    is_initial_subscription=is_initial,  # Keep the same parameter name for compatibility
+                    source=source,
+                )
+                logging.debug(f"[MainWindow] Task timer updated in claim info header")
+            else:
+                logging.warning(f"[MainWindow] Received invalid timer expiration: {traveler_tasks_expiration}")
+
+        except Exception as e:
+            logging.error(f"Error handling traveler task timer update: {e}")
+
     def process_data_queue(self):
         """Enhanced data queue processing that handles claim switching messages."""
         try:
@@ -901,6 +934,9 @@ class MainWindow(ctk.CTk):
 
                 elif msg_type == "player_state_update":
                     self._handle_player_state_update(msg_data)
+
+                elif msg_type == "traveler_task_timer_update":
+                    self._handle_traveler_task_timer_update(msg_data)
 
                 elif msg_type == "error":
                     messagebox.showerror("Error", msg_data)
