@@ -1,12 +1,14 @@
-import customtkinter as ctk
 import logging
+import os
 import time
 import tkinter as tk
-from tkinter import filedialog, messagebox
-import openpyxl
-from openpyxl.styles import Font, Alignment
 from datetime import datetime
-import os
+
+import customtkinter as ctk
+import openpyxl
+from openpyxl.styles import Alignment, Font
+from tkinter import filedialog, messagebox
+
 from app.ui.components.settings_window import SettingsWindow
 
 
@@ -569,8 +571,6 @@ class ClaimInfoHeader(ctk.CTkFrame):
 
                 if time_diff_seconds <= 0:
                     # Timer expired - tasks are refreshing, wait for server to provide new expiration
-                    import datetime
-
                     current_dt = datetime.datetime.fromtimestamp(current_time_seconds)
                     expiration_dt = datetime.datetime.fromtimestamp(self.traveler_tasks_expiration)
 

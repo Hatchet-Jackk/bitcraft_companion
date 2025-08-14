@@ -1,39 +1,19 @@
-"""
-Redesigned settings window for BitCraft Companion.
-
-Provides a clean, single-page interface for application settings with improved UX:
-- Left-aligned layout with proper hierarchy
-- Native toast notifications integration
-- Dynamic version and debug information
-- Simplified styling and better spacing
-"""
-
-import customtkinter as ctk
+import os
 import json
 import logging
+import toml
 import webbrowser
 from datetime import datetime
-from tkinter import messagebox
-from ...core.data_paths import get_user_data_path
 from typing import Optional
-import os
-import toml
+
+import customtkinter as ctk
+from tkinter import messagebox
+
+from ...core.data_paths import get_user_data_path
 from app.services.notification_service import NotificationService
 
 
 class SettingsWindow(ctk.CTkToplevel):
-    """
-    Redesigned settings window with improved UX and left-aligned layout.
-
-    Features:
-    - Single scrollable page instead of tabs
-    - Left-aligned elements with clear hierarchy
-    - Native Windows toast notifications
-    - Dynamic version reading
-    - Clickable GitHub link
-    - Improved debug information
-    """
-
     def __init__(self, parent, app):
         super().__init__(parent)
         self.app = app
