@@ -342,11 +342,14 @@ class DataService:
 
             self.message_router = MessageRouter(self.processors, self.data_queue)
 
-            # Start real-time timers in processors
+            # Start real-time timers in processors and load initial data
             for processor in self.processors:
                 # Start timer for crafting processor (passive crafting)
                 if hasattr(processor, "start_real_time_timer"):
                     processor.start_real_time_timer(self._handle_timer_update)
+                # Load initial task data for tasks processor
+                elif hasattr(processor, "load_initial_task_data"):
+                    processor.load_initial_task_data()
 
             return True
 
