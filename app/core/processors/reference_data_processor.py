@@ -5,6 +5,7 @@ Processes static game data tables (resource_desc, item_desc, etc.) from Spacetim
 to replace SQLite-based reference data loading.
 """
 
+import json
 import logging
 from .base_processor import BaseProcessor
 from app.models import (
@@ -90,7 +91,6 @@ class ReferenceDataProcessor(BaseProcessor):
                 for delete_str in deletes:
                     try:
                         # Parse the delete to get the entity ID
-                        import json
                         delete_data = json.loads(delete_str)
                         entity_id = delete_data.get("id") or delete_data.get("entity_id")
                         
@@ -131,7 +131,6 @@ class ReferenceDataProcessor(BaseProcessor):
             for update in table_update.get("updates", []):
                 for insert_str in update.get("inserts", []):
                     try:
-                        import json
                         row_data = json.loads(insert_str)
                         table_rows.append(row_data)
                     except json.JSONDecodeError:

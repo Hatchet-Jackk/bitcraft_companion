@@ -1,10 +1,11 @@
 """
 Inventory processor for handling inventory_state table updates.
 """
-
 import logging
+import json
+
+from app.models import BuildingState, InventoryState
 from .base_processor import BaseProcessor
-from app.models import InventoryState, BuildingState
 
 
 class InventoryProcessor(BaseProcessor):
@@ -133,8 +134,6 @@ class InventoryProcessor(BaseProcessor):
             for update in table_update.get("updates", []):
                 for insert_str in update.get("inserts", []):
                     try:
-                        import json
-
                         row_data = json.loads(insert_str)
                         table_rows.append(row_data)
                     except json.JSONDecodeError:

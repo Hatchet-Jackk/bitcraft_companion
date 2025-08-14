@@ -2,13 +2,13 @@
 Tasks processor for handling traveler_task_state table updates.
 """
 
-from datetime import datetime
 import json
-import time
 import logging
-import threading
-from .base_processor import BaseProcessor
+import time
+from datetime import datetime
+
 from app.models import TravelerTaskState
+from .base_processor import BaseProcessor
 
 
 class TasksProcessor(BaseProcessor):
@@ -37,15 +37,6 @@ class TasksProcessor(BaseProcessor):
         # Task timer data from traveler_task_loop_timer
         self._task_timer_data = {}
         
-        # Timer management for one-off queries
-        self._timer_thread = None
-        self._timer_stop_event = threading.Event()
-        self._ui_update_callback = None
-        self._last_timer_query_time = 0
-        self._current_task_expiration = 0
-        
-        # Configuration - can be adjusted for testing
-        self.TASK_TIMER_VERIFICATION_INTERVAL = 1800  # 30 minutes in seconds
 
     def get_table_names(self):
         """Return list of table names this processor handles."""
@@ -124,8 +115,6 @@ class TasksProcessor(BaseProcessor):
             for update in table_update.get("updates", []):
                 for insert_str in update.get("inserts", []):
                     try:
-                        import json
-
                         row_data = json.loads(insert_str)
                         table_rows.append(row_data)
                     except json.JSONDecodeError:
@@ -262,8 +251,6 @@ class TasksProcessor(BaseProcessor):
         except Exception as e:
             logging.error(f"Error processing player state data: {e}")
 
-    # NOTE: Subscription-based timer processing methods removed
-    # Timer data now handled by one-off queries in start_real_time_timer()
 
     def _send_tasks_update(self):
         """
@@ -484,7 +471,7 @@ class TasksProcessor(BaseProcessor):
                         "rewarded_experience": {},
                     }
 
-            logging.info(f"TASK FETCH: Successfully cached {len(self._task_descriptions)} task descriptions")
+            logging.debug(f"TASK FETCH: Successfully cached {len(self._task_descriptions)} task descriptions")
 
         except Exception as e:
             logging.error(f"Error fetching missing task descriptions: {e}")
@@ -537,7 +524,7 @@ class TasksProcessor(BaseProcessor):
         """
         try:
             if not self._reset_in_progress:
-                logging.info(f"TASK RESET: Detected reset starting with table {table_name}")
+                logging.debug(f"TASK RESET: Detected reset starting with table {table_name}")
                 self._reset_in_progress = True
                 self._reset_timestamp = time.time()
                 self._reset_tables_updated.clear()
@@ -555,7 +542,7 @@ class TasksProcessor(BaseProcessor):
         Complete the reset sequence and refresh UI.
         """
         try:
-            logging.info("TASK RESET: Completing reset and refreshing UI")
+            logging.debug("TASK RESET: Completing reset and refreshing UI")
 
             # Clear reset state
             self._reset_in_progress = False
@@ -579,7 +566,7 @@ class TasksProcessor(BaseProcessor):
             has_task_states = hasattr(self, "_task_states") and self._task_states
             has_task_descriptions = hasattr(self, "_task_descriptions") and self._task_descriptions
 
-            logging.info(
+            logging.debug(
                 f"TASK CACHE DEBUG: task_states={len(self._task_states) if has_task_states else 0}, "
                 f"task_descriptions={len(self._task_descriptions) if has_task_descriptions else 0}"
             )
@@ -632,7 +619,6 @@ class TasksProcessor(BaseProcessor):
             self._task_timer_data.clear()
         
         # Reset timer state for new claim
-        self._last_timer_query_time = 0
         self._current_task_expiration = 0
 
     def _process_task_state_transaction(self, update, completed_tasks):
@@ -933,101 +919,25 @@ class TasksProcessor(BaseProcessor):
         except Exception as e:
             logging.error(f"Error processing player state transaction: {e}")
 
-    def start_real_time_timer(self, ui_update_callback):
+    def load_initial_task_data(self):
         """
-        Start the real-time timer with one-off queries for task timer data.
+        Load initial task timer data using one-off query.
+        Called during processor initialization.
+        """
+        try:
+            self.load_task_timer_data(is_initial=True)
+            logging.info("[TasksProcessor] Loaded initial task timer data")
+            
+        except Exception as e:
+            logging.error(f"[TasksProcessor] Error loading initial task timer data: {e}")
+
+
+    def load_task_timer_data(self, is_initial=False):
+        """
+        Load task timer data using one-off query.
         
         Args:
-            ui_update_callback: Callback function to send timer updates to UI
-        """
-        try:
-            if self._timer_thread and self._timer_thread.is_alive():
-                logging.warning("[TasksProcessor] Timer already running, stopping previous timer first")
-                self.stop_real_time_timer()
-            
-            self._ui_update_callback = ui_update_callback
-            self._timer_stop_event.clear()
-            
-            # Initial query for task timer data
-            self._query_task_timer_data(is_initial=True)
-            
-            # Start timer thread for periodic verification
-            self._timer_thread = threading.Thread(
-                target=self._timer_loop,
-                daemon=True
-            )
-            self._timer_thread.start()
-            
-            logging.info(f"[TasksProcessor] Real-time timer started with {self.TASK_TIMER_VERIFICATION_INTERVAL}s verification interval")
-            
-        except Exception as e:
-            logging.error(f"[TasksProcessor] Error starting real-time timer: {e}")
-
-    def stop_real_time_timer(self):
-        """Stop the real-time timer thread."""
-        try:
-            if self._timer_thread and self._timer_thread.is_alive():
-                logging.info("[TasksProcessor] Stopping real-time timer...")
-                self._timer_stop_event.set()
-                self._timer_thread.join(timeout=2.0)
-                
-                if self._timer_thread.is_alive():
-                    logging.warning("[TasksProcessor] Timer thread did not stop within timeout")
-                else:
-                    logging.info("[TasksProcessor] Real-time timer stopped successfully")
-                    
-            self._timer_thread = None
-            self._ui_update_callback = None
-            
-        except Exception as e:
-            logging.error(f"[TasksProcessor] Error stopping real-time timer: {e}")
-
-    def _timer_loop(self):
-        """
-        Main timer loop that handles periodic verification and zero-second refresh.
-        """
-        try:
-            logging.info("[TasksProcessor] Timer loop started")
-            
-            while not self._timer_stop_event.is_set():
-                current_time = time.time()
-                
-                # Check if we need periodic verification
-                # DISABLED: Periodic verification causes WebSocket threading conflicts
-                # TODO: Implement thread-safe query mechanism or use subscription-based updates
-                # time_since_last_query = current_time - self._last_timer_query_time
-                # if time_since_last_query >= self.TASK_TIMER_VERIFICATION_INTERVAL:
-                #     logging.info(f"[TasksProcessor] Periodic verification: {time_since_last_query:.1f}s since last query")
-                #     self._query_task_timer_data(is_verification=True)
-                
-                # Check for zero-second refresh
-                # DISABLED: Zero-second refresh also causes WebSocket threading conflicts  
-                # The timer will rely on initial query and real-time transaction updates
-                # if self._current_task_expiration > 0:
-                #     time_remaining = self._current_task_expiration - current_time
-                #     
-                #     # If timer expired or about to expire (within 1 second)
-                #     if time_remaining <= 1.0:
-                #         logging.info("[TasksProcessor] Timer at zero seconds, checking for task reset")
-                #         self._query_task_timer_data(is_zero_refresh=True)
-                
-                # Sleep for 1 second before next check
-                if not self._timer_stop_event.wait(1.0):
-                    continue
-                    
-        except Exception as e:
-            logging.error(f"[TasksProcessor] Error in timer loop: {e}")
-        finally:
-            logging.info("[TasksProcessor] Timer loop stopped")
-
-    def _query_task_timer_data(self, is_initial=False, is_verification=False, is_zero_refresh=False):
-        """
-        Query task timer data using one-off query instead of subscriptions.
-        
-        Args:
-            is_initial: True if this is the initial query at startup
-            is_verification: True if this is a periodic verification query
-            is_zero_refresh: True if this is a zero-second refresh query
+            is_initial: True if this is the initial load at startup
         """
         try:
             client = self.services.get("client") if self.services else None
@@ -1035,7 +945,7 @@ class TasksProcessor(BaseProcessor):
                 logging.warning("[TasksProcessor] No client available for timer query")
                 return
             
-            query_type = "initial" if is_initial else ("verification" if is_verification else ("zero-refresh" if is_zero_refresh else "unknown"))
+            query_type = "initial" if is_initial else "refresh"
             logging.debug(f"[TasksProcessor] Querying task timer data ({query_type})")
             
             # Query the traveler_task_loop_timer table
@@ -1043,33 +953,8 @@ class TasksProcessor(BaseProcessor):
             results = client.query(query_string)
             
             if results:
-                previous_expiration = self._current_task_expiration
-                
                 # Process the results same way as subscription data
                 self._process_timer_query_results(results, query_type)
-                
-                # Log verification results
-                if is_verification and previous_expiration > 0:
-                    current_time = time.time()
-                    app_calculated_remaining = previous_expiration - current_time
-                    server_remaining = self._current_task_expiration - current_time if self._current_task_expiration > 0 else 0
-                    
-                    time_difference = abs(app_calculated_remaining - server_remaining)
-                    if time_difference > 5:  # Log if difference > 5 seconds
-                        logging.warning(
-                            f"[TasksProcessor] Timer discrepancy detected! "
-                            f"App calculated: {app_calculated_remaining:.1f}s, "
-                            f"Server actual: {server_remaining:.1f}s, "
-                            f"Difference: {time_difference:.1f}s"
-                        )
-                    else:
-                        logging.info(
-                            f"[TasksProcessor] Timer verification OK - "
-                            f"Difference: {time_difference:.1f}s"
-                        )
-                
-                # Update last query time
-                self._last_timer_query_time = time.time()
                 
             else:
                 logging.warning(f"[TasksProcessor] No results from timer query ({query_type})")

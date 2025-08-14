@@ -1,44 +1,10 @@
 """
 Active crafting processor for handling progressive_action_state table updates.
-
-SpacetimeDB Table Structures:
-----------------------------
-
-progressive_action_state:
-    entity_id: int - Unique identifier for the crafting action
-    building_entity_id: int - ID of the building where crafting occurs
-    function_type: int - Type of crafting function
-    progress: int - Current progress value
-    recipe_id: int - ID of the recipe being crafted
-    craft_count: int - Number of items being crafted
-    last_crit_outcome: int - Last critical success outcome
-    owner_entity_id: int - ID of the player performing the craft
-    lock_expiration: list - Timestamp when craft lock expires
-    preparation: bool - Whether craft is in preparation phase
-
-public_progressive_action_state:
-    entity_id: int - Unique identifier
-    building_entity_id: int - ID of building accepting help
-    owner_entity_id: int - ID of the craft owner
-
-building_state:
-    entity_id: int - Unique building identifier
-    building_description_id: int - Type of building
-    claim_entity_id: int - ID of claim containing the building
-
-building_nickname_state:
-    entity_id: int - Building ID this nickname applies to
-    nickname: str - Custom name for the building
-
-claim_member_state:
-    claim_entity_id: int - ID of the claim
-    player_entity_id: int - ID of the player member
-    user_name: str - Display name of the player
 """
-
-import re
 import json
 import logging
+import re
+
 from .base_processor import BaseProcessor
 from app.models import ProgressiveActionState, PublicProgressiveActionState, BuildingState, ClaimMemberState
 
