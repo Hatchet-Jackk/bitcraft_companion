@@ -1178,6 +1178,21 @@ class PassiveCraftState:
         """Create PassiveCraftState from JSON string"""
         data = json.loads(json_str)
         return cls.from_dict(data)
+    
+    @property
+    def timestamp_micros(self) -> Optional[int]:
+        """
+        Extract timestamp in microseconds from the timestamp dict.
+        
+        Returns:
+            int: Timestamp in microseconds since unix epoch, or None if not found
+        """
+        try:
+            if isinstance(self.timestamp, dict):
+                return self.timestamp.get("__timestamp_micros_since_unix_epoch__")
+            return None
+        except Exception:
+            return None
 
     def to_dict(self, crafting_recipe_data: Optional[list] = None, building_desc_data: Optional[list] = None) -> dict:
         """Convert to dictionary with optional enrichment data"""
@@ -1187,6 +1202,7 @@ class PassiveCraftState:
             "recipe_id": self.recipe_id,
             "building_entity_id": self.building_entity_id,
             "timestamp": self.timestamp,
+            "timestamp_micros": self.timestamp_micros,  
             "status": self.status,
             "slot": self.slot,
             "craft_info": self.get_craft_info(crafting_recipe_data, building_desc_data),
@@ -1234,7 +1250,6 @@ class PassiveCraftState:
                         "created_timestamp": values.get("created_timestamp", {}),
                     }
                     break
-        # print(info)
         return info
 
     def _parse_status(self) -> dict:
