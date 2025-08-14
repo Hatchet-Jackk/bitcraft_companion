@@ -1,20 +1,19 @@
 import sys
-import customtkinter as ctk
-import queue
-import logging
 import time
-from tkinter import messagebox
-from typing import Dict
-import os
+import queue
 import threading
-from PIL import Image
+import logging
+from typing import Dict
+
+import customtkinter as ctk
+from tkinter import messagebox
 
 from app.core.data_service import DataService
 from app.ui.components.claim_info_header import ClaimInfoHeader
 from app.ui.tabs.claim_inventory_tab import ClaimInventoryTab
 from app.ui.tabs.passive_crafting_tab import PassiveCraftingTab
-from app.ui.tabs.traveler_tasks_tab import TravelerTasksTab
 from app.ui.tabs.active_crafting_tab import ActiveCraftingTab
+from app.ui.tabs.traveler_tasks_tab import TravelerTasksTab
 
 
 class ShutdownDialog(ctk.CTkToplevel):

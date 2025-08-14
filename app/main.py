@@ -1,11 +1,13 @@
-import sys
-import customtkinter as ctk
-import queue
 import logging
-import threading
-import platform
 import os
+import platform
+import queue
+import sys
+import threading
+
+import customtkinter as ctk
 from tkinter import messagebox
+
 from app.core.data_service import DataService
 from app.ui.main_window import MainWindow
 
