@@ -1,8 +1,11 @@
+import logging
+from typing import Dict, List
+
 import customtkinter as ctk
 from tkinter import Menu, ttk
-from typing import List, Dict
+
 from app.ui.components.filter_popup import FilterPopup
-import logging
+from app.ui.styles import TreeviewStyles
 
 
 class ClaimInventoryTab(ctk.CTkFrame):
@@ -27,63 +30,20 @@ class ClaimInventoryTab(ctk.CTkFrame):
     def _create_widgets(self):
         """Creates the styled Treeview and its scrollbars."""
         style = ttk.Style()
-        style.theme_use("default")
-
-        # Configure the Treeview colors - more subtle and sleek
-        style.configure(
-            "Treeview",
-            background="#2a2d2e",
-            foreground="white",
-            fieldbackground="#343638",
-            borderwidth=0,
-            rowheight=28,
-            relief="flat",
-        )
-        style.map("Treeview", background=[("selected", "#1f6aa5")])
-
-        # Sleeker, more minimal headers
-        style.configure(
-            "Treeview.Heading",
-            background="#1e2124",
-            foreground="#e0e0e0",
-            font=("Segoe UI", 11, "normal"),
-            padding=(8, 6),
-            relief="flat",
-            borderwidth=0,
-        )
-        style.map("Treeview.Heading", background=[("active", "#2c5d8f")])
-
-        # Style scrollbars BEFORE creating the Treeview to ensure consistency
-        style.configure(
-            "Vertical.TScrollbar",
-            background="#1e2124",
-            borderwidth=0,
-            arrowcolor="#666",
-            troughcolor="#2a2d2e",
-            darkcolor="#1e2124",
-            lightcolor="#1e2124",
-            width=12,
-        )
-        style.configure(
-            "Horizontal.TScrollbar",
-            background="#1e2124",
-            borderwidth=0,
-            arrowcolor="#666",
-            troughcolor="#2a2d2e",
-            darkcolor="#1e2124",
-            lightcolor="#1e2124",
-            height=12,
-        )
+        
+        # Apply centralized styling
+        TreeviewStyles.apply_treeview_style(style)
+        self.v_scrollbar_style, self.h_scrollbar_style = TreeviewStyles.apply_scrollbar_style(style, "ClaimInventory")
 
         # Create the Treeview with support for child items
         self.tree = ttk.Treeview(self, columns=self.headers, show="tree headings", style="Treeview")
 
-        # Configure tag for child rows with different styling
-        self.tree.tag_configure("child", background="#3a3a3a")
+        # Apply common tree tags
+        TreeviewStyles.configure_tree_tags(self.tree)
 
-        # Create more subtle, consistent scrollbars
-        vsb = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview, style="Vertical.TScrollbar")
-        hsb = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview, style="Horizontal.TScrollbar")
+        # Create scrollbars with unique styles
+        vsb = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview, style=self.v_scrollbar_style)
+        hsb = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview, style=self.h_scrollbar_style)
         self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
 
         self.tree.grid(row=0, column=0, sticky="nsew")
@@ -128,7 +88,8 @@ class ClaimInventoryTab(ctk.CTkFrame):
 
     def _create_context_menu(self):
         """Creates the right-click menu for column headers."""
-        self.header_context_menu = Menu(self, tearoff=0, background="#2a2d2e", foreground="white", activebackground="#1f6aa5")
+        menu_config = TreeviewStyles.get_menu_style_config()
+        self.header_context_menu = Menu(self, **menu_config)
         self.header_context_menu.add_command(label="Filter by...", command=lambda: self._open_filter_popup(self.clicked_header))
         self.header_context_menu.add_command(label="Clear Filter", command=lambda: self.clear_column_filter(self.clicked_header))
 
