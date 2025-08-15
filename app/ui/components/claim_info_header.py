@@ -74,13 +74,20 @@ class ClaimInfoHeader(ctk.CTkFrame):
     def _create_claim_info_section(self):
         """Creates the left side claim information display with CTkOptionMenu dropdown."""
         claim_frame = ctk.CTkFrame(self, fg_color="transparent")
-        claim_frame.grid(row=0, column=0, sticky="w", padx=15, pady=10)
+        claim_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=10)  
+        claim_frame.grid_columnconfigure(0, weight=1)  
 
-        # Create frame for dropdown and refresh button
+        # Create frame for dropdown and buttons
         dropdown_frame = ctk.CTkFrame(claim_frame, fg_color="transparent")
-        dropdown_frame.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 12))
+        dropdown_frame.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 12))
+        
+        # Configure grid weights for proper spacing
+        dropdown_frame.grid_columnconfigure(0, weight=0)  # Dropdown - fixed size
+        dropdown_frame.grid_columnconfigure(1, weight=0)  # Activity - fixed size  
+        dropdown_frame.grid_columnconfigure(2, weight=0)  # Settings - fixed size
+        dropdown_frame.grid_columnconfigure(3, weight=1)  # Spacer - expandable
+        dropdown_frame.grid_columnconfigure(4, weight=0)  # Quit - fixed size, right-aligned
 
-        # IMPROVED: Use CTkOptionMenu instead of custom dropdown
         self.claim_dropdown = ctk.CTkOptionMenu(
             dropdown_frame,
             values=["Loading..."],
@@ -101,6 +108,25 @@ class ClaimInfoHeader(ctk.CTkFrame):
         )
         self.claim_dropdown.grid(row=0, column=0, sticky="w", padx=(0, 10))
 
+        # Add activity button
+        self.activity_button = ctk.CTkButton(
+            dropdown_frame,
+            text="Activity",
+            width=100,
+            height=40,
+            font=ctk.CTkFont(size=12),
+            command=self._open_activity_window,
+            fg_color=("#6A1B9A", "#8E24AA"),
+            hover_color=("#8E24AA", "#AB47BC"),
+            text_color="#ffffff",
+            corner_radius=8,
+            border_width=0,
+        )
+        self.activity_button.grid(row=0, column=1, sticky="w", padx=(10, 10))
+
+        # Add tooltip to activity button
+        self._add_tooltip(self.activity_button, "View recent inventory changes and activity log")
+
         # Add settings button
         self.settings_button = ctk.CTkButton(
             dropdown_frame,
@@ -115,12 +141,12 @@ class ClaimInfoHeader(ctk.CTkFrame):
             corner_radius=8,
             border_width=0,
         )
-        self.settings_button.grid(row=0, column=1, sticky="w", padx=(2, 12))
+        self.settings_button.grid(row=0, column=2, sticky="w", padx=(0, 10))
 
         # Add tooltip to settings button
         self._add_tooltip(self.settings_button, "Open settings window to manage app preferences and data operations")
 
-        # Add quit button
+        # Add quit button 
         self.quit_button = ctk.CTkButton(
             dropdown_frame,
             text="Quit",
@@ -133,7 +159,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
             text_color="#ffffff",
             corner_radius=8,
         )
-        self.quit_button.grid(row=0, column=2, sticky="w")
+        self.quit_button.grid(row=0, column=4, sticky="e")
 
         # Create info row with treasury, supplies, and supplies run out
         info_frame = ctk.CTkFrame(claim_frame, fg_color="transparent")
@@ -349,6 +375,17 @@ class ClaimInfoHeader(ctk.CTkFrame):
         except Exception as e:
             logging.error(f"Error opening settings window: {e}")
             messagebox.showerror("Settings Error", f"Failed to open settings:\n{str(e)}")
+
+    def _open_activity_window(self):
+        """Opens the activity logs window."""
+        try:
+            if hasattr(self.app, '_open_activity_window'):
+                self.app._open_activity_window()
+            else:
+                logging.warning("Main app does not have _open_activity_window method")
+
+        except Exception as e:
+            logging.error(f"Error opening activity window from header: {e}")
 
     def _reset_refresh_button(self):
         """Reset the refresh button to its normal state."""
