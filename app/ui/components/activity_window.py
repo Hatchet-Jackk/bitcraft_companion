@@ -1,9 +1,11 @@
 import logging
 import os
+import re
 from datetime import datetime
-from typing import List, Dict
+from typing import Dict, List
 
 import customtkinter as ctk
+
 from app.core.data_paths import get_user_data_path
 
 
@@ -176,7 +178,6 @@ class ActivityWindow(ctk.CTkToplevel):
                     timestamp = "Unknown"
                     
                     # Look for AM or PM pattern to extract timestamp
-                    import re
                     time_pattern = r'(\d{1,2}:\d{2}:\d{2}\s+(AM|PM))'
                     time_match = re.search(time_pattern, line)
                     

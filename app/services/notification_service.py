@@ -7,11 +7,9 @@ Manages notification settings and coordinates with the notification window.
 
 import logging
 import threading
-import time
 from typing import Dict, Any
 
 # Platform-specific imports (sound handled by Windows natively)
-
 # Native Windows toast notification import
 try:
     from win11toast import toast

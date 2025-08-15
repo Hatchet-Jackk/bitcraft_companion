@@ -1,10 +1,9 @@
-import os
 import json
 import logging
+import os
+import sys
 import toml
 import webbrowser
-from datetime import datetime
-from typing import Optional
 
 import customtkinter as ctk
 from tkinter import messagebox
@@ -533,5 +532,4 @@ class SettingsWindow(ctk.CTkToplevel):
             try:
                 self.app.quit()
             except:
-                import sys
                 sys.exit(0)

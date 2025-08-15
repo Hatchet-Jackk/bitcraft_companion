@@ -1,5 +1,6 @@
-import logging
 import json
+import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
@@ -540,8 +541,6 @@ class BuildingState:
         # Parse functions data if it's a string
         if isinstance(functions_data, str) and functions_data:
             try:
-                import json
-
                 functions_array = json.loads(functions_data)
             except (json.JSONDecodeError, TypeError):
                 return building_type_info
@@ -867,8 +866,6 @@ class ProgressiveActionState:
         Returns:
             True if locked (has unexpired lock_expiration), False otherwise.
         """
-        import time
-
         expiration_seconds = self.get_lock_expiration_seconds()
         if expiration_seconds is None:
             return False
@@ -988,8 +985,6 @@ class ProgressiveActionState:
             return []
 
         try:
-            import json
-
             return json.loads(field_value)
         except (json.JSONDecodeError, TypeError):
             return []
@@ -1009,8 +1004,6 @@ class ProgressiveActionState:
             return []
 
         try:
-            import json
-
             item_stacks = item_stacks_str
             # item_stacks = json.loads(item_stacks_str)
 

@@ -5,7 +5,6 @@ import customtkinter as ctk
 from tkinter import Menu, ttk
 
 from app.ui.components.filter_popup import FilterPopup
-from app.ui.styles import TreeviewStyles
 
 
 class PassiveCraftingTab(ctk.CTkFrame):

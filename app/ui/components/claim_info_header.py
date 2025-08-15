@@ -1,12 +1,13 @@
 import logging
 import os
+import sys
 import time
-import tkinter as tk
 from datetime import datetime
 
 import customtkinter as ctk
 import openpyxl
 from openpyxl.styles import Alignment, Font
+import tkinter as tk
 from tkinter import filedialog, messagebox
 
 from app.ui.components.settings_window import SettingsWindow
@@ -948,6 +949,4 @@ class ClaimInfoHeader(ctk.CTkFrame):
             try:
                 self.app.quit()
             except:
-                import sys
-
                 sys.exit(0)

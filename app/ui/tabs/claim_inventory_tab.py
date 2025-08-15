@@ -1,4 +1,6 @@
 import logging
+import time
+import traceback
 from typing import Dict, List
 
 import customtkinter as ctk
@@ -33,7 +35,6 @@ class ClaimInventoryTab(ctk.CTkFrame):
         self.container_quantity_changes: Dict[str, Dict[str, int]] = {}  # item_name -> {container: change}
         
         # Time-based change tracking for fading
-        import time
         self.change_timestamps: Dict[str, float] = {}  # item_name -> timestamp
         self.container_change_timestamps: Dict[str, Dict[str, float]] = {}  # item_name -> {container: timestamp}
 
@@ -213,13 +214,10 @@ class ClaimInventoryTab(ctk.CTkFrame):
 
         except Exception as e:
             logging.error(f"[ClaimInventoryTab] Error updating data: {e}")
-            import traceback
-
             logging.debug(traceback.format_exc())
 
     def _calculate_quantity_changes(self, current_quantities, current_container_quantities):
         """Calculate changes in item quantities since last update."""
-        import time
         current_time = time.time()
         
         # Calculate total quantity changes
@@ -513,6 +511,4 @@ class ClaimInventoryTab(ctk.CTkFrame):
 
         except Exception as e:
             logging.error(f"[ClaimInventoryTab] Critical error during table render: {e}")
-            import traceback
-
             logging.debug(traceback.format_exc())
