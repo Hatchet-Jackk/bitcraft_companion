@@ -3,6 +3,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.21.1]
+### Added
+- Implement comprehensive data refresh and retry mechanism for task updates
+- Add PassiveCraftingTab and refactor TravelerTasksTab for consistent styling
+- Implement notification bundling for passive crafting notifications
+- Add `timestamp_micros` property to PassiveCraftState for enhanced timestamp handling
+
+### Changed
+- Reorganize import statements for improved clarity and consistency
+- Clean up imports and enhance code organization in UI components
+- Update class docstring format in ClaimService for consistency
+- Remove redundant import statements and enhance data loading in processors
+
+### Removed
+- Remove obsolete database file from the project
+
 ## [0.2.21]
 ### Changed
 - Refactored service instantiation patches and adjusted user ID assignment for refactored architecture 
@@ -10,11 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Simplified tile cost data initialization in ClaimInfoHeader and removed loading method 
 - Removed ClaimMember and Player classes 
 - Removed TravelerTasksService class and its associated methods for handling traveler tasks data processing and real-time updates 
+
 ### Added
 - Enhanced DataService and MessageRouter with improved logging and validation features 
 - Enhanced ItemLookupService to support building and recipe lookups 
 - Refactored processors to utilize dataclasses for improved data handling 
 - Added additional one-time subscription queries to QueryService 
+
 ### Fixed
 - Improved logging messages for WebSocket and keyring operations 
 
