@@ -29,7 +29,7 @@ class InventoryProcessor(BaseProcessor):
         try:
             table_name = table_update.get("table_name", "")
             updates = table_update.get("updates", [])
-
+            
             # Track if we need to send updates
             has_inventory_changes = False
 
@@ -42,7 +42,6 @@ class InventoryProcessor(BaseProcessor):
                     # Collect all operations first to handle delete+insert as updates
                     delete_operations = {}
                     insert_operations = {}
-
                     # Parse all deletes using dataclass
                     for delete_str in deletes:
                         try:
@@ -50,7 +49,7 @@ class InventoryProcessor(BaseProcessor):
                             if inventory_state:
                                 delete_operations[inventory_state.entity_id] = inventory_state.to_dict()
                         except (ValueError, TypeError) as e:
-                            logging.debug(f"Failed to parse inventory delete: {e}")
+                            logging.warning(f"[InventoryProcessor] Failed to parse inventory delete: {e}")
                             continue
 
                     # Parse all inserts using dataclass
@@ -60,7 +59,7 @@ class InventoryProcessor(BaseProcessor):
                             if inventory_state:
                                 insert_operations[inventory_state.entity_id] = inventory_state.to_dict()
                         except (ValueError, TypeError) as e:
-                            logging.debug(f"Failed to parse inventory insert: {e}")
+                            logging.warning(f"[InventoryProcessor] Failed to parse inventory insert: {e}")
                             continue
 
                     # Process operations: handle delete+insert as updates, standalone deletes as removals
@@ -113,10 +112,13 @@ class InventoryProcessor(BaseProcessor):
 
             # Send incremental update if we have changes
             if has_inventory_changes:
+                logging.info(f"[InventoryProcessor] Detected inventory changes, sending update for table: {table_name}")
                 if table_name == "inventory_state":
                     self._send_incremental_inventory_update(reducer_name, timestamp)
                 else:
                     self._refresh_inventory()
+            else:
+                logging.debug(f"[InventoryProcessor] No inventory changes detected for transaction")
 
         except Exception as e:
             logging.error(f"Error handling inventory transaction: {e}")
