@@ -4,7 +4,7 @@ Inventory processor for handling inventory_state table updates.
 import logging
 import json
 
-from app.models import BuildingState, InventoryState
+from app.models import BuildingState, InventoryState, ClaimMemberState
 from .base_processor import BaseProcessor
 
 
@@ -18,7 +18,7 @@ class InventoryProcessor(BaseProcessor):
 
     def get_table_names(self):
         """Return list of table names this processor handles."""
-        return ["inventory_state", "building_state", "building_nickname_state"]
+        return ["inventory_state", "building_state", "building_nickname_state", "claim_member_state"]
 
     def process_transaction(self, table_update, reducer_name, timestamp):
         """
@@ -42,12 +42,17 @@ class InventoryProcessor(BaseProcessor):
                     # Collect all operations first to handle delete+insert as updates
                     delete_operations = {}
                     insert_operations = {}
+                    player_context = {}  
+                    
                     # Parse all deletes using dataclass
                     for delete_str in deletes:
                         try:
                             inventory_state = InventoryState.from_array(delete_str)
                             if inventory_state:
                                 delete_operations[inventory_state.entity_id] = inventory_state.to_dict()
+                                # Track player who made this change
+                                if inventory_state.player_owner_entity_id:
+                                    player_context[inventory_state.entity_id] = inventory_state.player_owner_entity_id
                         except (ValueError, TypeError) as e:
                             logging.warning(f"[InventoryProcessor] Failed to parse inventory delete: {e}")
                             continue
@@ -58,6 +63,9 @@ class InventoryProcessor(BaseProcessor):
                             inventory_state = InventoryState.from_array(insert_str)
                             if inventory_state:
                                 insert_operations[inventory_state.entity_id] = inventory_state.to_dict()
+                                # Track player who made this change
+                                if inventory_state.player_owner_entity_id:
+                                    player_context[inventory_state.entity_id] = inventory_state.player_owner_entity_id
                         except (ValueError, TypeError) as e:
                             logging.warning(f"[InventoryProcessor] Failed to parse inventory insert: {e}")
                             continue
@@ -114,7 +122,8 @@ class InventoryProcessor(BaseProcessor):
             if has_inventory_changes:
                 logging.info(f"[InventoryProcessor] Detected inventory changes, sending update for table: {table_name}")
                 if table_name == "inventory_state":
-                    self._send_incremental_inventory_update(reducer_name, timestamp)
+                    # Pass player context for accurate activity tracking
+                    self._send_incremental_inventory_update(reducer_name, timestamp, player_context)
                 else:
                     self._refresh_inventory()
             else:
@@ -151,6 +160,8 @@ class InventoryProcessor(BaseProcessor):
                 self._process_building_data(table_rows)
             elif table_name == "building_nickname_state":
                 self._process_building_nickname_data(table_rows)
+            elif table_name == "claim_member_state":
+                self._process_claim_member_data(table_rows)
 
             # Try to send consolidated inventory if we have all necessary data
             self._send_inventory_update()
@@ -375,20 +386,34 @@ class InventoryProcessor(BaseProcessor):
 
 
 
-    def _send_incremental_inventory_update(self, reducer_name, timestamp):
+    def _send_incremental_inventory_update(self, reducer_name, timestamp, player_context=None):
         """
         Send incremental inventory update without full refresh.
+        
+        Args:
+            reducer_name: Name of the reducer that triggered this update
+            timestamp: Timestamp of the change
+            player_context: Dict mapping entity_id to player_owner_entity_id for attribution
         """
         try:
+            # Store player context for recent changes
+            self._last_player_context = player_context or {}
+            
             # Get fresh inventory data using existing consolidation logic
             consolidated_inventory = self._consolidate_inventory()
 
             if consolidated_inventory:
-                # Send targeted update with incremental flag
+                # Send targeted update with incremental flag and player context
+                changes_data = {
+                    "type": "incremental", 
+                    "source": "live_transaction", 
+                    "reducer": reducer_name,
+                    "player_context": player_context or {}
+                }
                 self._queue_update(
                     "inventory_update",
                     consolidated_inventory,
-                    changes={"type": "incremental", "source": "live_transaction", "reducer": reducer_name},
+                    changes=changes_data,
                     timestamp=timestamp,
                 )
 
@@ -410,3 +435,81 @@ class InventoryProcessor(BaseProcessor):
 
         if hasattr(self, "_building_nicknames"):
             self._building_nicknames.clear()
+
+        if hasattr(self, "_claim_members"):
+            self._claim_members.clear()
+
+    def _process_claim_member_data(self, member_rows):
+        """Process claim_member_state data to store player names."""
+        try:
+            if not hasattr(self, "_claim_members"):
+                self._claim_members = {}
+
+            for row in member_rows:
+                try:
+                    # Create ClaimMemberState dataclass instance
+                    member = ClaimMemberState.from_dict(row)
+                    
+                    # Store player_entity_id -> user_name mapping
+                    if member.player_entity_id and member.user_name:
+                        self._claim_members[str(member.player_entity_id)] = member.user_name
+                        
+                except (ValueError, TypeError) as e:
+                    logging.debug(f"Failed to process claim member row: {e}")
+                    continue
+
+        except Exception as e:
+            logging.error(f"Error processing claim member data: {e}")
+
+    def _get_player_name(self, player_entity_id):
+        """
+        Get player name from entity ID using cached claim member data.
+
+        Args:
+            player_entity_id: The player's entity ID
+
+        Returns:
+            str: Player name or fallback
+        """
+        try:
+            # Convert to string for consistent lookup
+            player_id_str = str(player_entity_id)
+
+            # Try cached claim member data
+            if hasattr(self, "_claim_members") and player_id_str in self._claim_members:
+                player_name = self._claim_members[player_id_str]
+                return player_name
+
+            # Try current player name from client as fallback for most actions
+            client = self.services.get("client") if self.services else None
+            if client and hasattr(client, 'player_name') and client.player_name:
+                return client.player_name
+
+            # Final fallback
+            return "Unknown Player"
+
+        except Exception as e:
+            logging.error(f"Error getting player name for entity {player_entity_id}: {e}")
+            return "Unknown Player"
+
+    def get_player_for_recent_change(self):
+        """
+        Get the player responsible for the most recent inventory change.
+        This is a simplified approach since mapping specific item changes
+        to players requires complex transaction tracking.
+        
+        Returns:
+            str: Player entity ID or None if cannot be determined
+        """
+        try:
+            # Check if we have recent player context from the last transaction
+            if hasattr(self, '_last_player_context') and self._last_player_context:
+                # Get the most common player from recent changes (simple heuristic)
+                players = list(self._last_player_context.values())
+                if players:
+                    # Return the most recent player entity ID
+                    return players[0]
+            return None
+        except Exception as e:
+            logging.error(f"Error getting player for recent change: {e}")
+            return None

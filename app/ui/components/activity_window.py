@@ -98,7 +98,7 @@ class ActivityWindow(ctk.CTkToplevel):
         # Initialize with empty state
         self._refresh_display()
 
-    def add_inventory_change(self, item_name: str, previous_qty: int, new_qty: int, change: int):
+    def add_inventory_change(self, item_name: str, previous_qty: int, new_qty: int, change: int, player_name: str = None):
         """Add an inventory change entry to the activity log."""
         timestamp = datetime.now().strftime("%I:%M:%S %p")
         
@@ -107,11 +107,18 @@ class ActivityWindow(ctk.CTkToplevel):
         else:
             action_text = f"{change}"  # change is already negative
         
+        # Include player name in the message if available
+        if player_name:
+            message = f"{timestamp} [{player_name}] {item_name}: {previous_qty} → {new_qty} ({action_text})"
+        else:
+            message = f"{timestamp} {item_name}: {previous_qty} → {new_qty} ({action_text})"
+        
         entry = {
             "timestamp": timestamp,
             "type": "inventory_change",
             "item_name": item_name,
-            "message": f"{timestamp} {item_name}: {previous_qty} → {new_qty} ({action_text})"
+            "player_name": player_name,
+            "message": message
         }
         
         self._add_entry(entry)

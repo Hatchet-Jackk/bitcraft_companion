@@ -114,12 +114,12 @@ class CraftingProcessor(BaseProcessor):
                             # This is an update (delete+insert)
                             recipe_id = insert_data.get("recipe_id")
                             building_id = insert_data.get("building_entity_id")
-                            logging.info(f"Passive craft UPDATED: recipe_id={recipe_id}, building_id={building_id}, entity_id={entity_id}")
+                            logging.debug(f"Passive craft UPDATED: recipe_id={recipe_id}, building_id={building_id}, entity_id={entity_id}")
                         else:
                             # This is a new insert
                             recipe_id = insert_data.get("recipe_id")
                             building_id = insert_data.get("building_entity_id")
-                            logging.info(f"Passive craft STARTED: recipe_id={recipe_id}, building_id={building_id}, entity_id={entity_id}")
+                            logging.debug(f"Passive craft STARTED: recipe_id={recipe_id}, building_id={building_id}, entity_id={entity_id}")
 
                         has_crafting_changes = True
 

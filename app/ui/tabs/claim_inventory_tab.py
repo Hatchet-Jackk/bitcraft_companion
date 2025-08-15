@@ -71,18 +71,11 @@ class ClaimInventoryTab(ctk.CTkFrame):
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        # Set up headings and column widths
-        column_widths = {
-            "Item": 200,
-            "Tier": 60,
-            "Quantity": 80,
-            "Tag": 120,
-            "Containers": 240,
-        }
-
-        for header in self.headers:
-            self.tree.heading(header, text=header, command=lambda h=header: self.sort_by(h), anchor="w")
-            self.tree.column(header, width=column_widths.get(header, 150), minwidth=50, anchor="w")
+        # Set up headings and initial column widths
+        self._setup_column_headers()
+        
+        # Auto-resize columns when window resizes
+        self.bind("<Configure>", self._on_resize)
 
         # Configure the tree column for native expansion - FIXED WIDTH, NOT RESIZABLE
         self.tree.column("#0", width=20, minwidth=20, stretch=False, anchor="center")
@@ -350,9 +343,28 @@ class ClaimInventoryTab(ctk.CTkFrame):
     def _log_inventory_change(self, item_name: str, previous_qty: int, new_qty: int, change: int):
         """Log inventory change to activity window if available."""
         try:
+            # Try to get the actual player who made the change from the inventory processor
+            player_name = None
+            if hasattr(self.app, 'data_service') and self.app.data_service:
+                inventory_processor = None
+                for processor in self.app.data_service.processors:
+                    if hasattr(processor, 'get_player_for_recent_change'):
+                        inventory_processor = processor
+                        break
+                
+                if inventory_processor:
+                    # Get the player entity ID who made the recent change
+                    player_entity_id = inventory_processor.get_player_for_recent_change()
+                    if player_entity_id:
+                        # Resolve entity ID to player name
+                        player_name = inventory_processor._get_player_name(player_entity_id)
+                        logging.debug(f"Resolved inventory change to player: {player_name} (entity_id: {player_entity_id})")
+                    else:
+                        logging.debug(f"Could not determine player for inventory change of {item_name}")
+            
             # Access the activity window through the main app
             if hasattr(self.app, 'activity_window') and self.app.activity_window and self.app.activity_window.winfo_exists():
-                self.app.activity_window.add_inventory_change(item_name, previous_qty, new_qty, change)
+                self.app.activity_window.add_inventory_change(item_name, previous_qty, new_qty, change, player_name)
         except Exception as e:
             logging.error(f"Error logging inventory change to activity window: {e}")
 
@@ -512,3 +524,76 @@ class ClaimInventoryTab(ctk.CTkFrame):
         except Exception as e:
             logging.error(f"[ClaimInventoryTab] Critical error during table render: {e}")
             logging.debug(traceback.format_exc())
+    
+    def _setup_column_headers(self):
+        """Set up column headers and initial widths."""
+        # Define base widths and scaling factors
+        base_widths = {
+            "Item": 200,
+            "Tier": 60,
+            "Quantity": 100,
+            "Tag": 120,
+            "Containers": 240,
+        }
+        
+        for header in self.headers:
+            self.tree.heading(header, text=header, command=lambda h=header: self.sort_by(h), anchor="w")
+            width = base_widths.get(header, 150)
+            self.tree.column(header, width=width, minwidth=max(50, width // 3), anchor="w")
+
+    def _on_resize(self, event):
+        """Handle window resize to adjust column widths."""
+        if event.widget != self:
+            return
+            
+        # Small delay to avoid excessive resize events
+        if hasattr(self, '_resize_timer'):
+            self.after_cancel(self._resize_timer)
+        self._resize_timer = self.after(100, self._adjust_column_widths)
+
+    def _adjust_column_widths(self):
+        """Automatically adjust column widths based on available space and content."""
+        try:
+            if not hasattr(self, 'tree'):
+                return
+                
+            available_width = self.tree.winfo_width() - 40  # Account for scrollbar and padding
+            if available_width < 100:  # Not ready yet
+                return
+            
+            # Calculate total minimum width needed
+            min_widths = {
+                "Item": 150,
+                "Tier": 50,
+                "Quantity": 80,
+                "Tag": 100,
+                "Containers": 180,
+            }
+            
+            total_min_width = sum(min_widths.values())
+            
+            if available_width > total_min_width:
+                # We have extra space to distribute
+                extra_space = available_width - total_min_width
+                
+                # Distribute extra space proportionally, favoring Item and Containers
+                distribution = {
+                    "Item": 0.35,        # 35% of extra space
+                    "Tier": 0.05,        # 5% of extra space
+                    "Quantity": 0.15,    # 15% of extra space
+                    "Tag": 0.15,         # 15% of extra space
+                    "Containers": 0.30,  # 30% of extra space
+                }
+                
+                for header in self.headers:
+                    base_width = min_widths[header]
+                    extra_width = int(extra_space * distribution[header])
+                    final_width = base_width + extra_width
+                    self.tree.column(header, width=final_width)
+            else:
+                # Use minimum widths
+                for header in self.headers:
+                    self.tree.column(header, width=min_widths[header])
+                    
+        except Exception as e:
+            logging.debug(f"Error adjusting column widths: {e}")

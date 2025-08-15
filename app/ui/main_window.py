@@ -87,6 +87,8 @@ class MainWindow(ctk.CTk):
 
         self.title("Bitcraft Companion")
         self.geometry("900x600")
+        # Set a subtle gradient-like background color
+        self.configure(fg_color=("#f0f0f0", "#1a1a1a"))
         logging.debug("Main window geometry set to 900x600")
 
         # Set minimum window size to prevent UI elements from becoming inaccessible
@@ -140,11 +142,19 @@ class MainWindow(ctk.CTk):
         # Create tab content area with modern styling
         logging.debug("Creating tab content area")
         self.tab_content_area = ctk.CTkFrame(
-            self, fg_color=("#2b2b2b", "#1e1e1e"), border_width=2, border_color=("#404040", "#505050"), corner_radius=12
+            self, 
+            fg_color=("#f8f8f8", "#1e1e1e"), 
+            border_width=2, 
+            border_color=("#d0d0d0", "#404040"), 
+            corner_radius=12
         )
         self.tab_content_area.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 10))
         self.tab_content_area.grid_columnconfigure(0, weight=1)
         self.tab_content_area.grid_rowconfigure(0, weight=1)
+
+        # Create status bar
+        logging.debug("Creating status bar")
+        self._create_status_bar()
 
         # Create loading overlay
         logging.debug("Creating loading overlay")
@@ -172,6 +182,10 @@ class MainWindow(ctk.CTk):
         self.after(100, self.process_data_queue)
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.bind("<Configure>", self._on_window_configure)
+        
+        # Add keyboard shortcuts
+        self.bind("<KeyPress>", self._handle_key_press)
+        self.focus_set()  # Ensure window can receive key events
 
     def _on_window_configure(self, event):
         """Handles window configure events to detect resize operations for performance optimization."""
@@ -196,6 +210,56 @@ class MainWindow(ctk.CTk):
         self.is_resizing = False
         self.resize_timer = None
         logging.debug("Window resize completed - resuming normal performance")
+
+    def _handle_key_press(self, event):
+        """Handle keyboard shortcuts for tab navigation and window access."""
+        try:
+            # Get the focused widget to avoid interfering with text input
+            focused_widget = self.focus_get()
+            
+            # Don't process shortcuts if user is typing in search field or other entry widgets
+            if focused_widget and isinstance(focused_widget, (ctk.CTkEntry, ctk.CTkTextbox)):
+                return
+            
+            key = event.keysym.lower()
+            
+            # Tab navigation shortcuts (1-4)
+            if key == '1':
+                self.show_tab("Claim Inventory")
+                logging.debug("Keyboard shortcut: Switched to Claim Inventory (1)")
+            elif key == '2':
+                self.show_tab("Passive Crafting") 
+                logging.debug("Keyboard shortcut: Switched to Passive Crafting (2)")
+            elif key == '3':
+                self.show_tab("Active Crafting")
+                logging.debug("Keyboard shortcut: Switched to Active Crafting (3)")
+            elif key == '4':
+                self.show_tab("Traveler's Tasks")
+                logging.debug("Keyboard shortcut: Switched to Traveler's Tasks (4)")
+            
+            # Window access shortcuts
+            elif key == 'a':
+                # Open activity window
+                self._open_activity_window()
+                logging.debug("Keyboard shortcut: Opened Activity window (A)")
+            elif key == 's':
+                # Open settings window
+                self._open_settings()
+                logging.debug("Keyboard shortcut: Opened Settings window (S)")
+                
+        except Exception as e:
+            logging.error(f"Error handling keyboard shortcut: {e}")
+
+    def _open_settings(self):
+        """Open the settings window. Placeholder for settings functionality."""
+        try:
+            # Check if claim info header has settings functionality
+            if hasattr(self.claim_info, '_open_settings') and callable(self.claim_info._open_settings):
+                self.claim_info._open_settings()
+            else:
+                logging.info("Settings window not yet implemented")
+        except Exception as e:
+            logging.error(f"Error opening settings: {e}")
 
     def _set_tab_buttons_state(self, state: str):
         """Enable or disable all tab buttons."""
@@ -245,6 +309,51 @@ class MainWindow(ctk.CTk):
         )
         self.clear_button.grid(row=0, column=2, sticky="e")
 
+    def _create_status_bar(self):
+        """Creates the status bar with connection info, last update, and ping."""
+        status_frame = ctk.CTkFrame(
+            self, 
+            height=32,
+            fg_color=("#e8e8e8", "#181818"), 
+            border_width=1, 
+            border_color=("#c0c0c0", "#404040"), 
+            corner_radius=8
+        )
+        status_frame.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 10))
+        status_frame.grid_columnconfigure(0, weight=1)
+        status_frame.grid_propagate(False)  # Maintain fixed height
+
+        # Create inner frame for status items
+        inner_frame = ctk.CTkFrame(status_frame, fg_color="transparent")
+        inner_frame.pack(fill="x", padx=8, pady=4)
+
+        # Connection status (left side)
+        self.connection_status_label = ctk.CTkLabel(
+            inner_frame, 
+            text="🔴 Disconnected",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="normal"),
+            text_color="#f44336"
+        )
+        self.connection_status_label.pack(side="left")
+
+        # Last update (center)
+        self.last_update_label = ctk.CTkLabel(
+            inner_frame, 
+            text="🔄 Last Update: Never",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="normal"),
+            text_color="#888888"
+        )
+        self.last_update_label.pack(side="left", padx=(20, 0))
+
+
+        # Initialize status tracking
+        self.last_message_time = None
+        self.connection_status = "disconnected"
+        
+        # Start status update timer
+        self._update_status_display()
+        self.after(1000, self._schedule_status_update)  # Update every second
+
     def clear_search(self):
         """Clears the search field."""
         self.search_var.set("")
@@ -257,6 +366,69 @@ class MainWindow(ctk.CTk):
             self.search_field.configure(placeholder_text=placeholder_text)
         except Exception as e:
             logging.error(f"Error updating search placeholder: {e}")
+
+    def _update_status_display(self):
+        """Update the status bar display with current information."""
+        try:
+            # Update connection status
+            if self.data_service and hasattr(self.data_service, 'client'):
+                client = self.data_service.client
+                if client and hasattr(client, 'ws_connection') and client.ws_connection:
+                    self.connection_status = "connected"
+                    self.connection_status_label.configure(
+                        text="🟢 Connected", 
+                        text_color="#4CAF50"
+                    )
+                else:
+                    self.connection_status = "disconnected"
+                    self.connection_status_label.configure(
+                        text="🔴 Disconnected", 
+                        text_color="#f44336"
+                    )
+            else:
+                self.connection_status = "disconnected"
+                self.connection_status_label.configure(
+                    text="🔴 Disconnected", 
+                    text_color="#f44336"
+                )
+
+            # Update last update time
+            if self.last_message_time:
+                time_since_update = time.time() - self.last_message_time
+                if time_since_update < 60:
+                    time_text = f"{int(time_since_update)}s ago"
+                    color = "#4CAF50"  # Green for recent
+                elif time_since_update < 300:
+                    time_text = f"{int(time_since_update // 60)}m ago"
+                    color = "#FF9800"  # Orange for moderate
+                else:
+                    time_text = f"{int(time_since_update // 60)}m ago"
+                    color = "#f44336"  # Red for old
+                
+                self.last_update_label.configure(
+                    text=f"🔄 Last Update: {time_text}",
+                    text_color=color
+                )
+            else:
+                self.last_update_label.configure(
+                    text="🔄 Last Update: Never",
+                    text_color="#888888"
+                )
+
+        except Exception as e:
+            logging.error(f"Error updating status display: {e}")
+
+    def _schedule_status_update(self):
+        """Schedule the next status update."""
+        try:
+            self._update_status_display()
+            self.after(1000, self._schedule_status_update)  # Update every second
+        except Exception as e:
+            logging.error(f"Error scheduling status update: {e}")
+
+    def update_last_message_time(self):
+        """Update the timestamp of the last received message."""
+        self.last_message_time = time.time()
 
     def _create_loading_overlay(self):
         """Creates loading overlay with image and text."""
@@ -773,10 +945,7 @@ class MainWindow(ctk.CTk):
 
                 logging.info(f"Claim switch completed successfully: {claim_name}")
 
-                # Brief success notification in title bar
-                original_title = self.title()
-                self.title(f"✓ Switched to {claim_name} - {original_title}")
-                self.after(3000, lambda: self.title(original_title))
+                # Claim switch completed (no title notification needed)
             else:
                 # Handle switch failure
                 error_msg = msg_data.get("error", "Unknown error during claim switch")
@@ -933,6 +1102,9 @@ class MainWindow(ctk.CTk):
                 message_count += 1
                 msg_type = message.get("type")
                 msg_data = message.get("data")
+                
+                # Update last message time for status bar
+                self.update_last_message_time()
 
                 # Log data type and size for debugging
                 data_size = len(msg_data) if isinstance(msg_data, (dict, list)) else "unknown"

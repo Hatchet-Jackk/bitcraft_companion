@@ -37,6 +37,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
         self.time_remaining = "Calculating..."
         self.traveler_tasks_expiration = None
         self.task_refresh_time = "Unknown"
+        self._is_initial_loading = True  # Track if we're in initial loading phase
 
         # Initialize tile cost lookup with default values
         self.tile_cost_lookup = {1: 0.01, 1001: 0.0125}  # Default tile cost values
@@ -571,6 +572,10 @@ class ClaimInfoHeader(ctk.CTkFrame):
             # Mark the source of this update for timer logic
             self._last_update_source = source
             self._from_initial_subscription = is_initial_subscription
+            
+            # Mark that we've received initial data
+            if is_initial_subscription:
+                self._is_initial_loading = False
 
             self._update_task_refresh_countdown()
 
@@ -593,7 +598,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
                 time_diff_seconds = self.traveler_tasks_expiration - current_time_seconds
 
                 if time_diff_seconds <= 0:
-                    # Timer expired - tasks are refreshing, wait for server to provide new expiration
+                    # Timer expired
                     current_dt = datetime.fromtimestamp(current_time_seconds)
                     expiration_dt = datetime.fromtimestamp(self.traveler_tasks_expiration)
 
@@ -603,15 +608,31 @@ class ClaimInfoHeader(ctk.CTkFrame):
                     if expired_duration < 60:  # Less than 1 minute - show refreshing
                         self.task_refresh_time = "Refreshing..."
                         color = "#FF9800"  # Orange for activity/refreshing state
-                    else:  # More than 1 minute - show waiting for server
-                        logging.warning(
-                            f"Task refresh timer expired over 1 minute ago: current={current_dt}, expiration={expiration_dt}, expired_for={expired_duration:.1f}s - waiting for server"
-                        )
-                        self.task_refresh_time = "Waiting for server..."
-                        color = "#9E9E9E"  # Gray for waiting/inactive state
+                    elif self._is_initial_loading:
+                        # During initial loading, show waiting for server
+                        if expired_duration < 300:  # Less than 5 minutes during initial load
+                            logging.debug(f"Initial loading - timer expired {expired_duration:.1f}s ago, waiting for server")
+                            self.task_refresh_time = "Waiting for server..."
+                            color = "#9E9E9E"  # Gray for waiting/inactive state
+                        else:
+                            # Initial loading taking too long, show error
+                            logging.warning(f"Initial timer load taking over 5 minutes")
+                            self.task_refresh_time = "Connection issue"
+                            color = "#f44336"  # Red for error
+                    else:
+                        # App is running normally - auto-reset to 4 hours
+                        logging.info(f"Timer expired during normal operation, auto-resetting to 4 hours (expired_for={expired_duration:.1f}s)")
+                        four_hours_from_now = current_time_seconds + (4 * 60 * 60)  
+                        self.traveler_tasks_expiration = four_hours_from_now
+                        
+                        # Recalculate with new expiration
+                        time_diff_seconds = self.traveler_tasks_expiration - current_time_seconds
+                        # Fall through to normal countdown logic below
 
-                    self.task_refresh_label.configure(text=self.task_refresh_time, text_color=color)
-                    return
+                    # Only return early if we're not auto-resetting
+                    if time_diff_seconds <= 0:
+                        self.task_refresh_label.configure(text=self.task_refresh_time, text_color=color)
+                        return
 
                 # Continue with normal countdown display logic...
                 total_seconds = int(time_diff_seconds)
