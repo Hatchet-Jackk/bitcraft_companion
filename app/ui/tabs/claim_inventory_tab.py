@@ -24,6 +24,19 @@ class ClaimInventoryTab(ctk.CTkFrame):
         self.active_filters: Dict[str, set] = {}
         self.clicked_header = None
 
+        # Change tracking for inventory quantities
+        self.previous_quantities: Dict[str, int] = {}
+        self.quantity_changes: Dict[str, int] = {}
+        
+        # Container-level change tracking
+        self.previous_container_quantities: Dict[str, Dict[str, int]] = {}  # item_name -> {container: quantity}
+        self.container_quantity_changes: Dict[str, Dict[str, int]] = {}  # item_name -> {container: change}
+        
+        # Time-based change tracking for fading
+        import time
+        self.change_timestamps: Dict[str, float] = {}  # item_name -> timestamp
+        self.container_change_timestamps: Dict[str, Dict[str, float]] = {}  # item_name -> {container: timestamp}
+
         self._create_widgets()
         self._create_context_menu()
 
@@ -40,6 +53,10 @@ class ClaimInventoryTab(ctk.CTkFrame):
 
         # Apply common tree tags
         TreeviewStyles.configure_tree_tags(self.tree)
+        
+        # Configure tags for quantity changes - will be applied to rows with changes
+        self.tree.tag_configure("quantity_increase", foreground="#4CAF50")  # Green for increases
+        self.tree.tag_configure("quantity_decrease", foreground="#F44336")  # Red for decreases
 
         # Create scrollbars with unique styles
         vsb = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview, style=self.v_scrollbar_style)
@@ -149,19 +166,41 @@ class ClaimInventoryTab(ctk.CTkFrame):
         try:
             data_size = len(new_data) if isinstance(new_data, (dict, list)) else 0
             logging.info(f"[ClaimInventoryTab] Updating data - type: {type(new_data)}, size: {data_size}")
+            
+            # Log if this looks like a transaction update
+            if hasattr(new_data, 'get') and new_data.get('transaction_update'):
+                logging.info(f"[ClaimInventoryTab] Received transaction update flag")
+            
+            # Sample some data for debugging (without logging sensitive info)
+            if isinstance(new_data, dict) and new_data:
+                sample_items = list(new_data.keys())[:3]
+                logging.debug(f"[ClaimInventoryTab] Sample items in update: {sample_items}")
 
             if isinstance(new_data, dict):
                 table_data = []
+                current_quantities = {}
+                current_container_quantities = {}
+                
                 for item_name, item_info in new_data.items():
+                    quantity = item_info.get("total_quantity", 0)
+                    containers = item_info.get("containers", {})
+                    
+                    current_quantities[item_name] = quantity
+                    current_container_quantities[item_name] = containers.copy()
+                    
                     table_data.append(
                         {
                             "name": item_name,
                             "tier": item_info.get("tier", 0),
-                            "quantity": item_info.get("total_quantity", 0),
+                            "quantity": quantity,
                             "tag": item_info.get("tag", ""),
-                            "containers": item_info.get("containers", {}),
+                            "containers": containers,
                         }
                     )
+                
+                # Calculate quantity changes
+                self._calculate_quantity_changes(current_quantities, current_container_quantities)
+                
                 self.all_data = table_data
                 logging.info(f"[ClaimInventoryTab] Successfully processed {len(table_data)} inventory items")
             else:
@@ -177,6 +216,147 @@ class ClaimInventoryTab(ctk.CTkFrame):
             import traceback
 
             logging.debug(traceback.format_exc())
+
+    def _calculate_quantity_changes(self, current_quantities, current_container_quantities):
+        """Calculate changes in item quantities since last update."""
+        import time
+        current_time = time.time()
+        
+        # Calculate total quantity changes
+        for item_name, current_qty in current_quantities.items():
+            if item_name in self.previous_quantities:
+                previous_qty = self.previous_quantities[item_name]
+                change = current_qty - previous_qty
+                if change != 0:
+                    # Update change for this specific item (overwrites previous change for same item)
+                    self.quantity_changes[item_name] = change
+                    self.change_timestamps[item_name] = current_time
+                    logging.debug(f"[ClaimInventoryTab] {item_name}: {previous_qty} → {current_qty} ({change:+d})")
+                    
+                    # Log to activity window if available
+                    self._log_inventory_change(item_name, previous_qty, current_qty, change)
+        
+        # Calculate container-level changes
+        for item_name, current_containers in current_container_quantities.items():
+            if item_name in self.previous_container_quantities:
+                previous_containers = self.previous_container_quantities[item_name]
+                
+                # Initialize container changes for this item if needed
+                if item_name not in self.container_quantity_changes:
+                    self.container_quantity_changes[item_name] = {}
+                if item_name not in self.container_change_timestamps:
+                    self.container_change_timestamps[item_name] = {}
+                
+                # Check each container for changes
+                all_containers = set(current_containers.keys()) | set(previous_containers.keys())
+                for container_name in all_containers:
+                    current_container_qty = current_containers.get(container_name, 0)
+                    previous_container_qty = previous_containers.get(container_name, 0)
+                    container_change = current_container_qty - previous_container_qty
+                    
+                    if container_change != 0:
+                        # Update change for this specific item+container
+                        self.container_quantity_changes[item_name][container_name] = container_change
+                        self.container_change_timestamps[item_name][container_name] = current_time
+                        logging.debug(f"[ClaimInventoryTab] CONTAINER CHANGE: {item_name} in {container_name}: {previous_container_qty} → {current_container_qty} ({container_change:+d})")
+                    else:
+                        # Remove any existing change for containers that didn't actually change
+                        if container_name in self.container_quantity_changes.get(item_name, {}):
+                            del self.container_quantity_changes[item_name][container_name]
+                            logging.debug(f"[ClaimInventoryTab] CLEARED CONTAINER CHANGE: {item_name} in {container_name} (no actual change)")
+                        if container_name in self.container_change_timestamps.get(item_name, {}):
+                            del self.container_change_timestamps[item_name][container_name]
+                
+                # Clean up empty dictionaries for this item
+                if not self.container_quantity_changes.get(item_name, {}):
+                    self.container_quantity_changes.pop(item_name, None)
+                if not self.container_change_timestamps.get(item_name, {}):
+                    self.container_change_timestamps.pop(item_name, None)
+        
+        # Clean up expired changes (older than 10 minutes)
+        self._cleanup_expired_changes(current_time)
+        
+        # Update previous quantities for next comparison
+        self.previous_quantities = current_quantities.copy()
+        self.previous_container_quantities = current_container_quantities.copy()
+
+    def _cleanup_expired_changes(self, current_time):
+        """Remove changes older than 10 minutes."""
+        expire_time = 10 * 60  # 10 minutes in seconds
+        
+        # Clean up total quantity changes
+        expired_items = [item for item, timestamp in self.change_timestamps.items() if current_time - timestamp > expire_time]
+        for item in expired_items:
+            self.quantity_changes.pop(item, None)
+            self.change_timestamps.pop(item, None)
+        
+        # Clean up container-specific changes
+        for item_name in list(self.container_change_timestamps.keys()):
+            expired_containers = [
+                container for container, timestamp in self.container_change_timestamps[item_name].items()
+                if current_time - timestamp > expire_time
+            ]
+            for container in expired_containers:
+                if item_name in self.container_quantity_changes:
+                    self.container_quantity_changes[item_name].pop(container, None)
+                self.container_change_timestamps[item_name].pop(container, None)
+            
+            # Remove empty dictionaries
+            if not self.container_change_timestamps[item_name]:
+                self.container_change_timestamps.pop(item_name, None)
+                self.container_quantity_changes.pop(item_name, None)
+
+    def _format_quantity_with_change(self, item_name, base_quantity, container_name=None):
+        """Format quantity display with change indicator if applicable."""
+        # For container rows (child rows)
+        if container_name:
+            # Only show change if this specific container actually changed
+            if (item_name in self.container_quantity_changes and 
+                container_name in self.container_quantity_changes[item_name]):
+                change = self.container_quantity_changes[item_name][container_name]
+                if change > 0:
+                    return f"{base_quantity} (+{change})"
+                else:
+                    return f"{base_quantity} ({change})"
+            # If this container didn't change, show no change indicator
+            return str(base_quantity)
+        
+        # For parent rows (total quantities)
+        if item_name in self.quantity_changes:
+            change = self.quantity_changes[item_name]
+            if change > 0:
+                return f"{base_quantity} (+{change})"
+            else:
+                return f"{base_quantity} ({change})"
+        return str(base_quantity)
+
+    def _get_change_info(self, item_name, container_name=None):
+        """Get change information for styling. Returns (has_change, change_amount, is_increase)"""
+        # For container rows (child rows)
+        if container_name:
+            # Only return change info if this specific container actually changed
+            if (item_name in self.container_quantity_changes and 
+                container_name in self.container_quantity_changes[item_name]):
+                change = self.container_quantity_changes[item_name][container_name]
+                return True, change, change > 0
+            # If this container didn't change, return no change info
+            return False, 0, False
+        
+        # For parent rows (total quantities)
+        if item_name in self.quantity_changes:
+            change = self.quantity_changes[item_name]
+            return True, change, change > 0
+            
+        return False, 0, False
+
+    def _log_inventory_change(self, item_name: str, previous_qty: int, new_qty: int, change: int):
+        """Log inventory change to activity window if available."""
+        try:
+            # Access the activity window through the main app
+            if hasattr(self.app, 'activity_window') and self.app.activity_window and self.app.activity_window.winfo_exists():
+                self.app.activity_window.add_inventory_change(item_name, previous_qty, new_qty, change)
+        except Exception as e:
+            logging.error(f"Error logging inventory change to activity window: {e}")
 
     def apply_filter(self):
         """Filters the master data list based on search and column filters."""
@@ -194,7 +374,7 @@ class ClaimInventoryTab(ctk.CTkFrame):
                     temp_data = [row for row in temp_data if str(row.get(data_key, "")) in values]
 
         if search_term:
-            temp_data = [row for row in temp_data if any(search_term in str(cell_value).lower() for cell_value in row.values())]
+            temp_data = [row for row in temp_data if self._row_matches_search(row, search_term)]
 
         self.filtered_data = temp_data
         self.sort_by(self.sort_column, self.sort_reverse)
@@ -210,6 +390,19 @@ class ClaimInventoryTab(ctk.CTkFrame):
             locations_text = f"{len(containers)} Containers"
             return locations_text in selected_values
 
+        return False
+
+    def _row_matches_search(self, row, search_term):
+        """Check if row matches search term, using base values for quantity filtering."""
+        for key, value in row.items():
+            # For quantity, search against base number only (ignore change indicators)
+            if key == "quantity":
+                base_quantity = str(value)
+                if search_term in base_quantity.lower():
+                    return True
+            else:
+                if search_term in str(value).lower():
+                    return True
         return False
 
     def sort_by(self, header, reverse=None):
@@ -257,32 +450,58 @@ class ClaimInventoryTab(ctk.CTkFrame):
             for row_data in self.filtered_data:
                 item_name = row_data.get("name", "")
                 containers = row_data.get("containers", {})
+                base_quantity = row_data.get("quantity", 0)
+
+                # Format quantity with change indicators
+                quantity_display = self._format_quantity_with_change(item_name, base_quantity)
 
                 values = [
                     item_name,
                     str(row_data.get("tier", "")),
-                    str(row_data.get("quantity", "")),
+                    quantity_display,
                     str(row_data.get("tag", "")),
                     f"{len(containers)} Containers" if len(containers) > 1 else next(iter(containers.keys()), "N/A"),
                 ]
 
+                # Apply color tags only to quantity column when there are changes
+                tags = []
+                if item_name in self.quantity_changes:
+                    change = self.quantity_changes[item_name]
+                    if change > 0:
+                        tags.append("quantity_increase")
+                    elif change < 0:
+                        tags.append("quantity_decrease")
+
                 try:
                     if len(containers) > 1:
-                        item_id = self.tree.insert("", "end", values=values)
+                        item_id = self.tree.insert("", "end", values=values, tags=tags)
                     else:
-                        item_id = self.tree.insert("", "end", text="", values=values, open=False)
+                        item_id = self.tree.insert("", "end", text="", values=values, open=False, tags=tags)
                     rows_added += 1
 
                     if len(containers) > 1:
                         for container_name, quantity in containers.items():
+                            # Format container quantity with container-specific changes
+                            container_quantity_display = self._format_quantity_with_change(item_name, quantity, container_name)
+                            
+                            # Apply container-specific color tags when there are changes
+                            child_tags = ["child"]
+                            if (item_name in self.container_quantity_changes and 
+                                container_name in self.container_quantity_changes[item_name]):
+                                change = self.container_quantity_changes[item_name][container_name]
+                                if change > 0:
+                                    child_tags.append("quantity_increase")
+                                elif change < 0:
+                                    child_tags.append("quantity_decrease")
+                            
                             child_values = [
                                 f"  └─ {item_name}",
                                 str(row_data.get("tier", "")),
-                                str(quantity),
+                                container_quantity_display,
                                 str(row_data.get("tag", "")),
                                 container_name,
                             ]
-                            self.tree.insert(item_id, "end", text="", values=child_values, tags=("child",))
+                            self.tree.insert(item_id, "end", text="", values=child_values, tags=child_tags)
                             child_rows_added += 1
 
                 except Exception as e:
