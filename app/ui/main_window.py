@@ -16,6 +16,7 @@ from app.ui.tabs.claim_inventory_tab import ClaimInventoryTab
 from app.ui.tabs.passive_crafting_tab import PassiveCraftingTab
 from app.ui.tabs.active_crafting_tab import ActiveCraftingTab
 from app.ui.tabs.traveler_tasks_tab import TravelerTasksTab
+from app.ui.components.activity_window import ActivityWindow
 
 
 class ShutdownDialog(ctk.CTkToplevel):
@@ -104,6 +105,9 @@ class MainWindow(ctk.CTk):
         self.tabs: Dict[str, ctk.CTkFrame] = {}
         self.tab_buttons: Dict[str, ctk.CTkButton] = {}
         self.active_tab_name = None
+        
+        # Activity window reference
+        self.activity_window = None
 
         # Shutdown tracking
         self.is_shutting_down = False
@@ -203,16 +207,10 @@ class MainWindow(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def _create_search_section(self):
-        """Creates the search section with label, field, and clear button."""
+        """Creates the search section with field and clear button."""
         search_frame = ctk.CTkFrame(self, fg_color="transparent")
         search_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=8)
-        search_frame.grid_columnconfigure(1, weight=1)  # Make search field expand
-
-        # Search label
-        search_label = ctk.CTkLabel(
-            search_frame, text="Search:", font=ctk.CTkFont(size=12, weight="normal"), text_color="#cccccc"
-        )
-        search_label.grid(row=0, column=0, padx=(0, 8), sticky="w")
+        search_frame.grid_columnconfigure(0, weight=1)  # Make search field expand
 
         # Search variable and field
         self.search_var = ctk.StringVar()
@@ -221,7 +219,7 @@ class MainWindow(ctk.CTk):
         self.search_field = ctk.CTkEntry(
             search_frame,
             textvariable=self.search_var,
-            placeholder_text="🔍 Type to search items...",
+            placeholder_text="Search Claim Inventory...",
             height=34,
             font=ctk.CTkFont(size=12),
             fg_color=("#2a2d2e", "#343638"),
@@ -230,7 +228,7 @@ class MainWindow(ctk.CTk):
             placeholder_text_color=("#888888", "#999999"),
             corner_radius=8,
         )
-        self.search_field.grid(row=0, column=1, sticky="ew", padx=(0, 8))
+        self.search_field.grid(row=0, column=0, sticky="ew", padx=(0, 8))
 
         # Clear button with modern styling
         self.clear_button = ctk.CTkButton(
@@ -251,6 +249,14 @@ class MainWindow(ctk.CTk):
         """Clears the search field."""
         self.search_var.set("")
         self.search_field.focus()  # Return focus to search field
+
+    def _update_search_placeholder(self, tab_name):
+        """Update search field placeholder text based on current tab."""
+        try:
+            placeholder_text = f"Search {tab_name}..."
+            self.search_field.configure(placeholder_text=placeholder_text)
+        except Exception as e:
+            logging.error(f"Error updating search placeholder: {e}")
 
     def _create_loading_overlay(self):
         """Creates loading overlay with image and text."""
@@ -395,6 +401,7 @@ class MainWindow(ctk.CTk):
 
     def _create_tab_buttons(self):
         """Creates the tab navigation buttons with modern styling."""
+        # Create data tab buttons
         for i, name in enumerate(self.tabs.keys()):
             btn = ctk.CTkButton(
                 self.tab_frame,
@@ -412,6 +419,36 @@ class MainWindow(ctk.CTk):
             )
             btn.grid(row=0, column=i, padx=(0 if i == 0 else 4, 0), pady=(0, 2), sticky="w")
             self.tab_buttons[name] = btn
+        
+
+    def _open_activity_window(self):
+        """Opens the activity logs window."""
+        try:
+            if not self.activity_window or not self.activity_window.winfo_exists():
+                self.activity_window = ActivityWindow(self)
+                
+                # Update claim info if available
+                if hasattr(self, 'claim_info_header') and self.claim_info_header:
+                    claim_name = getattr(self.claim_info_header, 'claim_name', 'Unknown Claim')
+                    self.activity_window.update_claim_info(claim_name)
+                
+                logging.info("Activity window opened")
+            else:
+                # Bring existing window to front
+                self.activity_window.lift()
+                self.activity_window.focus()
+                
+        except Exception as e:
+            logging.error(f"Error opening activity window: {e}")
+
+    def _update_activity_window_claim_info(self, claim_name: str):
+        """Update activity window with new claim info."""
+        try:
+            if self.activity_window and self.activity_window.winfo_exists():
+                self.activity_window.update_claim_info(claim_name)
+                self.activity_window.clear_on_claim_switch()
+        except Exception as e:
+            logging.error(f"Error updating activity window claim info: {e}")
 
     def show_tab(self, tab_name):
         """Shows the specified tab and updates button states with enhanced visual feedback."""
@@ -420,6 +457,9 @@ class MainWindow(ctk.CTk):
 
         self.active_tab_name = tab_name
         self.tabs[tab_name].tkraise()
+        
+        # Update search placeholder to match current tab
+        self._update_search_placeholder(tab_name)
 
         # Update button appearances with modern styling
         for i, (name, button) in enumerate(self.tab_buttons.items()):
@@ -588,8 +628,6 @@ class MainWindow(ctk.CTk):
                     self.shutdown_dialog.update_status("Saving data...")
 
                     # Give services a moment to clean up
-                    import time
-
                     time.sleep(0.2)
 
                     self.shutdown_dialog.update_status("Finalizing shutdown...")
@@ -726,6 +764,9 @@ class MainWindow(ctk.CTk):
                 # Update header with new claim info first
                 self.claim_info.handle_claim_switch_complete(claim_id, claim_name)
                 self.claim_info.update_claim_data(claim_info)
+
+                # Update activity window with new claim info
+                self._update_activity_window_claim_info(claim_name)
 
                 # Re-enable tab buttons
                 self._set_tab_buttons_state("normal")
