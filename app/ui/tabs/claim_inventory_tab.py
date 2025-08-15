@@ -15,11 +15,11 @@ class ClaimInventoryTab(ctk.CTkFrame):
         super().__init__(master, fg_color="transparent")
         self.app = app
 
-        self.headers = ["Name", "Tier", "Quantity", "Tag", "Containers"]
+        self.headers = ["Item", "Tier", "Quantity", "Tag", "Containers"]
         self.all_data: List[Dict] = []
         self.filtered_data: List[Dict] = []
 
-        self.sort_column = "Name"
+        self.sort_column = "Item"
         self.sort_reverse = False
         self.active_filters: Dict[str, set] = {}
         self.clicked_header = None
@@ -55,7 +55,7 @@ class ClaimInventoryTab(ctk.CTkFrame):
 
         # Set up headings and column widths
         column_widths = {
-            "Name": 200,
+            "Item": 200,
             "Tier": 60,
             "Quantity": 80,
             "Tag": 120,
@@ -113,7 +113,10 @@ class ClaimInventoryTab(ctk.CTkFrame):
                     unique_containers.add(f"{len(containers)} Containers")
             return sorted(list(unique_containers))
         else:
-            return sorted(list(set(str(row.get(header.lower(), "")) for row in self.all_data)))
+            # Map header names to data keys
+            header_to_key = {"Item": "name"}
+            data_key = header_to_key.get(header, header.lower())
+            return sorted(list(set(str(row.get(data_key, "")) for row in self.all_data)))
 
     def _open_filter_popup(self, header):
         if not self.all_data:
@@ -125,7 +128,10 @@ class ClaimInventoryTab(ctk.CTkFrame):
             current_selection = self.active_filters.get(header, set(unique_values))
             FilterPopup(self, header, filter_data, current_selection, self._apply_column_filter, custom_key="containers_display")
         else:
-            current_selection = self.active_filters.get(header, {str(row.get(header.lower(), "")) for row in self.all_data})
+            # Map header names to data keys
+            header_to_key = {"Item": "name"}
+            data_key = header_to_key.get(header, header.lower())
+            current_selection = self.active_filters.get(header, {str(row.get(data_key, "")) for row in self.all_data})
             FilterPopup(self, header, self.all_data, current_selection, self._apply_column_filter)
 
     def _apply_column_filter(self, header, selected_values):
@@ -182,7 +188,10 @@ class ClaimInventoryTab(ctk.CTkFrame):
                 if header.lower() == "containers":
                     temp_data = [row for row in temp_data if self._container_matches_filter(row, values)]
                 else:
-                    temp_data = [row for row in temp_data if str(row.get(header.lower(), "")) in values]
+                    # Map header names to data keys
+                    header_to_key = {"Item": "name"}
+                    data_key = header_to_key.get(header, header.lower())
+                    temp_data = [row for row in temp_data if str(row.get(data_key, "")) in values]
 
         if search_term:
             temp_data = [row for row in temp_data if any(search_term in str(cell_value).lower() for cell_value in row.values())]
@@ -211,7 +220,9 @@ class ClaimInventoryTab(ctk.CTkFrame):
             self.sort_column = header
             self.sort_reverse = reverse if reverse is not None else False
 
-        sort_key = self.sort_column.lower()
+        # Map header names to data keys
+        header_to_key = {"Item": "name"}
+        sort_key = header_to_key.get(self.sort_column, self.sort_column.lower())
         is_numeric = sort_key in ["tier", "quantity"]
 
         self.filtered_data.sort(

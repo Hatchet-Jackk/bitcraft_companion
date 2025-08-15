@@ -100,6 +100,12 @@ class SettingsWindow(ctk.CTkToplevel):
         # Configure grid for left alignment
         main_frame.grid_columnconfigure(0, weight=1)
 
+        # Account Section
+        self._create_account_section(main_frame)
+
+        # Add spacing
+        ctk.CTkLabel(main_frame, text="", height=20).pack(fill="x", pady=5)
+
         # Data Management Section
         self._create_data_management_section(main_frame)
 
@@ -129,6 +135,25 @@ class SettingsWindow(ctk.CTkToplevel):
             hover_color=("#777777", "#808080"),
         )
         close_button.pack(side="right")
+
+    def _create_account_section(self, parent):
+        """Create the account management section."""
+        # Section header
+        header_label = ctk.CTkLabel(parent, text="Account", font=ctk.CTkFont(size=16, weight="bold"), anchor="w")
+        header_label.pack(fill="x", pady=(0, 10))
+
+        # Logout button
+        self.logout_button = ctk.CTkButton(
+            parent,
+            text="Logout",
+            command=self._logout,
+            width=200,
+            height=36,
+            anchor="w",
+            fg_color=("#FF6B35", "#E55100"),
+            hover_color=("#E55100", "#BF360C"),
+        )
+        self.logout_button.pack(fill="x", pady=(0, 8))
 
     def _create_data_management_section(self, parent):
         """Create the data management section."""
@@ -452,3 +477,61 @@ class SettingsWindow(ctk.CTkToplevel):
         except Exception as e:
             logging.error(f"Error closing settings window: {e}")
             self.destroy()
+
+    def _logout(self):
+        """Logs out the user with confirmation dialog."""
+        try:
+            # Show confirmation dialog
+            result = messagebox.askyesno(
+                "Confirm Logout",
+                "Logging out will clear your stored credentials and you'll need to re-authenticate.\n\nAre you sure you want to continue?",
+                icon="warning",
+            )
+
+            if not result:  # User clicked "No" or closed dialog
+                logging.info("Logout cancelled by user")
+                return
+
+            # Perform logout
+            logging.info("User initiated logout from settings window")
+
+            if hasattr(self.app, "data_service") and self.app.data_service:
+                # Clear credentials using the data service client
+                if hasattr(self.app.data_service, "client"):
+                    if self.app.data_service.client.logout():
+                        messagebox.showinfo("Logout Successful", "You have been logged out. The application will now close.")
+                        # Close the application
+                        self._quit_application()
+                    else:
+                        messagebox.showerror("Logout Error", "Failed to logout. See logs for details.")
+                else:
+                    messagebox.showerror("Logout Error", "Unable to access authentication system.")
+            else:
+                messagebox.showerror("Logout Error", "Unable to access data service.")
+
+        except Exception as e:
+            logging.error(f"Error during logout: {e}")
+            messagebox.showerror("Logout Error", f"An error occurred during logout:\n{str(e)}")
+
+    def _quit_application(self):
+        """Quits the application."""
+        try:
+            logging.info("User initiated application quit from settings window")
+
+            # Close settings window first
+            self.destroy()
+
+            # Call the main window's closing method
+            if hasattr(self.app, "on_closing"):
+                self.app.on_closing()
+            else:
+                # Fallback: try to close the root window
+                self.app.quit()
+
+        except Exception as e:
+            logging.error(f"Error quitting application: {e}")
+            try:
+                self.app.quit()
+            except:
+                import sys
+                sys.exit(0)

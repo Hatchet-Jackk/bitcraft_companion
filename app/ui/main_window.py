@@ -1,3 +1,4 @@
+import os
 import sys
 import time
 import queue
@@ -7,6 +8,7 @@ from typing import Dict
 
 import customtkinter as ctk
 from tkinter import messagebox
+from PIL import Image
 
 from app.core.data_service import DataService
 from app.ui.components.claim_info_header import ClaimInfoHeader
@@ -152,7 +154,7 @@ class MainWindow(ctk.CTk):
 
         # Ensure loading overlay is visible on top and lock tab buttons
         # Just show the overlay and set initial state
-        logging.info(f"[LOADING STATE] Showing initial loading overlay")
+        logging.debug(f"[LOADING STATE] Showing initial loading overlay")
         self.loading_overlay.grid(row=0, column=0, sticky="nsew")
         self.loading_overlay.tkraise()
         self._set_tab_buttons_state("disabled")
@@ -251,7 +253,7 @@ class MainWindow(ctk.CTk):
         self.search_field.focus()  # Return focus to search field
 
     def _create_loading_overlay(self):
-        """Creates a clean, text-based loading overlay."""
+        """Creates loading overlay with image and text."""
         overlay = ctk.CTkFrame(self.tab_content_area, fg_color="#2b2b2b")
         overlay.grid(row=0, column=0, sticky="nsew")
         overlay.grid_columnconfigure(0, weight=1)
@@ -261,13 +263,19 @@ class MainWindow(ctk.CTk):
         loading_frame = ctk.CTkFrame(overlay, fg_color="transparent")
         loading_frame.grid(row=0, column=0)
 
+        # Load and display loading image
+        loading_image = self._load_loading_image()
+        if loading_image:
+            image_label = ctk.CTkLabel(loading_frame, image=loading_image, text="")
+            image_label.pack(pady=(20, 0))
+
         # Main loading title with modern styling
         self.loading_title = ctk.CTkLabel(loading_frame, text="", font=ctk.CTkFont(size=24, weight="bold"), text_color="#3B8ED0")
-        self.loading_title.pack(pady=(0, 20))
+        self.loading_title.pack(pady=(0, 0))
 
         # Animated loading indicator (will be updated with dots)
         self.loading_indicator = ctk.CTkLabel(loading_frame, text="●●●", font=ctk.CTkFont(size=18), text_color="#1F6AA5")
-        self.loading_indicator.pack(pady=(0, 15))
+        self.loading_indicator.pack(pady=(0, 8))
 
         # Loading message with better formatting
         self.loading_message = ctk.CTkLabel(
@@ -282,6 +290,27 @@ class MainWindow(ctk.CTk):
         self._start_loading_animation()
 
         return overlay
+
+    def _load_loading_image(self):
+        """Load and resize loading.png to 1/4 size."""
+        try:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            images_dir = os.path.join(current_dir, "images")
+            loading_path = os.path.join(images_dir, "loading.png")
+            
+            if os.path.exists(loading_path):
+                pil_image = Image.open(loading_path)
+                width, height = pil_image.size
+                new_width, new_height = width // 2, height // 2
+                
+                resized_pil = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                return ctk.CTkImage(light_image=resized_pil, dark_image=resized_pil, size=(new_width, new_height))
+            else:
+                return None
+                
+        except Exception as e:
+            logging.error(f"Error loading loading image: {e}")
+            return None
 
     def _start_loading_animation(self):
         """Starts the loading dots animation."""
@@ -311,7 +340,7 @@ class MainWindow(ctk.CTk):
 
     def show_loading(self, reset_data_tracking=True):
         """Shows the loading overlay with minimum display time for better UX."""
-        logging.info(f"[LOADING STATE] Showing loading overlay - reset_data_tracking: {reset_data_tracking}")
+        logging.debug(f"[LOADING STATE] Showing loading overlay - reset_data_tracking: {reset_data_tracking}")
         self.is_loading = True
         if reset_data_tracking:
             self.received_data_types = set()  # Reset data tracking when showing loading for claim switch
@@ -343,7 +372,7 @@ class MainWindow(ctk.CTk):
 
     def _actually_hide_loading(self):
         """Actually hides the loading overlay."""
-        logging.info(f"[LOADING STATE] Hiding loading overlay - data types received: {self.received_data_types}")
+        logging.debug(f"[LOADING STATE] Hiding loading overlay - data types received: {self.received_data_types}")
         self.is_loading = False
         self.loading_overlay.grid_remove()
         self._set_tab_buttons_state("normal")
@@ -883,7 +912,7 @@ class MainWindow(ctk.CTk):
                         # Track that we've received inventory data
                         if self.is_loading:
                             self.received_data_types.add("inventory")
-                            logging.info(
+                            logging.debug(
                                 f"[LOADING STATE] Received inventory data - progress: {self.received_data_types}/{self.expected_data_types}"
                             )
                             self._check_all_data_loaded()
@@ -1039,10 +1068,10 @@ class MainWindow(ctk.CTk):
             logging.info(f"[LOADING STATE] All data received! Claim switching: {claim_switching}")
 
             if not claim_switching:
-                logging.info(f"[LOADING STATE] Hiding loading overlay - all initial data loaded: {self.received_data_types}")
+                logging.debug(f"[LOADING STATE] Hiding loading overlay - all initial data loaded: {self.received_data_types}")
                 self.hide_loading()
             else:
-                logging.info(f"[LOADING STATE] Not hiding loading overlay - claim switch in progress")
+                logging.debug(f"[LOADING STATE] Not hiding loading overlay - claim switch in progress")
         else:
             missing_types = self.expected_data_types - self.received_data_types
             logging.debug(f"[LOADING STATE] Still waiting for data types: {missing_types}")

@@ -120,21 +120,6 @@ class ClaimInfoHeader(ctk.CTkFrame):
         # Add tooltip to settings button
         self._add_tooltip(self.settings_button, "Open settings window to manage app preferences and data operations")
 
-        # Add logout button
-        self.logout_button = ctk.CTkButton(
-            dropdown_frame,
-            text="Logout",
-            width=80,
-            height=40,
-            font=ctk.CTkFont(size=12),
-            command=self._logout,
-            fg_color=("#FF6B35", "#E55100"),
-            hover_color=("#E55100", "#BF360C"),
-            text_color="#ffffff",
-            corner_radius=8,
-        )
-        self.logout_button.grid(row=0, column=2, sticky="w", padx=(0, 10))
-
         # Add quit button
         self.quit_button = ctk.CTkButton(
             dropdown_frame,
@@ -148,7 +133,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
             text_color="#ffffff",
             corner_radius=8,
         )
-        self.quit_button.grid(row=0, column=3, sticky="w")
+        self.quit_button.grid(row=0, column=2, sticky="w")
 
         # Create info row with treasury, supplies, and supplies run out
         info_frame = ctk.CTkFrame(claim_frame, fg_color="transparent")
@@ -908,41 +893,6 @@ class ClaimInfoHeader(ctk.CTkFrame):
 
         except Exception as e:
             logging.error(f"Error creating claim info sheet: {e}")
-
-    def _logout(self):
-        """Logs out the user with confirmation dialog."""
-        try:
-            # Show confirmation dialog
-            result = messagebox.askyesno(
-                "Confirm Logout",
-                "Logging out will clear your stored credentials and you'll need to re-authenticate.\n\nAre you sure you want to continue?",
-                icon="warning",
-            )
-
-            if not result:  # User clicked "No" or closed dialog
-                logging.info("Logout cancelled by user")
-                return
-
-            # Perform logout
-            logging.info("User initiated logout from main window")
-
-            if hasattr(self.app, "data_service") and self.app.data_service:
-                # Clear credentials using the data service client
-                if hasattr(self.app.data_service, "client"):
-                    if self.app.data_service.client.logout():
-                        messagebox.showinfo("Logout Successful", "You have been logged out. The application will now close.")
-                        # Close the application
-                        self._quit_application()
-                    else:
-                        messagebox.showerror("Logout Error", "Failed to logout. See logs for details.")
-                else:
-                    messagebox.showerror("Logout Error", "Unable to access authentication system.")
-            else:
-                messagebox.showerror("Logout Error", "Unable to access data service.")
-
-        except Exception as e:
-            logging.error(f"Error during logout: {e}")
-            messagebox.showerror("Logout Error", f"An error occurred during logout:\n{str(e)}")
 
     def _quit_application(self):
         """Quits the application."""
