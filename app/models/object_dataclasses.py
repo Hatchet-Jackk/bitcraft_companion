@@ -1,3 +1,4 @@
+import logging
 import json
 from dataclasses import dataclass
 from datetime import datetime
@@ -590,12 +591,23 @@ class InventoryState:
     player_owner_entity_id: int = 0
 
     @classmethod
-    def from_array(cls, data: List) -> "InventoryState":
+    def from_array(cls, data) -> "InventoryState":
         """Create InventoryState from SpacetimeDB array format."""
+        # Handle string data that needs JSON parsing
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+                logging.debug(f"[InventoryState.from_array] Parsed JSON, new type: {type(data)}")
+            except (json.JSONDecodeError, TypeError) as e:
+                logging.error(f"[InventoryState.from_array] Failed to parse JSON string: {e}")
+                raise ValueError(f"Invalid inventory_state JSON string: {e}")
+        
         if not isinstance(data, list):
+            logging.error(f"[InventoryState.from_array] Expected list after parsing, got {type(data)}")
             raise ValueError(f"Invalid inventory_state array format: expected list, got {type(data)}")
         
         if len(data) < 6:
+            logging.error(f"[InventoryState.from_array] Array too short: {len(data)} elements, expected 6+")
             raise ValueError(f"Invalid inventory_state array format: expected at least 6 elements, got {len(data)}")
         
         return cls(
