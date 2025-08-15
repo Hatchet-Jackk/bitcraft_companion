@@ -30,8 +30,6 @@ a = Analysis(
     pathex=[str(project_dir / 'app')],  # Add app directory to Python path
     binaries=[],
     datas=[
-        # Include reference data files - include entire data directory to ensure all files are bundled
-        ('app/data', 'data'),
         # Include images folder for loading overlays and other UI assets
         ('app/ui/images', 'images'),
         # Exclude player_data.json - users should create their own
