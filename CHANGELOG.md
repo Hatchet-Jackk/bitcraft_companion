@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add `timestamp_micros` property to PassiveCraftState for enhanced timestamp handling
 
 ### Changed
+- Moved reference queries to their own function for improved performance and compartmentalization
 - Reorganize import statements for improved clarity and consistency
 - Clean up imports and enhance code organization in UI components
 - Update class docstring format in ClaimService for consistency
