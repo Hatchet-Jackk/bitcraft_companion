@@ -4,6 +4,7 @@ Tasks processor for handling traveler_task_state table updates.
 
 import json
 import logging
+import threading
 import time
 from datetime import datetime
 
@@ -36,6 +37,14 @@ class TasksProcessor(BaseProcessor):
 
         # Task timer data from traveler_task_loop_timer
         self._task_timer_data = {}
+        
+        # Exponential backoff retry mechanism for task timer failures
+        self._retry_count = 0
+        self._max_retries = 5
+        self._base_delay = 5  # seconds
+        self._max_delay = 60  # seconds
+        self._retry_timer = None
+        self._retry_in_progress = False
         
 
     def get_table_names(self):
@@ -930,6 +939,8 @@ class TasksProcessor(BaseProcessor):
             
         except Exception as e:
             logging.error(f"[TasksProcessor] Error loading initial task timer data: {e}")
+            # Start retry mechanism for critical initial data
+            self._start_retry_timer(is_initial=True)
 
 
     def load_task_timer_data(self, is_initial=False):
@@ -955,12 +966,18 @@ class TasksProcessor(BaseProcessor):
             if results:
                 # Process the results same way as subscription data
                 self._process_timer_query_results(results, query_type)
+                # Reset retry counter on successful query
+                self._reset_retry()
                 
             else:
                 logging.warning(f"[TasksProcessor] No results from timer query ({query_type})")
+                # Start retry if no results received
+                self._start_retry_timer(is_initial)
                 
         except Exception as e:
             logging.error(f"[TasksProcessor] Error querying task timer data: {e}")
+            # Start retry mechanism on failure
+            self._start_retry_timer(is_initial)
 
     def _process_timer_query_results(self, results, query_type):
         """
@@ -1009,3 +1026,80 @@ class TasksProcessor(BaseProcessor):
                                 
         except Exception as e:
             logging.error(f"[TasksProcessor] Error processing timer query results: {e}")
+
+    def _start_retry_timer(self, is_initial=False):
+        """
+        Start exponential backoff retry timer for task data loading.
+        
+        Args:
+            is_initial: True if this is a retry for initial data loading
+        """
+        if self._retry_in_progress:
+            return  # Already retrying
+            
+        if self._retry_count >= self._max_retries:
+            logging.error(f"[TasksProcessor] Max retries ({self._max_retries}) reached for task timer data")
+            self._send_retry_failed_notification()
+            return
+            
+        # Calculate exponential backoff delay
+        delay = min(self._base_delay * (2 ** self._retry_count), self._max_delay)
+        self._retry_count += 1
+        self._retry_in_progress = True
+        
+        logging.warning(f"[TasksProcessor] Starting retry {self._retry_count}/{self._max_retries} in {delay}s for task timer data")
+        
+        # Send retry status to UI
+        self._send_retry_status(delay, is_initial)
+        
+        # Schedule retry
+        self._retry_timer = threading.Timer(delay, self._execute_retry, args=[is_initial])
+        self._retry_timer.start()
+        
+    def _execute_retry(self, is_initial=False):
+        """Execute the retry attempt."""
+        try:
+            self._retry_in_progress = False
+            logging.info(f"[TasksProcessor] Executing retry {self._retry_count}/{self._max_retries} for task timer data")
+            self.load_task_timer_data(is_initial)
+            
+        except Exception as e:
+            logging.error(f"[TasksProcessor] Retry attempt failed: {e}")
+            self._retry_in_progress = False
+            # Will trigger another retry if within max retries
+            
+    def _reset_retry(self):
+        """Reset retry mechanism on successful operation."""
+        if self._retry_count > 0:
+            logging.info(f"[TasksProcessor] Task timer data loaded successfully after {self._retry_count} retries")
+            
+        self._retry_count = 0
+        self._retry_in_progress = False
+        
+        if self._retry_timer:
+            self._retry_timer.cancel()
+            self._retry_timer = None
+            
+    def _send_retry_status(self, delay, is_initial):
+        """Send retry status to UI for display."""
+        retry_data = {
+            "status": "retrying",
+            "retry_count": self._retry_count,
+            "max_retries": self._max_retries,
+            "delay": delay,
+            "is_initial": is_initial,
+            "message": f"Retrying in {delay}s... (attempt {self._retry_count}/{self._max_retries})"
+        }
+        
+        self._queue_update("traveler_task_retry_status", retry_data)
+        
+    def _send_retry_failed_notification(self):
+        """Send notification that all retries have failed."""
+        failure_data = {
+            "status": "failed",
+            "retry_count": self._retry_count,
+            "max_retries": self._max_retries,
+            "message": f"Failed to load task data after {self._max_retries} attempts"
+        }
+        
+        self._queue_update("traveler_task_retry_status", failure_data)

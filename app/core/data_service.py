@@ -234,9 +234,6 @@ class DataService:
             self.username = player_name
             logging.debug(f"[DEBUG] Player name set: {player_name}")
 
-            # Reference data is now loaded via subscriptions through ReferenceDataProcessor
-            logging.info("Reference data will be loaded via subscriptions")
-
             # Get user ID
             user_start = time.time()
             logging.info(f"Finding player: {player_name}")
@@ -250,10 +247,17 @@ class DataService:
             user_time = time.time() - user_start
             logging.debug(f"[DEBUG] User ID retrieved in {user_time:.3f}s")
 
-            # Initialize claim manager
+            # Initialize claim manager and query service
             logging.debug("[DEBUG] Initializing claim manager")
             query_service = QueryService(self.client)
             self.claim_manager = ClaimService(self.client, query_service)
+            
+            # Load reference data via one-off queries 
+            ref_start = time.time()
+            logging.info("Loading reference data...")
+            reference_data = query_service.get_reference_data()
+            ref_time = time.time() - ref_start
+            logging.info(f"Reference data loaded in {ref_time:.3f}s")
 
             # Fetch all claims for the user using query service
             claims_start = time.time()
@@ -298,7 +302,7 @@ class DataService:
             self.claim = Claim()
             self.claim.claim_id = current_claim["entity_id"]
 
-            return {}, all_claims, current_claim  # Empty dict for backward compatibility
+            return reference_data, all_claims, current_claim
 
         except Exception as e:
             logging.error(f"[DataService] Error initializing player and claims: {e}")
@@ -588,4 +592,57 @@ class DataService:
 
         except Exception as e:
             logging.error(f"Error refreshing claims list: {e}")
+            return False
+
+    def refresh_all_data(self):
+        """
+        Comprehensive data refresh including both reference data and current claim data.
+        
+        Returns:
+            bool: True if refresh succeeded, False otherwise
+        """
+        try:
+            logging.info("[DataService] Starting comprehensive data refresh...")
+            
+            # Stop active subscriptions to free the WebSocket for one-off queries
+            logging.info("[DataService] Stopping subscriptions for reference data refresh...")
+            if self.client:
+                self.client.stop_subscriptions()
+            
+            # Refresh reference data while WebSocket is free
+            query_service = QueryService(self.client) 
+            logging.info("[DataService] Refreshing reference data...")
+            reference_data = query_service.get_reference_data()
+            
+            # Update reference data in all processors
+            for processor in self.processors:
+                processor.reference_data = reference_data
+                
+            # Update ItemLookupService with fresh reference data
+            item_lookup_service = None
+            for processor in self.processors:
+                if hasattr(processor, 'services') and processor.services:
+                    item_lookup_service = processor.services.get("item_lookup_service")
+                    if item_lookup_service:
+                        break
+                    
+            if item_lookup_service:
+                item_lookup_service.refresh_lookups(reference_data)
+                logging.info("[DataService] ItemLookupService refreshed with new reference data")
+                
+            logging.info("[DataService] Reference data refresh completed")
+            
+            # Refresh current claim data (restart subscriptions)
+            logging.info("[DataService] Refreshing current claim data...")
+            claim_success = self.refresh_current_claim_data()
+            
+            if claim_success:
+                logging.info("[DataService] Comprehensive data refresh completed successfully")
+                return True
+            else:
+                logging.warning("[DataService] Claim data refresh failed during comprehensive refresh")
+                return False
+                
+        except Exception as e:
+            logging.error(f"[DataService] Error during comprehensive data refresh: {e}")
             return False

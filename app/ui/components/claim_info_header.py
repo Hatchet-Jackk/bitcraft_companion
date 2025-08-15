@@ -571,8 +571,8 @@ class ClaimInfoHeader(ctk.CTkFrame):
 
                 if time_diff_seconds <= 0:
                     # Timer expired - tasks are refreshing, wait for server to provide new expiration
-                    current_dt = datetime.datetime.fromtimestamp(current_time_seconds)
-                    expiration_dt = datetime.datetime.fromtimestamp(self.traveler_tasks_expiration)
+                    current_dt = datetime.fromtimestamp(current_time_seconds)
+                    expiration_dt = datetime.fromtimestamp(self.traveler_tasks_expiration)
 
                     # Check how long we've been in expired state
                     expired_duration = abs(time_diff_seconds)
@@ -649,6 +649,63 @@ class ClaimInfoHeader(ctk.CTkFrame):
                 self._task_refresh_timer_running = False
         except Exception as e:
             logging.error(f"Error stopping task refresh timer: {e}")
+
+    def update_task_refresh_retry_status(self, status, message, delay=0):
+        """
+        Update task refresh display with retry status information.
+        
+        Args:
+            status: "retrying" or "failed"
+            message: Display message for the user
+            delay: Retry delay in seconds (for countdown)
+        """
+        try:
+            if status == "retrying":
+                self.task_refresh_time = message
+                color = "#FF9800"  
+                
+                # Start countdown for retry delay if delay > 0
+                if delay > 0:
+                    self._start_retry_countdown(delay)
+                    
+            elif status == "failed":
+                self.task_refresh_time = "Connection failed"
+                color = "#f44336"  
+                
+            # Update the label
+            self.task_refresh_label.configure(text=self.task_refresh_time, text_color=color)
+            logging.debug(f"Task refresh retry status updated: {status} - {message}")
+            
+        except Exception as e:
+            logging.error(f"Error updating task refresh retry status: {e}")
+
+    def _start_retry_countdown(self, delay):
+        """Start a countdown timer for retry delay."""
+        try:
+            self._retry_countdown_remaining = delay
+            self._update_retry_countdown()
+            
+        except Exception as e:
+            logging.error(f"Error starting retry countdown: {e}")
+
+    def _update_retry_countdown(self):
+        """Update retry countdown display."""
+        try:
+            if hasattr(self, '_retry_countdown_remaining') and self._retry_countdown_remaining > 0:
+                self.task_refresh_time = f"Retrying in {self._retry_countdown_remaining}s..."
+                self.task_refresh_label.configure(text=self.task_refresh_time, text_color="#FF9800")
+                
+                self._retry_countdown_remaining -= 1
+                
+                # Schedule next update
+                self.after(1000, self._update_retry_countdown)
+            elif hasattr(self, '_retry_countdown_remaining'):
+                # Countdown finished
+                self.task_refresh_time = "Retrying now..."
+                self.task_refresh_label.configure(text=self.task_refresh_time, text_color="#FF9800")
+                
+        except Exception as e:
+            logging.error(f"Error updating retry countdown: {e}")
 
     def _request_fresh_player_state(self):
         """

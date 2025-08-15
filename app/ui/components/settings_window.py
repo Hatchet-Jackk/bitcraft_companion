@@ -139,7 +139,7 @@ class SettingsWindow(ctk.CTkToplevel):
         # Refresh button
         self.refresh_button = ctk.CTkButton(
             parent,
-            text="Refresh Claim Data",
+            text="Refresh Data",
             command=self._refresh_data,
             width=200,
             height=36,
@@ -379,31 +379,35 @@ class SettingsWindow(ctk.CTkToplevel):
         logging.info("Settings updated")
 
     def _refresh_data(self):
-        """Trigger data refresh for current claim."""
+        """Trigger comprehensive data refresh (reference data + current claim data)."""
         try:
             # Disable button during refresh
             self.refresh_button.configure(state="disabled", text="Refreshing...")
 
-            # Request current claim data refresh from the data service
-            logging.info("[Settings] Refresh claim data button clicked - starting refresh process")
+            # Request comprehensive data refresh from the data service
+            logging.info("[Settings] Refresh data button clicked - starting comprehensive refresh process")
             if hasattr(self.app, "data_service") and self.app.data_service:
-                logging.debug("[Settings] DataService found - calling refresh_current_claim_data()")
-                success = self.app.data_service.refresh_current_claim_data()
+                logging.debug("[Settings] DataService found - calling refresh_all_data()")
+                success = self.app.data_service.refresh_all_data()
                 if success:
-                    logging.info("[Settings] Current claim data refresh completed successfully")
+                    logging.info("[Settings] Comprehensive data refresh completed successfully")
+                    # Show success message briefly
+                    self.refresh_button.configure(text="Refreshed!")
+                    self.after(1000, lambda: self.refresh_button.configure(state="normal", text="Refresh Data"))
                 else:
-                    logging.warning("[Settings] Current claim data refresh failed")
+                    logging.warning("[Settings] Comprehensive data refresh failed")
+                    self.refresh_button.configure(text="Refresh failed")
+                    self.after(2000, lambda: self.refresh_button.configure(state="normal", text="Refresh Data"))
             else:
-                logging.error("[Settings] Data service not available for claim data refresh")
-
-            # Re-enable button after delay
-            self.after(2000, lambda: self.refresh_button.configure(state="normal", text="Refresh Claim Data"))
+                logging.error("[Settings] Data service not available for data refresh")
+                self.refresh_button.configure(text="Service unavailable")
+                self.after(2000, lambda: self.refresh_button.configure(state="normal", text="Refresh Data"))
 
         except Exception as e:
             logging.error(f"Error triggering data refresh: {e}")
             messagebox.showerror("Refresh Error", f"Failed to refresh data: {e}")
             # Re-enable button on error
-            self.refresh_button.configure(state="normal", text="Refresh Claim Data")
+            self.refresh_button.configure(state="normal", text="Refresh Data")
 
     def _export_data(self):
         """Trigger data export."""

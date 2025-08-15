@@ -819,6 +819,41 @@ class MainWindow(ctk.CTk):
         except Exception as e:
             logging.error(f"Error handling traveler task timer update: {e}")
 
+    def _handle_traveler_task_retry_status(self, msg_data):
+        """
+        Handles traveler_task_retry_status messages from TasksProcessor.
+        Updates the UI to show retry states and countdowns.
+
+        Args:
+            msg_data: Message data containing retry status information
+        """
+        try:
+            status = msg_data.get("status", "unknown")
+            retry_count = msg_data.get("retry_count", 0)
+            max_retries = msg_data.get("max_retries", 0)
+            message = msg_data.get("message", "")
+            
+            logging.info(f"[MainWindow] Task retry status: {status} - {message}")
+            
+            if status == "retrying":
+                delay = msg_data.get("delay", 0)
+                # Update claim info header with retry status
+                self.claim_info.update_task_refresh_retry_status(
+                    status="retrying",
+                    message=f"Retrying in {delay}s... ({retry_count}/{max_retries})",
+                    delay=delay
+                )
+            elif status == "failed":
+                # Update claim info header with failure status
+                self.claim_info.update_task_refresh_retry_status(
+                    status="failed", 
+                    message=f"Failed after {max_retries} attempts",
+                    delay=0
+                )
+                
+        except Exception as e:
+            logging.error(f"Error handling traveler task retry status: {e}")
+
     def process_data_queue(self):
         """Enhanced data queue processing that handles claim switching messages."""
         try:
@@ -936,6 +971,9 @@ class MainWindow(ctk.CTk):
 
                 elif msg_type == "traveler_task_timer_update":
                     self._handle_traveler_task_timer_update(msg_data)
+
+                elif msg_type == "traveler_task_retry_status":
+                    self._handle_traveler_task_retry_status(msg_data)
 
                 elif msg_type == "reference_data_loaded":
                     pass
