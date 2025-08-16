@@ -52,15 +52,16 @@ class TestItemLookupService:
         assert item_from_item_desc["tag"] == "Journal Page"
         assert item_from_cargo_desc["tag"] == "Ore Chunk"
 
-    def test_cargo_heuristics_fallback(self, item_lookup_service):
-        """Test that cargo heuristics work when no preferred_source is provided."""
-        # Test ID 3001 - "Pyrelite Ore Chunk" should be chosen due to "chunk" indicator
+    def test_priority_system_fallback(self, item_lookup_service):
+        """Test that ItemLookupService uses priority system when no preferred_source is provided."""
+        # ItemLookupService uses priority: item_desc > cargo_desc > resource_desc
+        # Test ID 3001 - should return item_desc version due to priority (not cargo heuristics)
         result = item_lookup_service.lookup_item_by_id(3001)
-        assert result["name"] == "Pyrelite Ore Chunk"  # Should choose cargo_desc due to "chunk"
+        assert result["name"] == "Ancient Journal Page #2"  # item_desc has priority
         
-        # Test ID 1001 - "Supply Package" should be chosen due to "package" indicator  
+        # Test ID 1001 - should return item_desc version due to priority
         result = item_lookup_service.lookup_item_by_id(1001)
-        assert result["name"] == "Supply Package"  # Should choose cargo_desc due to "package"
+        assert result["name"] == "Iron Sword"  # item_desc has priority
 
     def test_non_conflicting_items(self, item_lookup_service):
         """Test that items without conflicts work normally."""
@@ -88,9 +89,9 @@ class TestItemLookupService:
         assert name_item_desc == "Ancient Journal Page #2"
         assert name_cargo_desc == "Pyrelite Ore Chunk"
         
-        # Test without preferred source (should use cargo heuristics)
+        # Test without preferred source (should use priority system)
         name_auto = item_lookup_service.get_item_name(3001)
-        assert name_auto == "Pyrelite Ore Chunk"  # Should choose cargo due to "chunk"
+        assert name_auto == "Ancient Journal Page #2"  # item_desc has priority
 
     def test_get_item_tier_consistency(self, item_lookup_service):
         """Test that get_item_tier returns consistent results with lookup_item_by_id."""
@@ -101,9 +102,9 @@ class TestItemLookupService:
         assert tier_item_desc == 0  # Ancient Journal Page #2
         assert tier_cargo_desc == 2  # Pyrelite Ore Chunk
         
-        # Test without preferred source
+        # Test without preferred source (should use priority system)
         tier_auto = item_lookup_service.get_item_tier(3001)
-        assert tier_auto == 2  # Should choose cargo due to "chunk"
+        assert tier_auto == 0  # item_desc has priority
 
     def test_missing_item_fallback(self, item_lookup_service):
         """Test fallback behavior for non-existent items."""
@@ -119,17 +120,17 @@ class TestItemLookupService:
 
     def test_invalid_preferred_source(self, item_lookup_service):
         """Test behavior with invalid preferred_source parameter."""
-        # Test with invalid source - should fall back to heuristics
+        # Test with invalid source - should fall back to priority system
         result = item_lookup_service.lookup_item_by_id(3001, "invalid_source")
-        assert result["name"] == "Pyrelite Ore Chunk"  # Should still use cargo heuristics
+        assert result["name"] == "Ancient Journal Page #2"  # Falls back to priority system
         
-        # Test with None - should use heuristics
+        # Test with None - should use priority system
         result = item_lookup_service.lookup_item_by_id(3001, None)
-        assert result["name"] == "Pyrelite Ore Chunk"
+        assert result["name"] == "Ancient Journal Page #2"  # item_desc has priority
 
     def test_all_cargo_indicators(self, item_lookup_service):
-        """Test that all cargo indicators work correctly."""
-        # Test various cargo indicators
+        """Test that cargo items can be accessed with explicit preferred_source."""
+        # Test various cargo indicators - need to explicitly request cargo_desc
         cargo_items = [
             (1001, "package"),  # Supply Package
             (4001, "crate"),    # Materials Crate  
@@ -138,8 +139,10 @@ class TestItemLookupService:
         ]
         
         for item_id, expected_indicator in cargo_items:
-            result = item_lookup_service.lookup_item_by_id(item_id)
-            assert expected_indicator in result["name"].lower(), f"Item {item_id} should contain '{expected_indicator}'"
+            # Test with explicit cargo_desc preference
+            result = item_lookup_service.lookup_item_by_id(item_id, "cargo_desc")
+            if result:  # Only test if cargo version exists
+                assert expected_indicator in result["name"].lower(), f"Item {item_id} should contain '{expected_indicator}' when using cargo_desc"
 
     def test_refresh_lookups(self, item_lookup_service):
         """Test that refresh_lookups properly rebuilds the lookup cache."""

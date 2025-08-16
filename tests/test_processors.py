@@ -16,7 +16,7 @@ from app.core.processors.crafting_processor import CraftingProcessor
 from tests.conftest import get_mock_spacetime_messages, get_mock_reference_data
 
 
-class TestProcessor(BaseProcessor):
+class MockProcessor(BaseProcessor):
     """Concrete test implementation of BaseProcessor."""
 
     def __init__(self, data_queue, services, reference_data):
@@ -39,7 +39,7 @@ class TestBaseProcessor:
 
     def test_initialization(self, mock_data_queue, mock_services, mock_reference_data):
         """Test BaseProcessor initialization."""
-        processor = TestProcessor(mock_data_queue, mock_services, mock_reference_data)
+        processor = MockProcessor(mock_data_queue, mock_services, mock_reference_data)
 
         assert processor.data_queue == mock_data_queue
         assert processor.services == mock_services
@@ -51,7 +51,7 @@ class TestBaseProcessor:
 
     def test_queue_update(self, mock_data_queue, mock_services, mock_reference_data):
         """Test _queue_update helper method."""
-        processor = TestProcessor(mock_data_queue, mock_services, mock_reference_data)
+        processor = MockProcessor(mock_data_queue, mock_services, mock_reference_data)
 
         test_data = {"test": "data"}
         processor._queue_update("test_update", test_data, {"changes": True}, 123456)
@@ -71,7 +71,7 @@ class TestBaseProcessor:
         bad_queue = Mock()
         bad_queue.put.side_effect = Exception("Queue error")
 
-        processor = TestProcessor(bad_queue, mock_services, mock_reference_data)
+        processor = MockProcessor(bad_queue, mock_services, mock_reference_data)
 
         with caplog.at_level("ERROR"):
             processor._queue_update("test_update", {"data": "test"})
@@ -80,7 +80,7 @@ class TestBaseProcessor:
 
     def test_clear_cache(self, mock_data_queue, mock_services, mock_reference_data, caplog):
         """Test clear_cache method."""
-        processor = TestProcessor(mock_data_queue, mock_services, mock_reference_data)
+        processor = MockProcessor(mock_data_queue, mock_services, mock_reference_data)
 
         with caplog.at_level("INFO"):
             processor.clear_cache()
@@ -529,7 +529,7 @@ class TestProcessorErrorHandling:
         # Empty services dict
         empty_services = {}
 
-        processor = TestProcessor(mock_data_queue, empty_services, mock_reference_data)
+        processor = MockProcessor(mock_data_queue, empty_services, mock_reference_data)
 
         # Services shortcuts should be None
         assert processor.inventory_service is None
@@ -544,7 +544,7 @@ class TestProcessorErrorHandling:
         failing_queue = Mock()
         failing_queue.put.side_effect = Exception("Queue full")
 
-        processor = TestProcessor(failing_queue, mock_services, mock_reference_data)
+        processor = MockProcessor(failing_queue, mock_services, mock_reference_data)
 
         with caplog.at_level("ERROR"):
             processor._queue_update("test", {"data": "test"})
