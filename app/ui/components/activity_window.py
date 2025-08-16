@@ -27,7 +27,7 @@ class ActivityWindow(ctk.CTkToplevel):
 
     def _setup_window(self):
         """Configure the activity window."""
-        self.title("Activity Logs - BitCraft Companion")
+        self.title("BitCraft Companion - Activity Log")
         self.geometry("600x400")
         self.minsize(400, 300)
         
