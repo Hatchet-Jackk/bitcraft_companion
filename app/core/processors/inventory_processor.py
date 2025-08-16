@@ -350,12 +350,15 @@ class InventoryProcessor(BaseProcessor):
                             item_id = item_info.get("item_id", 0)
                             quantity = item_info.get("quantity", 0)
                             
-                            # Use ItemLookupService for all item details
-                            item_name = self.item_lookup_service.get_item_name(item_id)
-                            item_tier = self.item_lookup_service.get_item_tier(item_id)
+                            # Determine preferred source to handle cargo/item ID conflicts
+                            preferred_source = self._determine_preferred_item_source(item_id)
                             
-                            # Get tag from item lookup
-                            item_data = self.item_lookup_service.lookup_item_by_id(item_id)
+                            # Use ItemLookupService with preferred source for all item details
+                            item_name = self.item_lookup_service.get_item_name(item_id, preferred_source)
+                            item_tier = self.item_lookup_service.get_item_tier(item_id, preferred_source)
+                            
+                            # Get tag from item lookup with preferred source
+                            item_data = self.item_lookup_service.lookup_item_by_id(item_id, preferred_source)
                             item_tag = item_data.get("tag", "") if item_data else ""
 
                             # Add to consolidated inventory
@@ -513,3 +516,55 @@ class InventoryProcessor(BaseProcessor):
         except Exception as e:
             logging.error(f"Error getting player for recent change: {e}")
             return None
+
+    def _determine_preferred_item_source(self, item_id):
+        """
+        Determine the preferred item source for inventory items.
+        
+        Adapted from crafting processor logic to handle cargo vs item conflicts.
+        
+        Args:
+            item_id: The item ID to determine source for
+            
+        Returns:
+            str: Preferred source ("item_desc", "cargo_desc", "resource_desc")
+        """
+        try:
+            # Check if item exists in multiple sources to detect conflicts
+            available_sources = []
+            item_names = {}
+            
+            for source in ["item_desc", "cargo_desc", "resource_desc"]:
+                compound_key = (item_id, source)
+                if hasattr(self, 'item_lookup_service') and self.item_lookup_service._item_lookups:
+                    if compound_key in self.item_lookup_service._item_lookups:
+                        available_sources.append(source)
+                        item_data = self.item_lookup_service._item_lookups[compound_key]
+                        item_names[source] = item_data.get("name", "").lower()
+            
+            # If no conflicts, return first available or default
+            if len(available_sources) <= 1:
+                result = available_sources[0] if available_sources else "item_desc"
+                return result
+            
+            # If we have conflicts, use cargo heuristics
+            cargo_indicators = ["pack", "package", "bundle", "crate", "supplies", "materials", "goods", "cargo", "shipment", "chunk", "ore"]
+            
+            # Check cargo_desc item name for cargo indicators
+            if "cargo_desc" in available_sources:
+                cargo_name = item_names.get("cargo_desc", "")
+                for indicator in cargo_indicators:
+                    if indicator in cargo_name:
+                        logging.debug(f"[InventoryProcessor] Item {item_id} conflict resolved: chose cargo_desc for '{cargo_name}' (indicator: '{indicator}')")
+                        return "cargo_desc"
+            
+            # Log when falling back to item_desc for conflicts
+            if len(available_sources) > 1:
+                logging.debug(f"[InventoryProcessor] Item {item_id} conflict: using item_desc fallback. Available: {available_sources}, names: {item_names}")
+            
+            # Default to item_desc for most inventory items
+            return "item_desc"
+            
+        except Exception as e:
+            logging.error(f"Error determining preferred item source for {item_id}: {e}")
+            return "item_desc"
