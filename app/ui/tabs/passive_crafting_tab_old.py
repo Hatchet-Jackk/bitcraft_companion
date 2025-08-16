@@ -314,7 +314,7 @@ class PassiveCraftingTab(ctk.CTkFrame):
 
     def apply_filter(self):
         """Filters the master data list based on search and column filters."""
-        search_term = self.app.search_var.get().lower()
+        search_term = self.app.get_search_text().lower()
         temp_data = self.all_data[:]
 
         if self.active_filters:

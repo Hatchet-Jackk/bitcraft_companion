@@ -2,10 +2,12 @@ import logging
 from typing import Dict, List
 
 import customtkinter as ctk
+import tkinter as tk
 from tkinter import Menu, ttk
 
 from app.ui.components.filter_popup import FilterPopup
 from app.ui.styles import TreeviewStyles
+from app.ui.themes import get_color, register_theme_callback
 
 
 class ActiveCraftingTab(ctk.CTkFrame):
@@ -14,6 +16,9 @@ class ActiveCraftingTab(ctk.CTkFrame):
     def __init__(self, master, app):
         super().__init__(master, fg_color="transparent")
         self.app = app
+        
+        # Register for theme change notifications
+        register_theme_callback(self._on_theme_changed)
 
         # Updated headers to include Accept Help column
         self.headers = ["Item", "Tier", "Quantity", "Tag", "Remaining Effort", "Accept Help", "Crafter", "Building"]
@@ -24,6 +29,7 @@ class ActiveCraftingTab(ctk.CTkFrame):
         self.sort_reverse = False
         self.active_filters: Dict[str, set] = {}
         self.clicked_header = None
+        
 
         self._create_widgets()
         self._create_context_menu()
@@ -41,9 +47,7 @@ class ActiveCraftingTab(ctk.CTkFrame):
 
         # Apply common tree tags and configure custom status tags
         TreeviewStyles.configure_tree_tags(self.tree)
-        self.tree.tag_configure("ready", background="#2d4a2d", foreground="#4CAF50")  # Green for ready/complete
-        self.tree.tag_configure("crafting", background="#3d3d2d", foreground="#FFA726")  # Orange for in progress
-        self.tree.tag_configure("preparing", background="#2e2e3a", foreground="#B39DDB")  # Purple for preparation
+        self._configure_status_tags()
 
         # Create scrollbars with unique styles
         vsb = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview, style=self.v_scrollbar_style)
@@ -83,6 +87,29 @@ class ActiveCraftingTab(ctk.CTkFrame):
         # Bind events
         self.tree.bind("<Button-3>", self.show_header_context_menu)
         self.tree.bind("<Configure>", self.on_tree_configure)
+        
+    
+    def _configure_status_tags(self):
+        """Configure status-specific tag colors using current theme."""
+        self.tree.tag_configure("ready", 
+                              background=get_color("TREEVIEW_ALTERNATE"), 
+                              foreground=get_color("STATUS_SUCCESS"))
+        self.tree.tag_configure("crafting", 
+                              background=get_color("TREEVIEW_ALTERNATE"), 
+                              foreground=get_color("STATUS_IN_PROGRESS"))
+        self.tree.tag_configure("preparing", 
+                              background=get_color("TREEVIEW_ALTERNATE"), 
+                              foreground=get_color("TEXT_ACCENT"))
+    
+    def _on_theme_changed(self, old_theme: str, new_theme: str):
+        """Handle theme change by updating colors."""
+        # Reapply treeview styling
+        style = ttk.Style()
+        TreeviewStyles.apply_treeview_style(style)
+        TreeviewStyles.configure_tree_tags(self.tree)
+        
+        # Reconfigure status tags with new theme colors
+        self._configure_status_tags()
 
     def on_tree_configure(self, event):
         """Manages horizontal scrollbar visibility with debouncing for smooth resize."""
@@ -258,7 +285,7 @@ class ActiveCraftingTab(ctk.CTkFrame):
 
     def apply_filter(self):
         """Filters the master data list based on search and column filters."""
-        search_term = self.app.search_var.get().lower()
+        search_term = self.app.get_search_text().lower()
         temp_data = self.all_data[:]
 
         if self.active_filters:

@@ -4,10 +4,12 @@ import traceback
 from typing import Dict, List
 
 import customtkinter as ctk
+import tkinter as tk
 from tkinter import Menu, ttk
 
 from app.ui.components.filter_popup import FilterPopup
 from app.ui.styles import TreeviewStyles
+from app.ui.themes import get_color, register_theme_callback
 
 
 class ClaimInventoryTab(ctk.CTkFrame):
@@ -16,6 +18,9 @@ class ClaimInventoryTab(ctk.CTkFrame):
     def __init__(self, master, app):
         super().__init__(master, fg_color="transparent")
         self.app = app
+        
+        # Register for theme change notifications
+        register_theme_callback(self._on_theme_changed)
 
         self.headers = ["Item", "Tier", "Quantity", "Tag", "Containers"]
         self.all_data: List[Dict] = []
@@ -37,6 +42,7 @@ class ClaimInventoryTab(ctk.CTkFrame):
         # Time-based change tracking for fading
         self.change_timestamps: Dict[str, float] = {}  # item_name -> timestamp
         self.container_change_timestamps: Dict[str, Dict[str, float]] = {}  # item_name -> {container: timestamp}
+        
 
         self._create_widgets()
         self._create_context_menu()
@@ -55,9 +61,8 @@ class ClaimInventoryTab(ctk.CTkFrame):
         # Apply common tree tags
         TreeviewStyles.configure_tree_tags(self.tree)
         
-        # Configure tags for quantity changes - will be applied to rows with changes
-        self.tree.tag_configure("quantity_increase", foreground="#4CAF50")  # Green for increases
-        self.tree.tag_configure("quantity_decrease", foreground="#F44336")  # Red for decreases
+        # Configure tags for quantity changes
+        self._configure_change_tags()
 
         # Create scrollbars with unique styles
         vsb = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview, style=self.v_scrollbar_style)
@@ -86,6 +91,21 @@ class ClaimInventoryTab(ctk.CTkFrame):
 
         # Bind configure event to manage horizontal scrollbar visibility
         self.tree.bind("<Configure>", self.on_tree_configure)
+    
+    def _configure_change_tags(self):
+        """Configure quantity change tag colors using current theme."""
+        self.tree.tag_configure("quantity_increase", foreground=get_color("ACTIVITY_INCREASE"))
+        self.tree.tag_configure("quantity_decrease", foreground=get_color("ACTIVITY_DECREASE"))
+    
+    def _on_theme_changed(self, old_theme: str, new_theme: str):
+        """Handle theme change by updating colors."""
+        # Reapply treeview styling
+        style = ttk.Style()
+        TreeviewStyles.apply_treeview_style(style)
+        TreeviewStyles.configure_tree_tags(self.tree)
+        
+        # Reconfigure change tags with new theme colors
+        self._configure_change_tags()
 
     def on_tree_configure(self, event):
         """Manages horizontal scrollbar visibility based on content width."""
@@ -362,7 +382,11 @@ class ClaimInventoryTab(ctk.CTkFrame):
                     else:
                         logging.debug(f"Could not determine player for inventory change of {item_name}")
             
-            # Access the activity window through the main app
+            # Log to background activity logger 
+            if hasattr(self.app, 'activity_logger'):
+                self.app.activity_logger.log_inventory_change(item_name, previous_qty, new_qty, change, player_name)
+            
+            # Also log to activity window if it's open
             if hasattr(self.app, 'activity_window') and self.app.activity_window and self.app.activity_window.winfo_exists():
                 self.app.activity_window.add_inventory_change(item_name, previous_qty, new_qty, change, player_name)
         except Exception as e:
@@ -370,7 +394,7 @@ class ClaimInventoryTab(ctk.CTkFrame):
 
     def apply_filter(self):
         """Filters the master data list based on search and column filters."""
-        search_term = self.app.search_var.get().lower()
+        search_term = self.app.get_search_text().lower()
         temp_data = self.all_data[:]
 
         if self.active_filters:
@@ -443,6 +467,8 @@ class ClaimInventoryTab(ctk.CTkFrame):
                 text += " ↓" if not self.sort_reverse else " ↑"
             filter_indicator = " 🔎" if header in self.active_filters else ""
             self.tree.heading(header, text=text + filter_indicator)
+
+
 
     def render_table(self):
         """Clears and re-populates the Treeview with correct column layout."""
@@ -517,7 +543,7 @@ class ClaimInventoryTab(ctk.CTkFrame):
                 except Exception as e:
                     logging.error(f"[ClaimInventoryTab] Error adding row for {item_name}: {e}")
 
-            logging.info(
+            logging.debug(
                 f"[ClaimInventoryTab] Table render complete - added {rows_added} main rows, {child_rows_added} child rows"
             )
 
@@ -597,3 +623,8 @@ class ClaimInventoryTab(ctk.CTkFrame):
                     
         except Exception as e:
             logging.debug(f"Error adjusting column widths: {e}")
+
+    def destroy(self):
+        """Clean up resources when tab is destroyed."""
+        # Call parent destroy
+        super().destroy()

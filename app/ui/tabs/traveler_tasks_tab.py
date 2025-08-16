@@ -6,6 +6,7 @@ from tkinter import Menu, ttk
 
 from app.ui.components.filter_popup import FilterPopup
 from app.ui.styles import TreeviewStyles
+from app.ui.themes import get_color, register_theme_callback
 
 
 class TravelerTasksTab(ctk.CTkFrame):
@@ -14,6 +15,9 @@ class TravelerTasksTab(ctk.CTkFrame):
     def __init__(self, master, app):
         super().__init__(master, fg_color="transparent")
         self.app = app
+        
+        # Register for theme change notifications
+        register_theme_callback(self._on_theme_changed)
 
         # Updated headers - removed Task column, focus on item-based structure
         self.headers = ["Traveler", "Item", "Quantity", "Tier", "Tag", "Status"]
@@ -48,10 +52,8 @@ class TravelerTasksTab(ctk.CTkFrame):
         # Apply common tree tags using centralized styling
         TreeviewStyles.configure_tree_tags(self.tree)
         
-        # Configure custom tags specific to traveler tasks
-        self.tree.tag_configure("completed", background="#2d4a2d", foreground="#4CAF50")  # Green for fully completed
-        self.tree.tag_configure("child_completed", background="#3a4a3a", foreground="#4CAF50")  # Green for completed tasks
-        self.tree.tag_configure("child_incomplete", background="#3a3a3a", foreground="white")  # Neutral for incomplete tasks
+        # Configure task status tags
+        self._configure_status_tags()
 
         # Create scrollbars with unique styles
         vsb = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview, style=self.v_scrollbar_style)
@@ -103,6 +105,28 @@ class TravelerTasksTab(ctk.CTkFrame):
         # Bind events
         self.tree.bind("<Button-3>", self.show_header_context_menu)
         self.tree.bind("<Configure>", self.on_tree_configure)
+    
+    def _configure_status_tags(self):
+        """Configure status-specific tag colors using current theme."""
+        self.tree.tag_configure("completed", 
+                              background=get_color("TREEVIEW_ALTERNATE"), 
+                              foreground=get_color("STATUS_SUCCESS"))
+        self.tree.tag_configure("child_completed", 
+                              background=get_color("TREEVIEW_ALTERNATE"), 
+                              foreground=get_color("STATUS_SUCCESS"))
+        self.tree.tag_configure("child_incomplete", 
+                              background=get_color("TREEVIEW_ALTERNATE"), 
+                              foreground=get_color("TEXT_PRIMARY"))
+    
+    def _on_theme_changed(self, old_theme: str, new_theme: str):
+        """Handle theme change by updating colors."""
+        # Reapply treeview styling
+        style = ttk.Style()
+        TreeviewStyles.apply_treeview_style(style)
+        TreeviewStyles.configure_tree_tags(self.tree)
+        
+        # Reconfigure status tags with new theme colors
+        self._configure_status_tags()
 
     def on_tree_configure(self, event):
         """Manages horizontal scrollbar visibility with debouncing for smooth resize."""
@@ -358,7 +382,7 @@ class TravelerTasksTab(ctk.CTkFrame):
         """
         Filters the master data list based on search and column filters.
         """
-        search_term = self.app.search_var.get().lower()
+        search_term = self.app.get_search_text().lower()
         temp_data = []
 
         for row in self.all_data:
