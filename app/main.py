@@ -1,11 +1,15 @@
-import sys
-import customtkinter as ctk
-import queue
 import logging
-import threading
-import platform
 import os
+import platform
+import queue
+import sys
+import threading
+import tkinter as tk
+
 from tkinter import messagebox
+
+import customtkinter as ctk
+
 from app.core.data_service import DataService
 from app.ui.main_window import MainWindow
 
@@ -51,8 +55,6 @@ def log_system_environment():
 
         # Display information
         try:
-            import tkinter as tk
-
             root = tk.Tk()
             screen_width = root.winfo_screenwidth()
             screen_height = root.winfo_screenheight()

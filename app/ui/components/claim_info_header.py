@@ -1,13 +1,17 @@
-import customtkinter as ctk
 import logging
+import os
+import sys
 import time
+from datetime import datetime
+
+import customtkinter as ctk
+import openpyxl
+from openpyxl.styles import Alignment, Font
 import tkinter as tk
 from tkinter import filedialog, messagebox
-import openpyxl
-from openpyxl.styles import Font, Alignment
-from datetime import datetime
-import os
+
 from app.ui.components.settings_window import SettingsWindow
+from app.ui.themes import get_color, register_theme_callback
 
 
 class ClaimInfoHeader(ctk.CTkFrame):
@@ -17,8 +21,11 @@ class ClaimInfoHeader(ctk.CTkFrame):
     """
 
     def __init__(self, master, app):
-        super().__init__(master, fg_color="#1a1a1a", corner_radius=8)
+        super().__init__(master, fg_color=get_color("BACKGROUND_SECONDARY"), corner_radius=8)
         self.app = app
+        
+        # Register for theme change notifications
+        register_theme_callback(self._on_theme_changed)
 
         # Add claim management attributes
         self.available_claims = []
@@ -34,6 +41,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
         self.time_remaining = "Calculating..."
         self.traveler_tasks_expiration = None
         self.task_refresh_time = "Unknown"
+        self._is_initial_loading = True  # Track if we're in initial loading phase
 
         # Initialize tile cost lookup with default values
         self.tile_cost_lookup = {1: 0.01, 1001: 0.0125}  # Default tile cost values
@@ -72,25 +80,32 @@ class ClaimInfoHeader(ctk.CTkFrame):
     def _create_claim_info_section(self):
         """Creates the left side claim information display with CTkOptionMenu dropdown."""
         claim_frame = ctk.CTkFrame(self, fg_color="transparent")
-        claim_frame.grid(row=0, column=0, sticky="w", padx=15, pady=10)
+        claim_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=10)  
+        claim_frame.grid_columnconfigure(0, weight=1)  
 
-        # Create frame for dropdown and refresh button
+        # Create frame for dropdown and buttons
         dropdown_frame = ctk.CTkFrame(claim_frame, fg_color="transparent")
-        dropdown_frame.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 12))
+        dropdown_frame.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 12))
+        
+        # Configure grid weights for proper spacing
+        dropdown_frame.grid_columnconfigure(0, weight=0)  # Dropdown - fixed size
+        dropdown_frame.grid_columnconfigure(1, weight=0)  # Activity - fixed size  
+        dropdown_frame.grid_columnconfigure(2, weight=0)  # Settings - fixed size
+        dropdown_frame.grid_columnconfigure(3, weight=1)  # Spacer - expandable
+        dropdown_frame.grid_columnconfigure(4, weight=0)  # Quit - fixed size, right-aligned
 
-        # IMPROVED: Use CTkOptionMenu instead of custom dropdown
         self.claim_dropdown = ctk.CTkOptionMenu(
             dropdown_frame,
             values=["Loading..."],
             command=self._on_claim_selected,
             font=ctk.CTkFont(size=16, weight="bold"),
-            text_color="#ffffff",
-            fg_color=("#2b2b2b", "#3a3a3a"),
-            button_color=("#404040", "#505050"),
-            button_hover_color=("#505050", "#606060"),
-            dropdown_fg_color=("#2a2d2e", "#3a3a3a"),
-            dropdown_hover_color=("#1f6aa5", "#2c7bc7"),
-            dropdown_text_color="#ffffff",
+            text_color=get_color("TEXT_PRIMARY"),
+            fg_color=get_color("BACKGROUND_TERTIARY"),
+            button_color=get_color("BACKGROUND_PRIMARY"),
+            button_hover_color=get_color("BUTTON_HOVER"),
+            dropdown_fg_color=get_color("BACKGROUND_TERTIARY"),
+            dropdown_hover_color=get_color("BUTTON_HOVER"),
+            dropdown_text_color=get_color("TEXT_PRIMARY"),
             corner_radius=8,
             anchor="w",
             state="disabled",  # Start disabled
@@ -98,6 +113,25 @@ class ClaimInfoHeader(ctk.CTkFrame):
             width=300,
         )
         self.claim_dropdown.grid(row=0, column=0, sticky="w", padx=(0, 10))
+
+        # Add activity button
+        self.activity_button = ctk.CTkButton(
+            dropdown_frame,
+            text="Activity",
+            width=100,
+            height=40,
+            font=ctk.CTkFont(size=12),
+            command=self._open_activity_window,
+            fg_color=get_color("TEXT_ACCENT"),
+            hover_color=get_color("BUTTON_HOVER"),
+            text_color=get_color("TEXT_PRIMARY"),
+            corner_radius=8,
+            border_width=0,
+        )
+        self.activity_button.grid(row=0, column=1, sticky="w", padx=(10, 10))
+
+        # Add tooltip to activity button
+        self._add_tooltip(self.activity_button, "View recent inventory changes and activity log")
 
         # Add settings button
         self.settings_button = ctk.CTkButton(
@@ -107,33 +141,18 @@ class ClaimInfoHeader(ctk.CTkFrame):
             height=40,
             font=ctk.CTkFont(size=12),
             command=self._open_settings,
-            fg_color=("#404040", "#505050"),
-            hover_color=("#5a5a5a", "#707070"),
-            text_color="#ffffff",
+            fg_color=get_color("STATUS_INFO"),
+            hover_color=get_color("BUTTON_HOVER"),
+            text_color=get_color("TEXT_PRIMARY"),
             corner_radius=8,
             border_width=0,
         )
-        self.settings_button.grid(row=0, column=1, sticky="w", padx=(2, 12))
+        self.settings_button.grid(row=0, column=2, sticky="w", padx=(0, 10))
 
         # Add tooltip to settings button
         self._add_tooltip(self.settings_button, "Open settings window to manage app preferences and data operations")
 
-        # Add logout button
-        self.logout_button = ctk.CTkButton(
-            dropdown_frame,
-            text="Logout",
-            width=80,
-            height=40,
-            font=ctk.CTkFont(size=12),
-            command=self._logout,
-            fg_color=("#FF6B35", "#E55100"),
-            hover_color=("#E55100", "#BF360C"),
-            text_color="#ffffff",
-            corner_radius=8,
-        )
-        self.logout_button.grid(row=0, column=2, sticky="w", padx=(0, 10))
-
-        # Add quit button
+        # Add quit button 
         self.quit_button = ctk.CTkButton(
             dropdown_frame,
             text="Quit",
@@ -141,29 +160,29 @@ class ClaimInfoHeader(ctk.CTkFrame):
             height=40,
             font=ctk.CTkFont(size=12),
             command=self._quit_application,
-            fg_color=("#D32F2F", "#B71C1C"),
-            hover_color=("#B71C1C", "#8B0000"),
-            text_color="#ffffff",
+            fg_color=get_color("STATUS_ERROR"),
+            hover_color=get_color("STATUS_ERROR"),
+            text_color=get_color("TEXT_PRIMARY"),
             corner_radius=8,
         )
-        self.quit_button.grid(row=0, column=3, sticky="w")
+        self.quit_button.grid(row=0, column=4, sticky="e")
 
         # Create info row with treasury, supplies, and supplies run out
         info_frame = ctk.CTkFrame(claim_frame, fg_color="transparent")
         info_frame.grid(row=1, column=0, sticky="w")
 
         # Treasury with icon
-        treasury_frame = self._create_enhanced_info_item(info_frame, "💰 Treasury", "0", "#FFD700")
+        treasury_frame = self._create_enhanced_info_item(info_frame, "💰 Treasury", "0", get_color("STATUS_WARNING"))
         treasury_frame.grid(row=0, column=0, padx=(0, 20))
         self.treasury_value_label = treasury_frame.winfo_children()[1]
 
         # Supplies with icon
-        supplies_frame = self._create_enhanced_info_item(info_frame, "⚡ Supplies", "0", "#4CAF50")
+        supplies_frame = self._create_enhanced_info_item(info_frame, "⚡ Supplies", "0", get_color("STATUS_SUCCESS"))
         supplies_frame.grid(row=0, column=1, padx=(0, 20))
         self.supplies_value_label = supplies_frame.winfo_children()[1]
 
         # Supplies Run Out with icon
-        supplies_runout_frame = self._create_enhanced_info_item(info_frame, "⏱️ Depletes In", "Calculating...", "#FF9800")
+        supplies_runout_frame = self._create_enhanced_info_item(info_frame, "⏱️ Depletes In", "Calculating...", get_color("STATUS_WARNING"))
         supplies_runout_frame.grid(row=0, column=2, padx=(0, 20))
         self.supplies_runout_label = supplies_runout_frame.winfo_children()[1]
 
@@ -171,7 +190,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
         self._add_tooltip(self.supplies_runout_label, "This value is approximate and may not exactly match in-game.")
 
         # Task Refresh with icon
-        task_refresh_frame = self._create_enhanced_info_item(info_frame, "🔄 Task Refresh", "Unknown", "#9C27B0")
+        task_refresh_frame = self._create_enhanced_info_item(info_frame, "🔄 Task Refresh", "Unknown", get_color("STATUS_INFO"))
         task_refresh_frame.grid(row=0, column=3)
         self.task_refresh_label = task_refresh_frame.winfo_children()[1]
 
@@ -363,6 +382,17 @@ class ClaimInfoHeader(ctk.CTkFrame):
             logging.error(f"Error opening settings window: {e}")
             messagebox.showerror("Settings Error", f"Failed to open settings:\n{str(e)}")
 
+    def _open_activity_window(self):
+        """Opens the activity logs window."""
+        try:
+            if hasattr(self.app, '_open_activity_window'):
+                self.app._open_activity_window()
+            else:
+                logging.warning("Main app does not have _open_activity_window method")
+
+        except Exception as e:
+            logging.error(f"Error opening activity window from header: {e}")
+
     def _reset_refresh_button(self):
         """Reset the refresh button to its normal state."""
         # This method is no longer needed since refresh button was removed
@@ -546,6 +576,10 @@ class ClaimInfoHeader(ctk.CTkFrame):
             # Mark the source of this update for timer logic
             self._last_update_source = source
             self._from_initial_subscription = is_initial_subscription
+            
+            # Mark that we've received initial data
+            if is_initial_subscription:
+                self._is_initial_loading = False
 
             self._update_task_refresh_countdown()
 
@@ -568,11 +602,9 @@ class ClaimInfoHeader(ctk.CTkFrame):
                 time_diff_seconds = self.traveler_tasks_expiration - current_time_seconds
 
                 if time_diff_seconds <= 0:
-                    # Timer expired - tasks are refreshing, wait for server to provide new expiration
-                    import datetime
-
-                    current_dt = datetime.datetime.fromtimestamp(current_time_seconds)
-                    expiration_dt = datetime.datetime.fromtimestamp(self.traveler_tasks_expiration)
+                    # Timer expired
+                    current_dt = datetime.fromtimestamp(current_time_seconds)
+                    expiration_dt = datetime.fromtimestamp(self.traveler_tasks_expiration)
 
                     # Check how long we've been in expired state
                     expired_duration = abs(time_diff_seconds)
@@ -580,15 +612,31 @@ class ClaimInfoHeader(ctk.CTkFrame):
                     if expired_duration < 60:  # Less than 1 minute - show refreshing
                         self.task_refresh_time = "Refreshing..."
                         color = "#FF9800"  # Orange for activity/refreshing state
-                    else:  # More than 1 minute - show waiting for server
-                        logging.warning(
-                            f"Task refresh timer expired over 1 minute ago: current={current_dt}, expiration={expiration_dt}, expired_for={expired_duration:.1f}s - waiting for server"
-                        )
-                        self.task_refresh_time = "Waiting for server..."
-                        color = "#9E9E9E"  # Gray for waiting/inactive state
+                    elif self._is_initial_loading:
+                        # During initial loading, show waiting for server
+                        if expired_duration < 300:  # Less than 5 minutes during initial load
+                            logging.debug(f"Initial loading - timer expired {expired_duration:.1f}s ago, waiting for server")
+                            self.task_refresh_time = "Waiting for server..."
+                            color = "#9E9E9E"  # Gray for waiting/inactive state
+                        else:
+                            # Initial loading taking too long, show error
+                            logging.warning(f"Initial timer load taking over 5 minutes")
+                            self.task_refresh_time = "Connection issue"
+                            color = "#f44336"  # Red for error
+                    else:
+                        # App is running normally - auto-reset to 4 hours
+                        logging.info(f"Timer expired during normal operation, auto-resetting to 4 hours (expired_for={expired_duration:.1f}s)")
+                        four_hours_from_now = current_time_seconds + (4 * 60 * 60)  
+                        self.traveler_tasks_expiration = four_hours_from_now
+                        
+                        # Recalculate with new expiration
+                        time_diff_seconds = self.traveler_tasks_expiration - current_time_seconds
+                        # Fall through to normal countdown logic below
 
-                    self.task_refresh_label.configure(text=self.task_refresh_time, text_color=color)
-                    return
+                    # Only return early if we're not auto-resetting
+                    if time_diff_seconds <= 0:
+                        self.task_refresh_label.configure(text=self.task_refresh_time, text_color=color)
+                        return
 
                 # Continue with normal countdown display logic...
                 total_seconds = int(time_diff_seconds)
@@ -649,6 +697,63 @@ class ClaimInfoHeader(ctk.CTkFrame):
                 self._task_refresh_timer_running = False
         except Exception as e:
             logging.error(f"Error stopping task refresh timer: {e}")
+
+    def update_task_refresh_retry_status(self, status, message, delay=0):
+        """
+        Update task refresh display with retry status information.
+        
+        Args:
+            status: "retrying" or "failed"
+            message: Display message for the user
+            delay: Retry delay in seconds (for countdown)
+        """
+        try:
+            if status == "retrying":
+                self.task_refresh_time = message
+                color = get_color("STATUS_WARNING")  
+                
+                # Start countdown for retry delay if delay > 0
+                if delay > 0:
+                    self._start_retry_countdown(delay)
+                    
+            elif status == "failed":
+                self.task_refresh_time = "Connection failed"
+                color = get_color("STATUS_ERROR")  
+                
+            # Update the label
+            self.task_refresh_label.configure(text=self.task_refresh_time, text_color=color)
+            logging.debug(f"Task refresh retry status updated: {status} - {message}")
+            
+        except Exception as e:
+            logging.error(f"Error updating task refresh retry status: {e}")
+
+    def _start_retry_countdown(self, delay):
+        """Start a countdown timer for retry delay."""
+        try:
+            self._retry_countdown_remaining = delay
+            self._update_retry_countdown()
+            
+        except Exception as e:
+            logging.error(f"Error starting retry countdown: {e}")
+
+    def _update_retry_countdown(self):
+        """Update retry countdown display."""
+        try:
+            if hasattr(self, '_retry_countdown_remaining') and self._retry_countdown_remaining > 0:
+                self.task_refresh_time = f"Retrying in {self._retry_countdown_remaining}s..."
+                self.task_refresh_label.configure(text=self.task_refresh_time, text_color=get_color("STATUS_WARNING"))
+                
+                self._retry_countdown_remaining -= 1
+                
+                # Schedule next update
+                self.after(1000, self._update_retry_countdown)
+            elif hasattr(self, '_retry_countdown_remaining'):
+                # Countdown finished
+                self.task_refresh_time = "Retrying now..."
+                self.task_refresh_label.configure(text=self.task_refresh_time, text_color=get_color("STATUS_WARNING"))
+                
+        except Exception as e:
+            logging.error(f"Error updating retry countdown: {e}")
 
     def _request_fresh_player_state(self):
         """
@@ -852,41 +957,6 @@ class ClaimInfoHeader(ctk.CTkFrame):
         except Exception as e:
             logging.error(f"Error creating claim info sheet: {e}")
 
-    def _logout(self):
-        """Logs out the user with confirmation dialog."""
-        try:
-            # Show confirmation dialog
-            result = messagebox.askyesno(
-                "Confirm Logout",
-                "Logging out will clear your stored credentials and you'll need to re-authenticate.\n\nAre you sure you want to continue?",
-                icon="warning",
-            )
-
-            if not result:  # User clicked "No" or closed dialog
-                logging.info("Logout cancelled by user")
-                return
-
-            # Perform logout
-            logging.info("User initiated logout from main window")
-
-            if hasattr(self.app, "data_service") and self.app.data_service:
-                # Clear credentials using the data service client
-                if hasattr(self.app.data_service, "client"):
-                    if self.app.data_service.client.logout():
-                        messagebox.showinfo("Logout Successful", "You have been logged out. The application will now close.")
-                        # Close the application
-                        self._quit_application()
-                    else:
-                        messagebox.showerror("Logout Error", "Failed to logout. See logs for details.")
-                else:
-                    messagebox.showerror("Logout Error", "Unable to access authentication system.")
-            else:
-                messagebox.showerror("Logout Error", "Unable to access data service.")
-
-        except Exception as e:
-            logging.error(f"Error during logout: {e}")
-            messagebox.showerror("Logout Error", f"An error occurred during logout:\n{str(e)}")
-
     def _quit_application(self):
         """Quits the application."""
         try:
@@ -904,6 +974,51 @@ class ClaimInfoHeader(ctk.CTkFrame):
             try:
                 self.app.quit()
             except:
-                import sys
-
                 sys.exit(0)
+
+    def _on_theme_changed(self, old_theme: str, new_theme: str):
+        """Handle theme change by updating colors."""
+        try:
+            # Update main frame background
+            self.configure(fg_color=get_color("BACKGROUND_SECONDARY"))
+            
+            # Update claim dropdown if it exists
+            if hasattr(self, 'claim_dropdown'):
+                self.claim_dropdown.configure(
+                    text_color=get_color("TEXT_PRIMARY"),
+                    fg_color=get_color("BACKGROUND_TERTIARY"),
+                    button_color=get_color("BACKGROUND_PRIMARY"),
+                    button_hover_color=get_color("BUTTON_HOVER"),
+                    dropdown_fg_color=get_color("BACKGROUND_TERTIARY"),
+                    dropdown_hover_color=get_color("BUTTON_HOVER"),
+                    dropdown_text_color=get_color("TEXT_PRIMARY")
+                )
+            
+            # Update activity button if it exists
+            if hasattr(self, 'activity_button'):
+                self.activity_button.configure(
+                    fg_color=get_color("TEXT_ACCENT"),
+                    hover_color=get_color("BUTTON_HOVER"),
+                    text_color=get_color("TEXT_PRIMARY")
+                )
+            
+            # Update settings button if it exists
+            if hasattr(self, 'settings_button'):
+                self.settings_button.configure(
+                    fg_color=get_color("STATUS_INFO"),
+                    hover_color=get_color("BUTTON_HOVER"),
+                    text_color=get_color("TEXT_PRIMARY")
+                )
+            
+            # Update quit button if it exists
+            if hasattr(self, 'quit_button'):
+                self.quit_button.configure(
+                    fg_color=get_color("STATUS_ERROR"),
+                    hover_color=get_color("STATUS_ERROR"),
+                    text_color=get_color("TEXT_PRIMARY")
+                )
+                
+            logging.debug(f"Claim info header theme changed from {old_theme} to {new_theme}")
+            
+        except Exception as e:
+            logging.error(f"Error updating claim info header theme: {e}")
