@@ -1,63 +1,69 @@
 """
 Centralized Treeview styling for BitCraft Companion tabs.
 
-Provides consistent dark theme styling for all Treeview components across tabs,
+Provides consistent theme-aware styling for all Treeview components across tabs,
 eliminating code duplication and ensuring visual consistency.
 """
 
 from tkinter import ttk
+from app.ui.themes import get_color
 
 
 class TreeviewStyles:
     """Centralized Treeview styling utility for consistent UI theming."""
     
-    # Color constants for dark theme
-    COLORS = {
-        'background': '#2a2d2e',
-        'foreground': 'white', 
-        'field_background': '#343638',
-        'selected_background': '#1f6aa5',
-        'header_background': '#1e2124',
-        'header_foreground': '#e0e0e0',
-        'header_active': '#2c5d8f',
-        'scrollbar_background': '#1e2124',
-        'scrollbar_trough': '#2a2d2e',
-        'scrollbar_arrow': '#666',
-        'menu_background': '#2a2d2e',
-        'menu_foreground': 'white',
-        'menu_active': '#1f6aa5',
-        'child_row_background': '#3a3a3a',
-        'empty_foreground': '#888888'
-    }
+    @classmethod
+    def get_colors(cls):
+        """Get theme-aware colors for TreeView styling."""
+        return {
+            'background': get_color('TREEVIEW_BACKGROUND'),
+            'foreground': get_color('TREEVIEW_FOREGROUND'), 
+            'field_background': get_color('TREEVIEW_BACKGROUND'),
+            'selected_background': get_color('TREEVIEW_SELECTED'),
+            'header_background': get_color('TREEVIEW_HEADER_BACKGROUND'),
+            'header_foreground': get_color('TEXT_PRIMARY'),
+            'header_active': get_color('TREEVIEW_SELECTED'),
+            'scrollbar_background': get_color('BACKGROUND_SECONDARY'),
+            'scrollbar_trough': get_color('BACKGROUND_TERTIARY'),
+            'scrollbar_arrow': get_color('TEXT_DISABLED'),
+            'menu_background': get_color('BACKGROUND_SECONDARY'),
+            'menu_foreground': get_color('TEXT_PRIMARY'),
+            'menu_active': get_color('TREEVIEW_SELECTED'),
+            'child_row_background': get_color('TREEVIEW_ALTERNATE'),
+            'empty_foreground': get_color('TEXT_DISABLED')
+        }
     
     @classmethod
     def apply_treeview_style(cls, style: ttk.Style):
-        """Apply standard Treeview styling."""
+        """Apply standard Treeview styling with current theme colors."""
         style.theme_use("default")
+        colors = cls.get_colors()
         
         # Configure main Treeview
         style.configure(
             "Treeview",
-            background=cls.COLORS['background'],
-            foreground=cls.COLORS['foreground'],
-            fieldbackground=cls.COLORS['field_background'],
-            borderwidth=0,
+            background=colors['background'],
+            foreground=colors['foreground'],
+            fieldbackground=colors['field_background'],
+            borderwidth=1,
+            bordercolor=colors['header_background'],
             rowheight=28,
-            relief="flat",
+            relief="solid",
         )
-        style.map("Treeview", background=[("selected", cls.COLORS['selected_background'])])
+        style.map("Treeview", background=[("selected", colors['selected_background'])])
         
         # Configure headers
         style.configure(
             "Treeview.Heading",
-            background=cls.COLORS['header_background'],
-            foreground=cls.COLORS['header_foreground'],
-            font=("Segoe UI", 11, "normal"),
-            padding=(8, 6),
-            relief="flat",
-            borderwidth=0,
+            background=colors['header_background'],
+            foreground=colors['header_foreground'],
+            font=("Segoe UI", 10, "bold"),
+            padding=(6, 4),
+            relief="solid",
+            borderwidth=1,
+            bordercolor=colors['background'],
         )
-        style.map("Treeview.Heading", background=[("active", cls.COLORS['header_active'])])
+        style.map("Treeview.Heading", background=[("active", colors['header_active'])])
     
     @classmethod
     def apply_scrollbar_style(cls, style: ttk.Style, tab_name: str):
@@ -74,49 +80,51 @@ class TreeviewStyles:
         v_style = f"{tab_name}.Vertical.TScrollbar"
         h_style = f"{tab_name}.Horizontal.TScrollbar"
         
+        colors = cls.get_colors()
+        
         # Configure vertical scrollbar
         style.configure(
             v_style,
-            background=cls.COLORS['scrollbar_background'],
+            background=colors['scrollbar_background'],
             borderwidth=0,
-            arrowcolor=cls.COLORS['scrollbar_arrow'],
-            troughcolor=cls.COLORS['scrollbar_trough'],
-            darkcolor=cls.COLORS['scrollbar_background'],
-            lightcolor=cls.COLORS['scrollbar_background'],
+            arrowcolor=colors['scrollbar_arrow'],
+            troughcolor=colors['scrollbar_trough'],
+            darkcolor=colors['scrollbar_background'],
+            lightcolor=colors['scrollbar_background'],
             width=12,
         )
         
         # Configure horizontal scrollbar
         style.configure(
             h_style,
-            background=cls.COLORS['scrollbar_background'],
+            background=colors['scrollbar_background'],
             borderwidth=0,
-            arrowcolor=cls.COLORS['scrollbar_arrow'],
-            troughcolor=cls.COLORS['scrollbar_trough'],
-            darkcolor=cls.COLORS['scrollbar_background'],
-            lightcolor=cls.COLORS['scrollbar_background'],
+            arrowcolor=colors['scrollbar_arrow'],
+            troughcolor=colors['scrollbar_trough'],
+            darkcolor=colors['scrollbar_background'],
+            lightcolor=colors['scrollbar_background'],
             height=12,
         )
         
         # Configure state-specific scrollbar colors for both orientations
         scrollbar_state_map = {
             'background': [
-                ("active", cls.COLORS['scrollbar_background']),
-                ("pressed", cls.COLORS['scrollbar_background']),
-                ("disabled", cls.COLORS['scrollbar_background']),
-                ("!active", cls.COLORS['scrollbar_background'])
+                ("active", colors['scrollbar_background']),
+                ("pressed", colors['scrollbar_background']),
+                ("disabled", colors['scrollbar_background']),
+                ("!active", colors['scrollbar_background'])
             ],
             'troughcolor': [
-                ("active", cls.COLORS['scrollbar_trough']),
-                ("pressed", cls.COLORS['scrollbar_trough']),
-                ("disabled", cls.COLORS['scrollbar_trough']),
-                ("!active", cls.COLORS['scrollbar_trough'])
+                ("active", colors['scrollbar_trough']),
+                ("pressed", colors['scrollbar_trough']),
+                ("disabled", colors['scrollbar_trough']),
+                ("!active", colors['scrollbar_trough'])
             ],
             'arrowcolor': [
-                ("active", cls.COLORS['scrollbar_arrow']),
-                ("pressed", cls.COLORS['scrollbar_arrow']),
-                ("disabled", cls.COLORS['scrollbar_arrow']),
-                ("!active", cls.COLORS['scrollbar_arrow'])
+                ("active", colors['scrollbar_arrow']),
+                ("pressed", colors['scrollbar_arrow']),
+                ("disabled", colors['scrollbar_arrow']),
+                ("!active", colors['scrollbar_arrow'])
             ]
         }
         
@@ -128,32 +136,34 @@ class TreeviewStyles:
     @classmethod
     def get_menu_style_config(cls):
         """Get consistent menu styling configuration."""
+        colors = cls.get_colors()
         return {
             'tearoff': 0,
-            'background': cls.COLORS['menu_background'],
-            'foreground': cls.COLORS['menu_foreground'],
-            'activebackground': cls.COLORS['menu_active']
+            'background': colors['menu_background'],
+            'foreground': colors['menu_foreground'],
+            'activebackground': colors['menu_active']
         }
     
     @classmethod
     def configure_tree_tags(cls, tree: ttk.Treeview):
         """Configure common tree tags with consistent styling."""
+        colors = cls.get_colors()
         tree.tag_configure(
             "child", 
-            background=cls.COLORS['child_row_background']
+            background=colors['child_row_background']
         )
         tree.tag_configure(
             "empty", 
-            background=cls.COLORS['background'], 
-            foreground=cls.COLORS['empty_foreground']
+            background=colors['background'], 
+            foreground=colors['empty_foreground']
         )
         tree.tag_configure(
             "incomplete", 
-            background=cls.COLORS['background'], 
-            foreground=cls.COLORS['foreground']
+            background=colors['background'], 
+            foreground=colors['foreground']
         )
         tree.tag_configure(
             "partial", 
-            background=cls.COLORS['background'], 
-            foreground=cls.COLORS['foreground']
+            background=colors['background'], 
+            foreground=colors['foreground']
         )
