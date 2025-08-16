@@ -11,6 +11,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 
 from app.ui.components.settings_window import SettingsWindow
+from app.ui.themes import get_color, register_theme_callback
 
 
 class ClaimInfoHeader(ctk.CTkFrame):
@@ -20,8 +21,11 @@ class ClaimInfoHeader(ctk.CTkFrame):
     """
 
     def __init__(self, master, app):
-        super().__init__(master, fg_color="#1a1a1a", corner_radius=8)
+        super().__init__(master, fg_color=get_color("BACKGROUND_SECONDARY"), corner_radius=8)
         self.app = app
+        
+        # Register for theme change notifications
+        register_theme_callback(self._on_theme_changed)
 
         # Add claim management attributes
         self.available_claims = []
@@ -95,13 +99,13 @@ class ClaimInfoHeader(ctk.CTkFrame):
             values=["Loading..."],
             command=self._on_claim_selected,
             font=ctk.CTkFont(size=16, weight="bold"),
-            text_color="#ffffff",
-            fg_color=("#2b2b2b", "#3a3a3a"),
-            button_color=("#404040", "#505050"),
-            button_hover_color=("#505050", "#606060"),
-            dropdown_fg_color=("#2a2d2e", "#3a3a3a"),
-            dropdown_hover_color=("#1f6aa5", "#2c7bc7"),
-            dropdown_text_color="#ffffff",
+            text_color=get_color("TEXT_PRIMARY"),
+            fg_color=get_color("BACKGROUND_TERTIARY"),
+            button_color=get_color("BACKGROUND_PRIMARY"),
+            button_hover_color=get_color("BUTTON_HOVER"),
+            dropdown_fg_color=get_color("BACKGROUND_TERTIARY"),
+            dropdown_hover_color=get_color("BUTTON_HOVER"),
+            dropdown_text_color=get_color("TEXT_PRIMARY"),
             corner_radius=8,
             anchor="w",
             state="disabled",  # Start disabled
@@ -118,9 +122,9 @@ class ClaimInfoHeader(ctk.CTkFrame):
             height=40,
             font=ctk.CTkFont(size=12),
             command=self._open_activity_window,
-            fg_color=("#6A1B9A", "#8E24AA"),
-            hover_color=("#8E24AA", "#AB47BC"),
-            text_color="#ffffff",
+            fg_color=get_color("TEXT_ACCENT"),
+            hover_color=get_color("BUTTON_HOVER"),
+            text_color=get_color("TEXT_PRIMARY"),
             corner_radius=8,
             border_width=0,
         )
@@ -137,9 +141,9 @@ class ClaimInfoHeader(ctk.CTkFrame):
             height=40,
             font=ctk.CTkFont(size=12),
             command=self._open_settings,
-            fg_color=("#404040", "#505050"),
-            hover_color=("#5a5a5a", "#707070"),
-            text_color="#ffffff",
+            fg_color=get_color("STATUS_INFO"),
+            hover_color=get_color("BUTTON_HOVER"),
+            text_color=get_color("TEXT_PRIMARY"),
             corner_radius=8,
             border_width=0,
         )
@@ -156,9 +160,9 @@ class ClaimInfoHeader(ctk.CTkFrame):
             height=40,
             font=ctk.CTkFont(size=12),
             command=self._quit_application,
-            fg_color=("#D32F2F", "#B71C1C"),
-            hover_color=("#B71C1C", "#8B0000"),
-            text_color="#ffffff",
+            fg_color=get_color("STATUS_ERROR"),
+            hover_color=get_color("STATUS_ERROR"),
+            text_color=get_color("TEXT_PRIMARY"),
             corner_radius=8,
         )
         self.quit_button.grid(row=0, column=4, sticky="e")
@@ -168,17 +172,17 @@ class ClaimInfoHeader(ctk.CTkFrame):
         info_frame.grid(row=1, column=0, sticky="w")
 
         # Treasury with icon
-        treasury_frame = self._create_enhanced_info_item(info_frame, "💰 Treasury", "0", "#FFD700")
+        treasury_frame = self._create_enhanced_info_item(info_frame, "💰 Treasury", "0", get_color("STATUS_WARNING"))
         treasury_frame.grid(row=0, column=0, padx=(0, 20))
         self.treasury_value_label = treasury_frame.winfo_children()[1]
 
         # Supplies with icon
-        supplies_frame = self._create_enhanced_info_item(info_frame, "⚡ Supplies", "0", "#4CAF50")
+        supplies_frame = self._create_enhanced_info_item(info_frame, "⚡ Supplies", "0", get_color("STATUS_SUCCESS"))
         supplies_frame.grid(row=0, column=1, padx=(0, 20))
         self.supplies_value_label = supplies_frame.winfo_children()[1]
 
         # Supplies Run Out with icon
-        supplies_runout_frame = self._create_enhanced_info_item(info_frame, "⏱️ Depletes In", "Calculating...", "#FF9800")
+        supplies_runout_frame = self._create_enhanced_info_item(info_frame, "⏱️ Depletes In", "Calculating...", get_color("STATUS_WARNING"))
         supplies_runout_frame.grid(row=0, column=2, padx=(0, 20))
         self.supplies_runout_label = supplies_runout_frame.winfo_children()[1]
 
@@ -186,7 +190,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
         self._add_tooltip(self.supplies_runout_label, "This value is approximate and may not exactly match in-game.")
 
         # Task Refresh with icon
-        task_refresh_frame = self._create_enhanced_info_item(info_frame, "🔄 Task Refresh", "Unknown", "#9C27B0")
+        task_refresh_frame = self._create_enhanced_info_item(info_frame, "🔄 Task Refresh", "Unknown", get_color("STATUS_INFO"))
         task_refresh_frame.grid(row=0, column=3)
         self.task_refresh_label = task_refresh_frame.winfo_children()[1]
 
@@ -706,7 +710,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
         try:
             if status == "retrying":
                 self.task_refresh_time = message
-                color = "#FF9800"  
+                color = get_color("STATUS_WARNING")  
                 
                 # Start countdown for retry delay if delay > 0
                 if delay > 0:
@@ -714,7 +718,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
                     
             elif status == "failed":
                 self.task_refresh_time = "Connection failed"
-                color = "#f44336"  
+                color = get_color("STATUS_ERROR")  
                 
             # Update the label
             self.task_refresh_label.configure(text=self.task_refresh_time, text_color=color)
@@ -737,7 +741,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
         try:
             if hasattr(self, '_retry_countdown_remaining') and self._retry_countdown_remaining > 0:
                 self.task_refresh_time = f"Retrying in {self._retry_countdown_remaining}s..."
-                self.task_refresh_label.configure(text=self.task_refresh_time, text_color="#FF9800")
+                self.task_refresh_label.configure(text=self.task_refresh_time, text_color=get_color("STATUS_WARNING"))
                 
                 self._retry_countdown_remaining -= 1
                 
@@ -746,7 +750,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
             elif hasattr(self, '_retry_countdown_remaining'):
                 # Countdown finished
                 self.task_refresh_time = "Retrying now..."
-                self.task_refresh_label.configure(text=self.task_refresh_time, text_color="#FF9800")
+                self.task_refresh_label.configure(text=self.task_refresh_time, text_color=get_color("STATUS_WARNING"))
                 
         except Exception as e:
             logging.error(f"Error updating retry countdown: {e}")
@@ -971,3 +975,50 @@ class ClaimInfoHeader(ctk.CTkFrame):
                 self.app.quit()
             except:
                 sys.exit(0)
+
+    def _on_theme_changed(self, old_theme: str, new_theme: str):
+        """Handle theme change by updating colors."""
+        try:
+            # Update main frame background
+            self.configure(fg_color=get_color("BACKGROUND_SECONDARY"))
+            
+            # Update claim dropdown if it exists
+            if hasattr(self, 'claim_dropdown'):
+                self.claim_dropdown.configure(
+                    text_color=get_color("TEXT_PRIMARY"),
+                    fg_color=get_color("BACKGROUND_TERTIARY"),
+                    button_color=get_color("BACKGROUND_PRIMARY"),
+                    button_hover_color=get_color("BUTTON_HOVER"),
+                    dropdown_fg_color=get_color("BACKGROUND_TERTIARY"),
+                    dropdown_hover_color=get_color("BUTTON_HOVER"),
+                    dropdown_text_color=get_color("TEXT_PRIMARY")
+                )
+            
+            # Update activity button if it exists
+            if hasattr(self, 'activity_button'):
+                self.activity_button.configure(
+                    fg_color=get_color("TEXT_ACCENT"),
+                    hover_color=get_color("BUTTON_HOVER"),
+                    text_color=get_color("TEXT_PRIMARY")
+                )
+            
+            # Update settings button if it exists
+            if hasattr(self, 'settings_button'):
+                self.settings_button.configure(
+                    fg_color=get_color("STATUS_INFO"),
+                    hover_color=get_color("BUTTON_HOVER"),
+                    text_color=get_color("TEXT_PRIMARY")
+                )
+            
+            # Update quit button if it exists
+            if hasattr(self, 'quit_button'):
+                self.quit_button.configure(
+                    fg_color=get_color("STATUS_ERROR"),
+                    hover_color=get_color("STATUS_ERROR"),
+                    text_color=get_color("TEXT_PRIMARY")
+                )
+                
+            logging.debug(f"Claim info header theme changed from {old_theme} to {new_theme}")
+            
+        except Exception as e:
+            logging.error(f"Error updating claim info header theme: {e}")

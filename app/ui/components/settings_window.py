@@ -10,6 +10,7 @@ from tkinter import messagebox
 
 from ...core.data_paths import get_user_data_path
 from app.services.notification_service import NotificationService
+from app.ui.themes import get_theme_manager, get_theme_names, get_theme_info, get_color, register_theme_callback
 
 
 class SettingsWindow(ctk.CTkToplevel):
@@ -42,6 +43,16 @@ class SettingsWindow(ctk.CTkToplevel):
 
         # Get version information
         self.version_info = self._get_version_info()
+        
+        # Store UI component references for theme updates
+        self.card_frames = []
+        self.ui_components = {}
+        
+        # Register for theme change notifications
+        register_theme_callback(self._on_theme_changed)
+        
+        # Apply current theme
+        self.configure(fg_color=get_color("BACKGROUND_PRIMARY"))
 
         # Create UI
         self._create_widgets()
@@ -90,6 +101,36 @@ class SettingsWindow(ctk.CTkToplevel):
             logging.error(f"Error reading version info: {e}")
             return "Unknown"
 
+    def _create_card_section(self, parent, title):
+        """Create a card-style section container."""
+        # Create card container with background and border
+        card_frame = ctk.CTkFrame(
+            parent, 
+            fg_color=get_color("BACKGROUND_SECONDARY"),
+            corner_radius=8,
+            border_width=1,
+            border_color=get_color("BORDER_DEFAULT")
+        )
+        card_frame.pack(fill="x", pady=(0, 15), padx=10)
+        
+        # Store reference for theme updates
+        self.card_frames.append(card_frame)
+        
+        # Card content with proper padding
+        content_frame = ctk.CTkFrame(card_frame, fg_color="transparent")
+        content_frame.pack(fill="x", padx=15, pady=15)
+        
+        # Section header inside card
+        header_label = ctk.CTkLabel(
+            content_frame, 
+            text=title, 
+            font=ctk.CTkFont(size=14, weight="bold"), 
+            anchor="w"
+        )
+        header_label.pack(anchor="w", pady=(0, 10))
+        
+        return content_frame
+
     def _create_widgets(self):
         """Create the settings interface with improved UX."""
         # Main scrollable container
@@ -100,48 +141,43 @@ class SettingsWindow(ctk.CTkToplevel):
         main_frame.grid_columnconfigure(0, weight=1)
 
         # Account Section
-        self._create_account_section(main_frame)
-
-        # Add spacing
-        ctk.CTkLabel(main_frame, text="", height=20).pack(fill="x", pady=5)
+        account_content = self._create_card_section(main_frame, "Account")
+        self._create_account_section(account_content)
 
         # Data Management Section
-        self._create_data_management_section(main_frame)
-
-        # Add spacing
-        ctk.CTkLabel(main_frame, text="", height=20).pack(fill="x", pady=5)
+        data_content = self._create_card_section(main_frame, "Data Management")
+        self._create_data_management_section(data_content)
 
         # Notifications Section
-        self._create_notifications_section(main_frame)
+        notifications_content = self._create_card_section(main_frame, "Notifications")
+        self._create_notifications_section(notifications_content)
 
-        # Add spacing
-        ctk.CTkLabel(main_frame, text="", height=20).pack(fill="x", pady=5)
+        # Theme Section
+        theme_content = self._create_card_section(main_frame, "Theme")
+        self._create_theme_section(theme_content)
 
         # About Section
-        self._create_about_section(main_frame)
+        about_content = self._create_card_section(main_frame, "About")
+        self._create_about_section(about_content)
 
         # Close button at bottom
         close_frame = ctk.CTkFrame(self, fg_color="transparent")
         close_frame.pack(fill="x", padx=20, pady=(10, 20))
 
-        close_button = ctk.CTkButton(
+        self.close_button = ctk.CTkButton(
             close_frame,
             text="Close",
             command=self._on_closing,
             width=100,
             height=32,
-            fg_color=("#666666", "#707070"),
-            hover_color=("#777777", "#808080"),
+            fg_color=get_color("STATUS_INFO"),
+            hover_color=get_color("BUTTON_HOVER"),
         )
-        close_button.pack(side="right")
+        self.close_button.pack(side="right")
 
     def _create_account_section(self, parent):
         """Create the account management section."""
-        # Section header
-        header_label = ctk.CTkLabel(parent, text="Account", font=ctk.CTkFont(size=16, weight="bold"), anchor="w")
-        header_label.pack(fill="x", pady=(0, 10))
-
-        # Logout button
+        # Logout button - fixed width, left aligned
         self.logout_button = ctk.CTkButton(
             parent,
             text="Logout",
@@ -149,18 +185,14 @@ class SettingsWindow(ctk.CTkToplevel):
             width=200,
             height=36,
             anchor="w",
-            fg_color=("#FF6B35", "#E55100"),
-            hover_color=("#E55100", "#BF360C"),
+            fg_color=get_color("STATUS_ERROR"),
+            hover_color=get_color("STATUS_ERROR"),
         )
-        self.logout_button.pack(fill="x", pady=(0, 8))
+        self.logout_button.pack(anchor="w", pady=(0, 8))
 
     def _create_data_management_section(self, parent):
         """Create the data management section."""
-        # Section header
-        header_label = ctk.CTkLabel(parent, text="Data Management", font=ctk.CTkFont(size=16, weight="bold"), anchor="w")
-        header_label.pack(fill="x", pady=(0, 10))
-
-        # Refresh button
+        # Refresh button - fixed width, left aligned
         self.refresh_button = ctk.CTkButton(
             parent,
             text="Refresh Data",
@@ -168,12 +200,12 @@ class SettingsWindow(ctk.CTkToplevel):
             width=200,
             height=36,
             anchor="w",
-            fg_color=("#404040", "#505050"),
-            hover_color=("#5a5a5a", "#707070"),
+            fg_color=get_color("STATUS_INFO"),
+            hover_color=get_color("BUTTON_HOVER"),
         )
-        self.refresh_button.pack(fill="x", pady=(0, 8))
+        self.refresh_button.pack(anchor="w", pady=(0, 8))
 
-        # Export button
+        # Export button - fixed width, left aligned
         self.export_button = ctk.CTkButton(
             parent,
             text="Export Data",
@@ -181,16 +213,13 @@ class SettingsWindow(ctk.CTkToplevel):
             width=200,
             height=36,
             anchor="w",
-            fg_color=("#2E7D32", "#388E3C"),
-            hover_color=("#1B5E20", "#2E7D32"),
+            fg_color=get_color("STATUS_SUCCESS"),
+            hover_color=get_color("STATUS_SUCCESS"),
         )
-        self.export_button.pack(fill="x", pady=(0, 8))
+        self.export_button.pack(anchor="w", pady=(0, 8))
 
     def _create_notifications_section(self, parent):
         """Create the notifications section."""
-        # Section header
-        header_label = ctk.CTkLabel(parent, text="Notifications", font=ctk.CTkFont(size=16, weight="bold"), anchor="w")
-        header_label.pack(fill="x", pady=(0, 10))
 
         # Passive crafts toggle
         self.passive_crafts_var = ctk.BooleanVar(value=self.settings.get("notifications", {}).get("passive_crafts_enabled", True))
@@ -216,22 +245,82 @@ class SettingsWindow(ctk.CTkToplevel):
 
         # Test notification button (modular)
         if self.settings.get("debug", {}).get("show_test_notification", True):
-            test_button = ctk.CTkButton(
+            self.test_button = ctk.CTkButton(
                 parent,
                 text="Test Notification",
                 command=self._test_notification,
                 width=180,
                 height=32,
-                fg_color=("#3B8ED0", "#2980B9"),
-                hover_color=("#2E7BB8", "#1A5A8A"),
+                fg_color=get_color("STATUS_INFO"),
+                hover_color=get_color("BUTTON_HOVER"),
             )
-            test_button.pack(fill="x", pady=(0, 8))
+            self.test_button.pack(anchor="w", pady=(0, 8))
+
+    def _create_theme_section(self, parent):
+        """Create the theme selection section."""
+        
+        # Theme description
+        desc_label = ctk.CTkLabel(
+            parent, 
+            text="Choose your preferred color scheme and accessibility options:",
+            font=ctk.CTkFont(size=12),
+            text_color=("gray60", "gray40"),
+            anchor="w"
+        )
+        desc_label.pack(fill="x", pady=(0, 10))
+        
+        # Get current theme and available themes
+        theme_manager = get_theme_manager()
+        current_theme = theme_manager.get_current_theme_name()
+        available_themes = get_theme_names()
+        
+        # Theme selection dropdown
+        self.theme_var = ctk.StringVar(value=current_theme)
+        
+        # Create readable theme names for display
+        theme_display_names = []
+        self.theme_name_mapping = {}
+        
+        for theme_name in available_themes:
+            theme_info = get_theme_info(theme_name)
+            display_name = theme_info["name"]
+            theme_display_names.append(display_name)
+            self.theme_name_mapping[display_name] = theme_name
+        
+        # Set current display value
+        current_display_name = get_theme_info(current_theme)["name"]
+        self.theme_var.set(current_display_name)
+        
+        theme_dropdown = ctk.CTkOptionMenu(
+            parent,
+            variable=self.theme_var,
+            values=theme_display_names,
+            command=self._on_theme_change,
+            width=300,
+            height=32,
+            font=ctk.CTkFont(size=13),
+        )
+        theme_dropdown.pack(fill="x", pady=(0, 10))
+        
+        # Theme descriptions for each option
+        theme_descriptions = {
+            "Dark": "",
+            "Light": ""
+        }
+        
+        # Current theme description
+        current_desc = theme_descriptions.get(current_display_name, "Custom theme")
+        self.theme_desc_label = ctk.CTkLabel(
+            parent,
+            text=current_desc,
+            font=ctk.CTkFont(size=12),
+            text_color=("gray70", "gray30"),
+            anchor="w"
+        )
+        self.theme_desc_label.pack(fill="x", pady=(0, 5))
 
     def _create_about_section(self, parent):
         """Create the about section with version and debug info."""
-        # Section header
-        header_label = ctk.CTkLabel(parent, text="About", font=ctk.CTkFont(size=16, weight="bold"), anchor="w")
-        header_label.pack(fill="x", pady=(0, 10))
 
         # Version info
         version_label = ctk.CTkLabel(parent, text=f"Version: {self.version_info}", font=ctk.CTkFont(size=13), anchor="w")
@@ -242,7 +331,7 @@ class SettingsWindow(ctk.CTkToplevel):
             parent,
             text="Developer: https://github.com/Hatchet-Jackk",
             font=ctk.CTkFont(size=13),
-            text_color=("#3B8ED0", "#2980B9"),
+            text_color=get_color("TEXT_ACCENT"),
             anchor="w",
             cursor="hand2",
         )
@@ -359,9 +448,12 @@ class SettingsWindow(ctk.CTkToplevel):
     def _save_settings(self):
         """Save settings to persistent storage."""
         try:
-            # Update settings based on UI state
-            self.settings["notifications"]["passive_crafts_enabled"] = self.passive_crafts_var.get()
-            self.settings["notifications"]["active_crafts_enabled"] = self.active_crafts_var.get()
+            # Update settings based on UI state (only if UI components exist)
+            if hasattr(self, 'passive_crafts_var') and hasattr(self, 'active_crafts_var'):
+                self.settings["notifications"]["passive_crafts_enabled"] = self.passive_crafts_var.get()
+                self.settings["notifications"]["active_crafts_enabled"] = self.active_crafts_var.get()
+            else:
+                logging.warning("Settings UI components not yet initialized, skipping UI state update")
 
             # Send updated settings to notification service
             if hasattr(self.app, 'data_service') and self.app.data_service and hasattr(self.app.data_service, 'notification_service'):
@@ -401,6 +493,36 @@ class SettingsWindow(ctk.CTkToplevel):
         """Called when any setting changes."""
         self._save_settings()
         logging.info("Settings updated")
+
+    def _on_theme_change(self, selected_display_name):
+        """Handle theme selection change."""
+        try:
+            # Get the actual theme name from the display name
+            theme_name = self.theme_name_mapping.get(selected_display_name)
+            if not theme_name:
+                logging.error(f"Invalid theme display name: {selected_display_name}")
+                return
+            
+            # Apply the theme
+            theme_manager = get_theme_manager()
+            success = theme_manager.set_theme(theme_name)
+            
+            if success:
+                # Update description
+                theme_descriptions = {
+                    "Dark": "",
+                    "Light": ""
+                }
+                
+                new_desc = theme_descriptions.get(selected_display_name, "Custom theme")
+                self.theme_desc_label.configure(text=new_desc)
+                
+                logging.info(f"Theme changed to: {theme_name}")
+            else:
+                logging.warning(f"Failed to change theme to: {theme_name}")
+                
+        except Exception as e:
+            logging.error(f"Error changing theme: {e}")
 
     def _refresh_data(self):
         """Trigger comprehensive data refresh (reference data + current claim data)."""
@@ -451,11 +573,18 @@ class SettingsWindow(ctk.CTkToplevel):
     def _test_notification(self):
         """Show a test notification."""
         try:
-            # Update notification service settings from UI
-            notification_settings = {
-                "passive_crafts_enabled": self.passive_crafts_var.get(),
-                "active_crafts_enabled": self.active_crafts_var.get(),
-            }
+            # Update notification service settings from UI (if UI components exist)
+            if hasattr(self, 'passive_crafts_var') and hasattr(self, 'active_crafts_var'):
+                notification_settings = {
+                    "passive_crafts_enabled": self.passive_crafts_var.get(),
+                    "active_crafts_enabled": self.active_crafts_var.get(),
+                }
+            else:
+                # Use default settings if UI not initialized
+                notification_settings = {
+                    "passive_crafts_enabled": True,
+                    "active_crafts_enabled": True,
+                }
             self.notification_service.update_settings(notification_settings)
 
             # Show test notification
@@ -533,3 +662,48 @@ class SettingsWindow(ctk.CTkToplevel):
                 self.app.quit()
             except:
                 sys.exit(0)
+
+    def _on_theme_changed(self, old_theme: str, new_theme: str):
+        """Handle theme change by updating colors."""
+        try:
+            # Update window background
+            self.configure(fg_color=get_color("BACKGROUND_PRIMARY"))
+            
+            # Update all card frames
+            for card_frame in self.card_frames:
+                card_frame.configure(
+                    fg_color=get_color("BACKGROUND_SECONDARY"),
+                    border_color=get_color("BORDER_DEFAULT")
+                )
+            
+            # Update all buttons with theme colors
+            self.close_button.configure(
+                fg_color=get_color("STATUS_INFO"),
+                hover_color=get_color("BUTTON_HOVER")
+            )
+            
+            self.logout_button.configure(
+                fg_color=get_color("STATUS_ERROR"),
+                hover_color=get_color("STATUS_ERROR")
+            )
+            
+            self.refresh_button.configure(
+                fg_color=get_color("STATUS_INFO"),
+                hover_color=get_color("BUTTON_HOVER")
+            )
+            
+            self.export_button.configure(
+                fg_color=get_color("STATUS_SUCCESS"),
+                hover_color=get_color("STATUS_SUCCESS")
+            )
+            
+            if hasattr(self, 'test_button'):
+                self.test_button.configure(
+                    fg_color=get_color("STATUS_INFO"),
+                    hover_color=get_color("BUTTON_HOVER")
+                )
+                
+            logging.debug(f"Settings window theme changed from {old_theme} to {new_theme}")
+            
+        except Exception as e:
+            logging.error(f"Error updating settings window theme: {e}")
