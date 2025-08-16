@@ -786,8 +786,38 @@ class ClaimInfoHeader(ctk.CTkFrame):
     def _export_data(self):
         """Exports all table data to an Excel file using native file dialog."""
         try:
-            # Generate default filename
-            claim_name = self.claim_name.replace(" ", "_").replace("/", "-") if self.claim_name else "Unknown_Claim"
+            # Generate default filename 
+            # Try multiple sources for the claim name
+            dropdown_value = self.claim_dropdown.get() if hasattr(self, 'claim_dropdown') else None
+            
+            # Try to find claim name from available claims using current claim ID
+            claims_name = None
+            if self.current_claim_id and hasattr(self, 'available_claims'):
+                for claim in self.available_claims:
+                    claim_entity_id = claim.get("entity_id") or claim.get("claim_id")
+                    if str(claim_entity_id) == str(self.current_claim_id):
+                        claims_name = claim.get("claim_name") or claim.get("name")
+                        break
+            
+            # Choose the best available claim name
+            if self.claim_name and self.claim_name not in ["Loading...", "Unknown Claim"]:
+                claim_name = self.claim_name
+                source = "self.claim_name"
+            elif dropdown_value and dropdown_value not in ["Loading...", "Unknown Claim"]:
+                claim_name = dropdown_value
+                source = "dropdown"
+            elif claims_name and claims_name not in ["Loading...", "Unknown Claim"]:
+                claim_name = claims_name
+                source = "available_claims"
+                # Update self.claim_name for consistency
+                self.claim_name = claims_name
+            else:
+                claim_name = "Unknown_Claim"
+                source = "fallback"
+            
+            logging.info(f"Export claim name source: {source} -> '{claim_name}' (self.claim_name: '{self.claim_name}', dropdown: '{dropdown_value}', claims_name: '{claims_name}')")
+            
+            claim_name = claim_name.replace(" ", "_").replace("/", "-")
             claim_id = self.current_claim_id if self.current_claim_id else "unknown"
             date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
             default_filename = f"{claim_name}_{claim_id}_{date_str}.xlsx"
@@ -870,14 +900,12 @@ class ClaimInfoHeader(ctk.CTkFrame):
             # Write data
             for row_idx, row_data in enumerate(data, 2):
                 for col_idx, header in enumerate(headers, 1):
-                    # Get value based on header name (convert to lowercase and replace spaces with underscores)
-                    header_key = header.lower().replace(" ", "_").replace("'", "")
-
                     # Handle special cases for different tab structures
                     if tab_name == "Traveler's Tasks":
                         value = self._get_traveler_task_value(row_data, header)
                     else:
-                        value = row_data.get(header_key, row_data.get(header.lower(), ""))
+                        # Map header names to actual data field names
+                        value = self._get_mapped_value(row_data, header, tab_name)
 
                     # Convert to string for Excel
                     sheet.cell(row=row_idx, column=col_idx, value=str(value))
@@ -897,6 +925,74 @@ class ClaimInfoHeader(ctk.CTkFrame):
 
         except Exception as e:
             logging.error(f"Error creating Excel sheet for {tab_name}: {e}")
+
+    def _get_mapped_value(self, row_data, header, tab_name):
+        """Maps header names to actual data field names for different tabs."""
+        try:
+            # Handle dataclass objects by converting to dict if needed
+            if hasattr(row_data, 'to_dict'):
+                row_dict = row_data.to_dict()
+            elif hasattr(row_data, '__dict__'):
+                row_dict = row_data.__dict__
+            else:
+                row_dict = row_data
+
+            # Define header to field mappings for different tabs
+            header_mappings = {
+                "Claim Inventory": {
+                    "Item": "name",
+                    "Tier": "tier",
+                    "Quantity": "quantity", 
+                    "Tag": "tag",
+                    "Containers": "containers"
+                },
+                "Passive Crafting": {
+                    "Item": "item_name",
+                    "Quantity": "quantity",
+                    "Tier": "tier",
+                    "Tag": "tag",
+                    "Building": "building_name",
+                    "Recipe": "recipe_name",
+                    "Progress": "progress_percentage",
+                    "Time Left": "time_remaining"
+                },
+                "Active Crafting": {
+                    "Item": "item_name",
+                    "Quantity": "quantity", 
+                    "Tier": "tier",
+                    "Tag": "tag",
+                    "Building": "building_name",
+                    "Recipe": "recipe_name",
+                    "Status": "status"
+                }
+            }
+
+            # Get the mapping for this tab, default to generic mapping
+            tab_mapping = header_mappings.get(tab_name, {})
+            field_name = tab_mapping.get(header)
+            
+            if field_name:
+                # Use the mapped field name
+                value = row_dict.get(field_name, "")
+            else:
+                # Fallback to generic header mapping
+                header_key = header.lower().replace(" ", "_").replace("'", "")
+                value = row_dict.get(header_key, row_dict.get(header.lower(), ""))
+            
+            # Special handling for containers field
+            if header == "Containers" and isinstance(value, dict):
+                # Convert containers dict to readable format
+                if value:
+                    container_list = [f"{name}: {qty}" for name, qty in value.items()]
+                    return "; ".join(container_list)
+                else:
+                    return "None"
+            
+            return value
+            
+        except Exception as e:
+            logging.error(f"Error getting mapped value for header '{header}': {e}")
+            return ""
 
     def _get_traveler_task_value(self, row_data, header):
         """Gets the correct value for traveler tasks data structure."""
