@@ -17,6 +17,8 @@ from app.ui.tabs.passive_crafting_tab import PassiveCraftingTab
 from app.ui.tabs.active_crafting_tab import ActiveCraftingTab
 from app.ui.tabs.traveler_tasks_tab import TravelerTasksTab
 from app.ui.components.activity_window import ActivityWindow
+from app.services.activity_logger import ActivityLogger
+from app.ui.themes import get_theme_manager, get_color, register_theme_callback
 
 
 class ShutdownDialog(ctk.CTkToplevel):
@@ -52,7 +54,7 @@ class ShutdownDialog(ctk.CTkToplevel):
 
         # Progress label
         self.progress_label = ctk.CTkLabel(
-            main_frame, text="Stopping services and saving data", font=ctk.CTkFont(size=11), text_color="#888888"
+            main_frame, text="Stopping services and saving data", font=ctk.CTkFont(size=11), text_color=get_color("TEXT_DISABLED")
         )
         self.progress_label.pack(pady=(0, 10))
 
@@ -87,8 +89,8 @@ class MainWindow(ctk.CTk):
 
         self.title("Bitcraft Companion")
         self.geometry("900x600")
-        # Set a subtle gradient-like background color
-        self.configure(fg_color=("#f0f0f0", "#1a1a1a"))
+        # Set background color using theme
+        self.configure(fg_color=get_color("BACKGROUND_PRIMARY"))
         logging.debug("Main window geometry set to 900x600")
 
         # Set minimum window size to prevent UI elements from becoming inaccessible
@@ -108,7 +110,15 @@ class MainWindow(ctk.CTk):
         self.tab_buttons: Dict[str, ctk.CTkButton] = {}
         self.active_tab_name = None
         
-        # Activity window reference
+        
+        # Initialize theme manager and register for theme changes
+        self.theme_manager = get_theme_manager()
+        register_theme_callback(self._on_theme_changed)
+        
+        # Activity logging service (always available)
+        self.activity_logger = ActivityLogger()
+        
+        # Activity window reference (UI only created when needed)
         self.activity_window = None
 
         # Shutdown tracking
@@ -143,9 +153,9 @@ class MainWindow(ctk.CTk):
         logging.debug("Creating tab content area")
         self.tab_content_area = ctk.CTkFrame(
             self, 
-            fg_color=("#f8f8f8", "#1e1e1e"), 
+            fg_color=get_color("BACKGROUND_PRIMARY"), 
             border_width=2, 
-            border_color=("#d0d0d0", "#404040"), 
+            border_color=get_color("BORDER_DEFAULT"), 
             corner_radius=12
         )
         self.tab_content_area.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 10))
@@ -183,9 +193,6 @@ class MainWindow(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.bind("<Configure>", self._on_window_configure)
         
-        # Add keyboard shortcuts
-        self.bind("<KeyPress>", self._handle_key_press)
-        self.focus_set()  # Ensure window can receive key events
 
     def _on_window_configure(self, event):
         """Handles window configure events to detect resize operations for performance optimization."""
@@ -211,55 +218,7 @@ class MainWindow(ctk.CTk):
         self.resize_timer = None
         logging.debug("Window resize completed - resuming normal performance")
 
-    def _handle_key_press(self, event):
-        """Handle keyboard shortcuts for tab navigation and window access."""
-        try:
-            # Get the focused widget to avoid interfering with text input
-            focused_widget = self.focus_get()
-            
-            # Don't process shortcuts if user is typing in search field or other entry widgets
-            if focused_widget and isinstance(focused_widget, (ctk.CTkEntry, ctk.CTkTextbox)):
-                return
-            
-            key = event.keysym.lower()
-            
-            # Tab navigation shortcuts (1-4)
-            if key == '1':
-                self.show_tab("Claim Inventory")
-                logging.debug("Keyboard shortcut: Switched to Claim Inventory (1)")
-            elif key == '2':
-                self.show_tab("Passive Crafting") 
-                logging.debug("Keyboard shortcut: Switched to Passive Crafting (2)")
-            elif key == '3':
-                self.show_tab("Active Crafting")
-                logging.debug("Keyboard shortcut: Switched to Active Crafting (3)")
-            elif key == '4':
-                self.show_tab("Traveler's Tasks")
-                logging.debug("Keyboard shortcut: Switched to Traveler's Tasks (4)")
-            
-            # Window access shortcuts
-            elif key == 'a':
-                # Open activity window
-                self._open_activity_window()
-                logging.debug("Keyboard shortcut: Opened Activity window (A)")
-            elif key == 's':
-                # Open settings window
-                self._open_settings()
-                logging.debug("Keyboard shortcut: Opened Settings window (S)")
-                
-        except Exception as e:
-            logging.error(f"Error handling keyboard shortcut: {e}")
 
-    def _open_settings(self):
-        """Open the settings window. Placeholder for settings functionality."""
-        try:
-            # Check if claim info header has settings functionality
-            if hasattr(self.claim_info, '_open_settings') and callable(self.claim_info._open_settings):
-                self.claim_info._open_settings()
-            else:
-                logging.info("Settings window not yet implemented")
-        except Exception as e:
-            logging.error(f"Error opening settings: {e}")
 
     def _set_tab_buttons_state(self, state: str):
         """Enable or disable all tab buttons."""
@@ -276,22 +235,29 @@ class MainWindow(ctk.CTk):
         search_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=8)
         search_frame.grid_columnconfigure(0, weight=1)  # Make search field expand
 
-        # Search variable and field
-        self.search_var = ctk.StringVar()
-        self.search_var.trace_add("write", self.on_search_change)
-
+        # Search field with manual placeholder (reliable solution)
         self.search_field = ctk.CTkEntry(
             search_frame,
-            textvariable=self.search_var,
-            placeholder_text="Search Claim Inventory...",
             height=34,
             font=ctk.CTkFont(size=12),
-            fg_color=("#2a2d2e", "#343638"),
-            border_color=("#404040", "#505050"),
-            text_color=("#ffffff", "#f0f0f0"),
-            placeholder_text_color=("#888888", "#999999"),
+            fg_color=get_color("BACKGROUND_TERTIARY"),
+            border_color=get_color("BORDER_DEFAULT"),
+            text_color=get_color("TEXT_PRIMARY"),
             corner_radius=8,
         )
+        
+        # Manual placeholder implementation
+        self.placeholder_text = "Search Claim Inventory..."
+        self.is_placeholder_active = True
+        self._show_placeholder()
+        
+        # Bind events for placeholder behavior
+        self.search_field.bind('<FocusIn>', self._on_search_focus_in)
+        self.search_field.bind('<FocusOut>', self._on_search_focus_out)
+        self.search_field.bind('<Key>', self._on_search_key)
+        self.search_field.bind('<KeyRelease>', self._on_search_change_event)
+        self.search_field.bind('<Control-Delete>', self._on_ctrl_delete)
+        self.search_field.bind('<Control-BackSpace>', self._on_ctrl_backspace)
         self.search_field.grid(row=0, column=0, sticky="ew", padx=(0, 8))
 
         # Clear button with modern styling
@@ -302,53 +268,43 @@ class MainWindow(ctk.CTk):
             width=70,
             height=34,
             font=ctk.CTkFont(size=11),
-            fg_color=("#666666", "#707070"),
-            hover_color=("#777777", "#808080"),
+            fg_color=get_color("BACKGROUND_SECONDARY"),
+            hover_color=get_color("BUTTON_HOVER"),
             corner_radius=8,
-            text_color=("#ffffff", "#f0f0f0"),
+            text_color=get_color("TEXT_PRIMARY"),
         )
         self.clear_button.grid(row=0, column=2, sticky="e")
 
     def _create_status_bar(self):
         """Creates the status bar with connection info, last update, and ping."""
-        status_frame = ctk.CTkFrame(
+        self.status_frame = ctk.CTkFrame(
             self, 
             height=32,
-            fg_color=("#e8e8e8", "#181818"), 
+            fg_color=get_color("BACKGROUND_SECONDARY"), 
             border_width=1, 
-            border_color=("#c0c0c0", "#404040"), 
+            border_color=get_color("BORDER_DEFAULT"), 
             corner_radius=8
         )
-        status_frame.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 10))
-        status_frame.grid_columnconfigure(0, weight=1)
-        status_frame.grid_propagate(False)  # Maintain fixed height
+        self.status_frame.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 10))
+        self.status_frame.grid_columnconfigure(0, weight=1)
+        self.status_frame.grid_propagate(False)  # Maintain fixed height
 
         # Create inner frame for status items
-        inner_frame = ctk.CTkFrame(status_frame, fg_color="transparent")
+        inner_frame = ctk.CTkFrame(self.status_frame, fg_color="transparent")
         inner_frame.pack(fill="x", padx=8, pady=4)
 
-        # Connection status (left side)
-        self.connection_status_label = ctk.CTkLabel(
-            inner_frame, 
-            text="🔴 Disconnected",
-            font=ctk.CTkFont(family="Segoe UI", size=11, weight="normal"),
-            text_color="#f44336"
-        )
-        self.connection_status_label.pack(side="left")
-
-        # Last update (center)
+        # Last update (left aligned)
         self.last_update_label = ctk.CTkLabel(
             inner_frame, 
-            text="🔄 Last Update: Never",
+            text="Last Update: Never",
             font=ctk.CTkFont(family="Segoe UI", size=11, weight="normal"),
-            text_color="#888888"
+            text_color=get_color("TEXT_PRIMARY")
         )
-        self.last_update_label.pack(side="left", padx=(20, 0))
+        self.last_update_label.pack(side="left", padx=(8, 0))
 
 
         # Initialize status tracking
         self.last_message_time = None
-        self.connection_status = "disconnected"
         
         # Start status update timer
         self._update_status_display()
@@ -356,63 +312,225 @@ class MainWindow(ctk.CTk):
 
     def clear_search(self):
         """Clears the search field."""
-        self.search_var.set("")
+        # Clear the entry and show placeholder
+        self.search_field.delete(0, 'end')
+        self._show_placeholder()
+        # Trigger search change to apply empty filter
+        self.on_search_change()
         self.search_field.focus()  # Return focus to search field
 
     def _update_search_placeholder(self, tab_name):
         """Update search field placeholder text based on current tab."""
         try:
-            placeholder_text = f"Search {tab_name}..."
-            self.search_field.configure(placeholder_text=placeholder_text)
+            old_placeholder = getattr(self, 'placeholder_text', '')
+            new_placeholder = f"Search {tab_name}..."
+            
+            # Check if the current field content is the old placeholder
+            current_text = self.search_field.get()
+            if current_text == old_placeholder and self.is_placeholder_active:
+                # Replace old placeholder with new one
+                self.search_field.delete(0, 'end')
+                self.placeholder_text = new_placeholder
+                self._show_placeholder()
+            elif current_text == old_placeholder and not self.is_placeholder_active:
+                # Field contains old placeholder but not marked as placeholder (bug case)
+                self.search_field.delete(0, 'end')
+                self.placeholder_text = new_placeholder
+                self._show_placeholder()
+            else:
+                # Just update the placeholder text for future use
+                self.placeholder_text = new_placeholder
         except Exception as e:
             logging.error(f"Error updating search placeholder: {e}")
+    
+    def _show_placeholder(self):
+        """Show placeholder text in search field."""
+        if self.search_field.get() == "":
+            self.is_placeholder_active = True
+            self.search_field.insert(0, self.placeholder_text)
+            self.search_field.configure(text_color=get_color("TEXT_DISABLED"))
+    
+    def _hide_placeholder(self):
+        """Hide placeholder text from search field."""
+        if self.is_placeholder_active and self.search_field.get() == self.placeholder_text:
+            self.is_placeholder_active = False
+            self.search_field.delete(0, 'end')
+            self.search_field.configure(text_color=get_color("TEXT_PRIMARY"))
+    
+    def _on_search_focus_in(self, event):
+        """Handle search field gaining focus."""
+        self._hide_placeholder()
+    
+    def _on_search_focus_out(self, event):
+        """Handle search field losing focus."""
+        if self.search_field.get() == "":
+            self._show_placeholder()
+    
+    def _on_search_key(self, event):
+        """Handle key press in search field."""
+        if self.is_placeholder_active:
+            self._hide_placeholder()
+    
+    def _on_search_change_event(self, event):
+        """Handle search field content change via key release."""
+        # Small delay to ensure the text has been updated
+        self.after(10, self._process_search_change)
+    
+    def _on_ctrl_delete(self, event):
+        """Handle Ctrl+Delete to delete from cursor to end of next word."""
+        try:
+            # If placeholder is active, hide it first
+            if self.is_placeholder_active:
+                self._hide_placeholder()
+                return "break"
+            
+            # Get current text and cursor position
+            current_text = self.search_field.get()
+            cursor_pos = self.search_field.index('insert')
+            
+            # If cursor is at the end, nothing to delete
+            if cursor_pos >= len(current_text):
+                return "break"
+            
+            # Find the end position for deletion (next word boundary)
+            delete_end_pos = self._find_next_word_boundary(current_text, cursor_pos)
+            
+            # Delete text from cursor to end of next word
+            if delete_end_pos > cursor_pos:
+                # Use CustomTkinter's delete method
+                self.search_field.delete(cursor_pos, delete_end_pos)
+                
+                # Trigger search change
+                self._process_search_change()
+            
+            return "break"  # Prevent default key handling
+            
+        except Exception as e:
+            logging.error(f"Error in Ctrl+Delete handler: {e}")
+            return "break"
+    
+    def _find_next_word_boundary(self, text: str, start_pos: int) -> int:
+        """
+        Find the position of the end of the next word from start_pos.
+        
+        Args:
+            text: The text to search in
+            start_pos: Starting position (cursor position)
+            
+        Returns:
+            int: Position of the end of the next word
+        """
+        if start_pos >= len(text):
+            return start_pos
+        
+        pos = start_pos
+        
+        # Skip any whitespace characters immediately after cursor
+        while pos < len(text) and text[pos].isspace():
+            pos += 1
+        
+        # If we're now at a word, find the end of this word
+        if pos < len(text) and not text[pos].isspace():
+            while pos < len(text) and not text[pos].isspace():
+                pos += 1
+        
+        return pos
+    
+    def _on_ctrl_backspace(self, event):
+        """Handle Ctrl+Backspace to delete from start of previous word to cursor."""
+        try:
+            # If placeholder is active, hide it first
+            if self.is_placeholder_active:
+                self._hide_placeholder()
+                return "break"
+            
+            # Get current text and cursor position
+            current_text = self.search_field.get()
+            cursor_pos = self.search_field.index('insert')
+            
+            # If cursor is at the beginning, nothing to delete
+            if cursor_pos <= 0:
+                return "break"
+            
+            # Find the start position for deletion (previous word boundary)
+            delete_start_pos = self._find_previous_word_boundary(current_text, cursor_pos)
+            
+            # Delete text from start of previous word to cursor
+            if delete_start_pos < cursor_pos:
+                # Use CustomTkinter's delete method
+                self.search_field.delete(delete_start_pos, cursor_pos)
+                
+                # Trigger search change
+                self._process_search_change()
+            
+            return "break"  # Prevent default key handling
+            
+        except Exception as e:
+            logging.error(f"Error in Ctrl+Backspace handler: {e}")
+            return "break"
+    
+    def _find_previous_word_boundary(self, text: str, start_pos: int) -> int:
+        """
+        Find the position of the start of the previous word from start_pos.
+        
+        Args:
+            text: The text to search in
+            start_pos: Starting position (cursor position)
+            
+        Returns:
+            int: Position of the start of the previous word
+        """
+        if start_pos <= 0:
+            return 0
+        
+        pos = start_pos - 1
+        
+        # Skip any whitespace characters immediately before cursor
+        while pos >= 0 and text[pos].isspace():
+            pos -= 1
+        
+        # If we're now at the end of a word, find the start of this word
+        if pos >= 0 and not text[pos].isspace():
+            while pos >= 0 and not text[pos].isspace():
+                pos -= 1
+            # Move one position forward to the start of the word
+            pos += 1
+        else:
+            # If we stopped at whitespace, that's our boundary
+            pos += 1
+        
+        return max(0, pos)
+    
+    def _process_search_change(self):
+        """Process search field changes."""
+        if not self.is_placeholder_active:
+            self.on_search_change()
+    
+    def get_search_text(self):
+        """Get the current search text (excluding placeholder)."""
+        if self.is_placeholder_active:
+            return ""
+        return self.search_field.get()
 
     def _update_status_display(self):
         """Update the status bar display with current information."""
         try:
-            # Update connection status
-            if self.data_service and hasattr(self.data_service, 'client'):
-                client = self.data_service.client
-                if client and hasattr(client, 'ws_connection') and client.ws_connection:
-                    self.connection_status = "connected"
-                    self.connection_status_label.configure(
-                        text="🟢 Connected", 
-                        text_color="#4CAF50"
-                    )
-                else:
-                    self.connection_status = "disconnected"
-                    self.connection_status_label.configure(
-                        text="🔴 Disconnected", 
-                        text_color="#f44336"
-                    )
-            else:
-                self.connection_status = "disconnected"
-                self.connection_status_label.configure(
-                    text="🔴 Disconnected", 
-                    text_color="#f44336"
-                )
-
-            # Update last update time
+            # Update last update time (simplified - no color coding)
             if self.last_message_time:
                 time_since_update = time.time() - self.last_message_time
                 if time_since_update < 60:
                     time_text = f"{int(time_since_update)}s ago"
-                    color = "#4CAF50"  # Green for recent
-                elif time_since_update < 300:
-                    time_text = f"{int(time_since_update // 60)}m ago"
-                    color = "#FF9800"  # Orange for moderate
                 else:
                     time_text = f"{int(time_since_update // 60)}m ago"
-                    color = "#f44336"  # Red for old
                 
                 self.last_update_label.configure(
-                    text=f"🔄 Last Update: {time_text}",
-                    text_color=color
+                    text=f"Last Update: {time_text}",
+                    text_color=get_color("TEXT_PRIMARY")
                 )
             else:
                 self.last_update_label.configure(
-                    text="🔄 Last Update: Never",
-                    text_color="#888888"
+                    text="Last Update: Never",
+                    text_color=get_color("TEXT_PRIMARY")
                 )
 
         except Exception as e:
@@ -432,7 +550,7 @@ class MainWindow(ctk.CTk):
 
     def _create_loading_overlay(self):
         """Creates loading overlay with image and text."""
-        overlay = ctk.CTkFrame(self.tab_content_area, fg_color="#2b2b2b")
+        overlay = ctk.CTkFrame(self.tab_content_area, fg_color=get_color("BACKGROUND_SECONDARY"))
         overlay.grid(row=0, column=0, sticky="nsew")
         overlay.grid_columnconfigure(0, weight=1)
         overlay.grid_rowconfigure(0, weight=1)
@@ -448,11 +566,11 @@ class MainWindow(ctk.CTk):
             image_label.pack(pady=(20, 0))
 
         # Main loading title with modern styling
-        self.loading_title = ctk.CTkLabel(loading_frame, text="", font=ctk.CTkFont(size=24, weight="bold"), text_color="#3B8ED0")
+        self.loading_title = ctk.CTkLabel(loading_frame, text="", font=ctk.CTkFont(size=24, weight="bold"), text_color=get_color("TEXT_ACCENT"))
         self.loading_title.pack(pady=(0, 0))
 
         # Animated loading indicator (will be updated with dots)
-        self.loading_indicator = ctk.CTkLabel(loading_frame, text="●●●", font=ctk.CTkFont(size=18), text_color="#1F6AA5")
+        self.loading_indicator = ctk.CTkLabel(loading_frame, text="●●●", font=ctk.CTkFont(size=18), text_color=get_color("TEXT_ACCENT"))
         self.loading_indicator.pack(pady=(0, 8))
 
         # Loading message with better formatting
@@ -460,7 +578,7 @@ class MainWindow(ctk.CTk):
             loading_frame,
             text="Connecting to game server and fetching your claim data",
             font=ctk.CTkFont(size=13),
-            text_color="#CCCCCC",
+            text_color=get_color("TEXT_SECONDARY"),
         )
         self.loading_message.pack()
 
@@ -582,16 +700,81 @@ class MainWindow(ctk.CTk):
                 height=38,
                 corner_radius=10,
                 border_width=2,
-                border_color="#404040",
+                border_color=get_color("BORDER_DEFAULT"),
                 font=ctk.CTkFont(size=12, weight="bold"),
-                fg_color="transparent",
-                text_color=("#cccccc", "#e0e0e0"),
-                hover_color=("#3a3a3a", "#454545"),
+                fg_color=get_color("BUTTON_BACKGROUND"),
+                text_color=get_color("TAB_INACTIVE"),
+                hover_color=get_color("BUTTON_HOVER"),
                 command=lambda n=name: self.show_tab(n),
             )
             btn.grid(row=0, column=i, padx=(0 if i == 0 else 4, 0), pady=(0, 2), sticky="w")
             self.tab_buttons[name] = btn
-        
+
+
+    def _on_theme_changed(self, old_theme: str, new_theme: str):
+        """Handle theme change by updating UI colors."""
+        try:
+            logging.info(f"Applying theme change from {old_theme} to {new_theme}")
+            
+            # Update main window background
+            self.configure(fg_color=get_color("BACKGROUND_PRIMARY"))
+            
+            # Update all tab buttons
+            for btn in self.tab_buttons.values():
+                btn.configure(
+                    border_color=get_color("BORDER_DEFAULT"),
+                    fg_color=get_color("BUTTON_BACKGROUND"),
+                    text_color=get_color("TAB_INACTIVE"),
+                    hover_color=get_color("BUTTON_HOVER")
+                )
+            
+            # Update active tab highlighting
+            if self.active_tab_name and self.active_tab_name in self.tab_buttons:
+                self.tab_buttons[self.active_tab_name].configure(
+                    text_color=get_color("TAB_ACTIVE"),
+                    border_color=get_color("TAB_ACTIVE")
+                )
+            
+            # Update status bar components
+            if hasattr(self, 'status_frame'):
+                self.status_frame.configure(
+                    fg_color=get_color("BACKGROUND_SECONDARY"),
+                    border_color=get_color("BORDER_DEFAULT")
+                )
+            
+            if hasattr(self, 'last_update_label'):
+                # Simple text color update for last update label
+                self.last_update_label.configure(text_color=get_color("TEXT_PRIMARY"))
+            
+            # Update search components
+            if hasattr(self, 'search_field'):
+                self.search_field.configure(
+                    fg_color=get_color("BACKGROUND_TERTIARY"),
+                    border_color=get_color("BORDER_DEFAULT")
+                )
+                # Update text color based on current state
+                if hasattr(self, 'is_placeholder_active'):
+                    if self.is_placeholder_active:
+                        self.search_field.configure(text_color=get_color("TEXT_DISABLED"))
+                    else:
+                        self.search_field.configure(text_color=get_color("TEXT_PRIMARY"))
+                else:
+                    self.search_field.configure(text_color=get_color("TEXT_PRIMARY"))
+            
+            if hasattr(self, 'clear_button'):
+                self.clear_button.configure(
+                    fg_color=get_color("BACKGROUND_SECONDARY"),
+                    hover_color=get_color("BUTTON_HOVER"),
+                    text_color=get_color("TEXT_PRIMARY")
+                )
+            
+            # Update other UI components that need theme updates
+            # The individual tabs will handle their own theme updates via their own callbacks
+            
+            logging.debug(f"Theme change applied successfully")
+            
+        except Exception as e:
+            logging.error(f"Error applying theme change: {e}")
 
     def _open_activity_window(self):
         """Opens the activity logs window."""
@@ -633,23 +816,23 @@ class MainWindow(ctk.CTk):
         # Update search placeholder to match current tab
         self._update_search_placeholder(tab_name)
 
-        # Update button appearances with modern styling
+        # Update button appearances with theme-aware styling
         for i, (name, button) in enumerate(self.tab_buttons.items()):
             if name == tab_name:
-                # Active tab with subtle gradient effect
+                # Active tab using theme colors
                 button.configure(
-                    fg_color=("#3B8ED0", "#2980B9"),
-                    text_color="white",
-                    border_color="#3B8ED0",
-                    hover_color=("#2E7BB8", "#1A5A8A"),
+                    fg_color=get_color("TAB_ACTIVE"),
+                    text_color=get_color("TEXT_PRIMARY"),
+                    border_color=get_color("TAB_ACTIVE"),
+                    hover_color=get_color("TAB_ACTIVE"),
                 )
             else:
-                # Inactive tab with improved contrast
+                # Inactive tab using theme colors
                 button.configure(
-                    fg_color="transparent",
-                    text_color=("#cccccc", "#e0e0e0"),
-                    border_color="#404040",
-                    hover_color=("#3a3a3a", "#454545"),
+                    fg_color=get_color("BUTTON_BACKGROUND"),
+                    text_color=get_color("TAB_INACTIVE"),
+                    border_color=get_color("BORDER_DEFAULT"),
+                    hover_color=get_color("BUTTON_HOVER"),
                 )
 
         # Apply current search filter to the new tab
@@ -754,7 +937,7 @@ class MainWindow(ctk.CTk):
             else:
                 message = f"{quantity}x {item_name} ready!"
 
-            label = ctk.CTkLabel(notification, text=message, font=ctk.CTkFont(size=14, weight="bold"), text_color="#4CAF50")
+            label = ctk.CTkLabel(notification, text=message, font=ctk.CTkFont(size=14, weight="bold"), text_color=get_color("STATUS_SUCCESS"))
             label.pack(expand=True)
 
             # Auto-close after 3 seconds
@@ -906,6 +1089,7 @@ class MainWindow(ctk.CTk):
         Clears data from all tabs to show empty state during claim switching.
         """
         try:
+
             if "Claim Inventory" in self.tabs:
                 self.tabs["Claim Inventory"].update_data({})
 
@@ -1178,7 +1362,6 @@ class MainWindow(ctk.CTk):
                     )
                     if "Traveler's Tasks" in self.tabs:
                         self.tabs["Traveler's Tasks"].update_data(msg_data)
-
                         # Check for task completions
                         changes = message.get("changes", {})
                         if changes.get("completed_tasks"):
@@ -1193,7 +1376,6 @@ class MainWindow(ctk.CTk):
 
                 elif msg_type == "claim_info_update":
                     self.claim_info.update_claim_data(msg_data)
-
                     # Track that we've received claim info data
                     if self.is_loading:
                         self.received_data_types.add("claim_info")
