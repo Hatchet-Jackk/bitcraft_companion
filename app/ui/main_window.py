@@ -321,10 +321,17 @@ class MainWindow(ctk.CTk):
         self.search_field.focus()  # Return focus to search field
 
     def _update_search_placeholder(self, tab_name):
-        """Update search field placeholder text based on current tab."""
+        """Update search field placeholder text based on current tab with keyword examples."""
         try:
             old_placeholder = getattr(self, 'placeholder_text', '')
-            new_placeholder = f"Search {tab_name}..."
+            
+            # Create enhanced placeholder with keyword examples
+            base_placeholder = f"Search {tab_name}"
+            keyword_examples = self._get_keyword_examples_for_tab(tab_name)
+            if keyword_examples:
+                new_placeholder = f"{base_placeholder}... (e.g., {keyword_examples})"
+            else:
+                new_placeholder = f"{base_placeholder}..."
             
             # Check if the current field content is the old placeholder
             current_text = self.search_field.get()
@@ -343,6 +350,21 @@ class MainWindow(ctk.CTk):
                 self.placeholder_text = new_placeholder
         except Exception as e:
             logging.error(f"Error updating search placeholder: {e}")
+    
+    def _get_keyword_examples_for_tab(self, tab_name):
+        """Get keyword examples for the current tab."""
+        tab_lower = tab_name.lower()
+        
+        if 'inventory' in tab_lower:
+            return "item=plank, tier>2, container=carving, qty<100"
+        elif 'passive' in tab_lower or 'crafting' in tab_lower:
+            return "item=stone, tier>=3, building=workshop, qty>5"
+        elif 'active' in tab_lower:
+            return "item=tool, crafter=john, tier<5, qty!=0"
+        elif 'task' in tab_lower or 'traveler' in tab_lower:
+            return "traveler=merchant, item=ore, status=active, qty>1"
+        else:
+            return "item=plank, tier>2, qty<100"
     
     def _show_placeholder(self):
         """Show placeholder text in search field."""

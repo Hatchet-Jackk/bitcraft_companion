@@ -7,6 +7,7 @@ from tkinter import Menu, ttk
 from app.ui.components.filter_popup import FilterPopup
 from app.ui.styles import TreeviewStyles
 from app.ui.themes import get_color, register_theme_callback
+from app.services.search_parser import SearchParser
 
 
 class TravelerTasksTab(ctk.CTkFrame):
@@ -28,6 +29,9 @@ class TravelerTasksTab(ctk.CTkFrame):
         self.sort_reverse = False
         self.active_filters: Dict[str, set] = {}
         self.clicked_header = None
+        
+        # Initialize search parser
+        self.search_parser = SearchParser()
 
         # Track expansion state for better user experience
         self.has_had_first_load = False
@@ -382,7 +386,11 @@ class TravelerTasksTab(ctk.CTkFrame):
         """
         Filters the master data list based on search and column filters.
         """
-        search_term = self.app.get_search_text().lower()
+        search_text = self.app.get_search_text()
+        parsed_query = None
+        if search_text:
+            parsed_query = self.search_parser.parse_search_query(search_text)
+        
         temp_data = []
 
         for row in self.all_data:
@@ -425,9 +433,24 @@ class TravelerTasksTab(ctk.CTkFrame):
                                 operation_matches = False
                                 break
 
-                # Apply search filter to individual operations
-                if operation_matches and search_term:
-                    if not self._operation_matches_search(operation, search_term):
+                # Apply keyword-based search filter to individual operations
+                if operation_matches and parsed_query:
+                    # For operations, we need to map some fields for proper searching
+                    # Map various possible field names from the operation data
+                    required_item = operation.get('required_item', '') or operation.get('item', '') or operation.get('name', '')
+                    search_row = {
+                        'name': required_item,
+                        'item': required_item,  # alias
+                        'required_item': required_item,  # original field name
+                        'tier': operation.get('tier', 0),
+                        'quantity': operation.get('quantity', 0) or operation.get('required_quantity', 0),
+                        'tag': operation.get('tag', '') or operation.get('item_tag', ''),
+                        'status': operation.get('completion_status', '') or operation.get('status', ''),
+                        'traveler': row.get('traveler_name', '') or row.get('traveler', ''),  # Include traveler context
+                        # Include all operation fields for broader matching
+                        **operation
+                    }
+                    if not self.search_parser.match_row(search_row, parsed_query):
                         operation_matches = False
 
                 # If operation matches all filters, include it
@@ -448,16 +471,18 @@ class TravelerTasksTab(ctk.CTkFrame):
                             traveler_matches = False
                             break
 
-            # Apply search to traveler level
-            if traveler_matches and search_term and not filtered_operations:
+            # Apply search to traveler level if no operations matched
+            if traveler_matches and parsed_query and not filtered_operations:
                 # If no operations matched search, check if traveler info matches
-                main_fields = ["traveler", "completed", "status"]
-                traveler_search_matches = False
-                for field in main_fields:
-                    if search_term in str(row.get(field, "")).lower():
-                        traveler_search_matches = True
-                        break
-                if not traveler_search_matches:
+                search_row = {
+                    'name': row.get('traveler_name', '') or row.get('traveler', ''),
+                    'traveler': row.get('traveler_name', '') or row.get('traveler', ''),
+                    'completed': row.get('completed', ''),
+                    'status': row.get('status', ''),
+                    # Include all traveler fields for broader matching
+                    **row
+                }
+                if not self.search_parser.match_row(search_row, parsed_query):
                     traveler_matches = False
 
             # Include traveler group if it matches and has matching operations (or no operation-level filters)
@@ -484,7 +509,7 @@ class TravelerTasksTab(ctk.CTkFrame):
                         temp_data.append(filtered_row)
                 else:
                     # No operation-level filters, include as-is (but still apply search to operations)
-                    if search_term and filtered_operations != original_operations:
+                    if parsed_query and filtered_operations != original_operations:
                         filtered_row["operations"] = filtered_operations
                         completed_count = sum(1 for op in filtered_operations if op.get("status") == "✅")
                         total_count = len(filtered_operations)

@@ -3,6 +3,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.27]
+### Added
+- **Enhanced Search with Keywords & Comparison Operators**: Revolutionary search system with keyword-based filtering across all tabs
+  - **Keywords**: `item=`, `tier=`, `quantity=`/`qty=`, `tag=`, `container=`, `building=`, `crafter=`, `traveler=`, `status=`
+  - **Comparison Operators**: `=`, `>`, `<`, `>=`, `<=`, `!=` for both string and numeric fields
+  - **Examples**: `item=plank tier>3 qty<100`, `container=carving`, `building!=workshop`, `crafter=john`
+  - **Smart Field Detection**: Automatically handles numeric vs string comparisons
+  - **Backward Compatible**: Regular search terms still work alongside keywords
+  - **Tab-Specific Placeholders**: Contextual search examples for each tab
+  - **Container Search**: Special handling for searching within container dictionaries
+  - **Traveler Tasks**: Enhanced nested search showing parent travelers when child operations match
+
 ## [0.2.26]
 ### Added
 - QoL: Escape key keybind to clear search text
