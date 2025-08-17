@@ -2,12 +2,12 @@ import logging
 from typing import Dict, List
 
 import customtkinter as ctk
-import tkinter as tk
 from tkinter import Menu, ttk
 
 from app.ui.components.filter_popup import FilterPopup
 from app.ui.styles import TreeviewStyles
 from app.ui.themes import get_color, register_theme_callback
+from app.services.search_parser import SearchParser
 
 
 class ActiveCraftingTab(ctk.CTkFrame):
@@ -28,6 +28,9 @@ class ActiveCraftingTab(ctk.CTkFrame):
         self.sort_column = "Item"
         self.sort_reverse = False
         self.active_filters: Dict[str, set] = {}
+        
+        # Initialize search parser
+        self.search_parser = SearchParser()
         self.clicked_header = None
         
 
@@ -285,9 +288,10 @@ class ActiveCraftingTab(ctk.CTkFrame):
 
     def apply_filter(self):
         """Filters the master data list based on search and column filters."""
-        search_term = self.app.get_search_text().lower()
+        search_text = self.app.get_search_text()
         temp_data = self.all_data[:]
 
+        # Apply column filters first
         if self.active_filters:
             for header, values in self.active_filters.items():
                 if header.lower() in ["building", "crafter", "accept help"]:
@@ -296,8 +300,10 @@ class ActiveCraftingTab(ctk.CTkFrame):
                     field_name = header.lower().replace(" ", "_")
                     temp_data = [row for row in temp_data if str(row.get(field_name, "")) in values]
 
-        if search_term:
-            temp_data = [row for row in temp_data if self._row_matches_search(row, search_term)]
+        # Apply keyword-based search
+        if search_text:
+            parsed_query = self.search_parser.parse_search_query(search_text)
+            temp_data = [row for row in temp_data if self.search_parser.match_row(row, parsed_query)]
 
         self.filtered_data = temp_data
         self.sort_by(self.sort_column, self.sort_reverse)
