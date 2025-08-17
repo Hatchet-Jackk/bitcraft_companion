@@ -19,7 +19,12 @@ BitCraft Companion connects directly to BitCraft game servers via WebSocket to p
 - **Claim Information Header**: Shows current claim name, member count, and connection status.
 
 #### 📊 **Data Presentation**
-- **Advanced Search & Filtering**: Instantly search and filter across item names, tags, containers, building types, and crafting status.
+- **Logical Keyword Search**: Advanced search system with keywords and comparison operators across all tabs
+  - **Keywords**: `item=`, `tier=`, `qty=`, `tag=`, `container=`, `building=`, `crafter=`, `traveler=`, `status=`
+  - **Operators**: `=`, `>`, `<`, `>=`, `<=`, `!=` for precise filtering
+  - **Examples**: `item=plank tier>3 qty<100`, `container=carving`, `building!=workshop`
+  - **Smart Detection**: Automatically handles numeric vs text comparisons
+  - **Backward Compatible**: Regular search terms work alongside keywords
 - **Column Filtering**: Right-click any column header to access advanced filtering options.
 - **Column Sorting**: Click any column header to sort data logically in ascending or descending order.
 - **Combined Filters & Sorting**: Use filters and sorting together to drill down into large datasets, such as finding all Tier 3 building materials currently being crafted.
@@ -79,6 +84,63 @@ BitCraft Companion connects directly to BitCraft game servers via WebSocket to p
 3. **Navigate between tabs**—Claim Inventory, Passive Crafting, Active Crafting, Traveler's Tasks.
 4. **Use the search bar** for instant filtering across any tab's data.
 5. **Enable notifications** in the Settings window for craft completion alerts.
+
+### 🔍 **Advanced Search Guide**
+
+BitCraft Companion features a powerful keyword-based search system that lets you find exactly what you're looking for across all tabs.
+
+#### **Basic Search**
+- Type any text to search across all visible fields
+- Example: `plank` finds all items containing "plank"
+
+#### **Keyword Search**
+Use keywords with `=` to search specific fields:
+- `item=stone` - Find items containing "stone"
+- `tier=3` - Find exactly tier 3 items  
+- `container=carving` - Find items in containers with "carving" in the name
+- `building=workshop` - Find items in workshops
+- `crafter=john` - Find items crafted by players with "john" in their name
+
+#### **Comparison Operators**
+Use operators for precise numeric filtering:
+- `tier>3` - Tier greater than 3
+- `qty<100` - Quantity less than 100 (`qty` is shortcut for `quantity`)
+- `tier>=4` - Tier 4 or higher
+- `tier<=2` - Tier 2 or lower
+- `tier!=3` - Not tier 3
+
+#### **Combined Search**
+Mix multiple keywords and regular terms:
+- `item=plank tier>2 qty<50` - Planks that are tier 3+ with less than 50 quantity
+- `stone tier>1` - Items containing "stone" that are tier 2+
+- `container=carving tier=5` - Tier 5 items in carving containers
+- `building!=workshop crafter=alice` - Items crafted by Alice outside workshops
+
+#### **Multiple Conditions Per Field**
+Apply multiple conditions to the same field (ALL must be true):
+- `item=log item!=package qty<500` - Log items under 500 that don't contain "package"
+- `tier>2 tier<6` - Items with tier 3, 4, or 5
+- `qty>=10 qty<=100` - Items with quantity between 10-100 (inclusive)
+- `building=workshop building!=forge` - Workshop buildings that aren't forges
+- `item=stone item!=refined tier>1` - Stone items (not refined) above tier 1
+
+#### **Tab-Specific Keywords**
+Each tab supports different keywords based on available data:
+
+**Claim Inventory:**
+- `item=`, `tier=`, `qty=`, `tag=`, `container=`
+
+**Passive/Active Crafting:**
+- `item=`, `tier=`, `qty=`, `tag=`, `building=`, `crafter=`, `time=`
+
+**Traveler Tasks:**
+- `item=`, `tier=`, `qty=`, `tag=`, `traveler=`, `status=`
+
+#### **Tips**
+- **Case Insensitive**: All searches work regardless of capitalization
+- **Partial Matching**: `item=plan` matches "plank", "plans", "airplane"  
+- **Live Updates**: Results update in real-time as your game data changes
+- **Escape Key**: Press `Escape` to quickly clear the search field
 
 ## ⚙️ Configuration
 

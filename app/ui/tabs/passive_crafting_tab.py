@@ -2,12 +2,12 @@ import logging
 from typing import Dict, List
 
 import customtkinter as ctk
-import tkinter as tk
 from tkinter import Menu, ttk
 
 from app.ui.components.filter_popup import FilterPopup
 from app.ui.styles import TreeviewStyles
 from app.ui.themes import get_color, register_theme_callback
+from app.services.search_parser import SearchParser
 
 
 class PassiveCraftingTab(ctk.CTkFrame):
@@ -28,6 +28,9 @@ class PassiveCraftingTab(ctk.CTkFrame):
         self.sort_column = "Item"
         self.sort_reverse = False
         self.active_filters: Dict[str, set] = {}
+        
+        # Initialize search parser
+        self.search_parser = SearchParser()
         self.clicked_header = None
 
         # Track expansion state for better user experience
@@ -220,6 +223,66 @@ class PassiveCraftingTab(ctk.CTkFrame):
         """Clears the filter for a specific column."""
         self.active_filters.pop(header, None)
         self._apply_all_filters()
+
+    def apply_filter(self):
+        """Filters the master data list based on search and column filters."""
+        search_text = self.app.get_search_text()
+        temp_data = self.all_data[:]
+
+        # Apply column filters first
+        if self.active_filters:
+            filtered_data = []
+            for item in temp_data:
+                include_item = True
+                for filter_header, filter_values in self.active_filters.items():
+                    if filter_header.lower() == "building":
+                        # Check building names in item and operations
+                        building_match = False
+                        item_building = item.get("building_name", "")
+                        if item_building in filter_values:
+                            building_match = True
+                        else:
+                            # Check operations for building matches
+                            for operation in item.get("operations", []):
+                                if operation.get("building_name", "") in filter_values:
+                                    building_match = True
+                                    break
+                        if not building_match:
+                            include_item = False
+                            break
+                    elif filter_header.lower() == "crafter":
+                        # Check crafter names in item and operations
+                        crafter_match = False
+                        item_crafter = item.get("crafter", "")
+                        if item_crafter in filter_values:
+                            crafter_match = True
+                        else:
+                            # Check operations for crafter matches
+                            for operation in item.get("operations", []):
+                                if operation.get("crafter", "") in filter_values:
+                                    crafter_match = True
+                                    break
+                        if not crafter_match:
+                            include_item = False
+                            break
+                    else:
+                        # Standard field filtering
+                        item_value = str(item.get(filter_header.lower(), ""))
+                        if item_value not in filter_values:
+                            include_item = False
+                            break
+                
+                if include_item:
+                    filtered_data.append(item)
+            temp_data = filtered_data
+
+        # Apply keyword-based search
+        if search_text:
+            parsed_query = self.search_parser.parse_search_query(search_text)
+            temp_data = [row for row in temp_data if self.search_parser.match_row(row, parsed_query)]
+
+        self.filtered_data = temp_data
+        self.sort_by(self.sort_column)
 
     def _apply_all_filters(self):
         """Apply all active filters to the data."""
