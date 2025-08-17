@@ -8,7 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Enhanced Search with Keywords & Comparison Operators**: Revolutionary search system with keyword-based filtering across all tabs
   - **Keywords**: `item=`, `tier=`, `quantity=`/`qty=`, `tag=`, `container=`, `building=`, `crafter=`, `traveler=`, `status=`
   - **Comparison Operators**: `=`, `>`, `<`, `>=`, `<=`, `!=` for both string and numeric fields
-  - **Examples**: `item=plank tier>3 qty<100`, `container=carving`, `building!=workshop`, `crafter=john`
+  - **Multiple Conditions**: Support multiple conditions per field with AND logic (e.g., `item=log item!=package qty<500`)
+  - **Examples**: `item=plank tier>3 qty<100`, `container=carving`, `building!=workshop`, `tier>2 tier<6`
   - **Smart Field Detection**: Automatically handles numeric vs string comparisons
   - **Backward Compatible**: Regular search terms still work alongside keywords
   - **Tab-Specific Placeholders**: Contextual search examples for each tab

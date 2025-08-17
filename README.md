@@ -116,6 +116,14 @@ Mix multiple keywords and regular terms:
 - `container=carving tier=5` - Tier 5 items in carving containers
 - `building!=workshop crafter=alice` - Items crafted by Alice outside workshops
 
+#### **Multiple Conditions Per Field**
+Apply multiple conditions to the same field (ALL must be true):
+- `item=log item!=package qty<500` - Log items under 500 that don't contain "package"
+- `tier>2 tier<6` - Items with tier 3, 4, or 5
+- `qty>=10 qty<=100` - Items with quantity between 10-100 (inclusive)
+- `building=workshop building!=forge` - Workshop buildings that aren't forges
+- `item=stone item!=refined tier>1` - Stone items (not refined) above tier 1
+
 #### **Tab-Specific Keywords**
 Each tab supports different keywords based on available data:
 

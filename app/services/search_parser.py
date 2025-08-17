@@ -83,8 +83,10 @@ class SearchParser:
             # Process the value based on field type
             processed_value = self._process_value(field, value_str)
             
-            # Store the parsed keyword
-            keywords[field] = (operator, processed_value)
+            # Store the parsed keyword - support multiple conditions per field
+            if field not in keywords:
+                keywords[field] = []
+            keywords[field].append((operator, processed_value))
             
             # Remove this match from the remaining text
             remaining_text = remaining_text.replace(match.group(0), ' ', 1)
@@ -138,8 +140,8 @@ class SearchParser:
             True if the row matches, False otherwise
         """
         # Check keyword filters
-        for field, (operator, value) in parsed_query['keywords'].items():
-            if not self._match_keyword_filter(row, field, operator, value):
+        for field, conditions in parsed_query['keywords'].items():
+            if not self._match_keyword_filter(row, field, conditions):
                 return False
         
         # Check regular terms (must match somewhere in the row)
@@ -149,18 +151,17 @@ class SearchParser:
         
         return True
     
-    def _match_keyword_filter(self, row: Dict[str, Any], field: str, operator: str, value: Union[str, int, float]) -> bool:
+    def _match_keyword_filter(self, row: Dict[str, Any], field: str, conditions: List[Tuple[str, Union[str, int, float]]]) -> bool:
         """
-        Check if a row matches a specific keyword filter.
+        Check if a row matches all conditions for a specific keyword field.
         
         Args:
             row: The data row
             field: The field name to check
-            operator: The comparison operator
-            value: The value to compare against
+            conditions: List of (operator, value) tuples - ALL must be satisfied (AND logic)
             
         Returns:
-            True if matches, False otherwise
+            True if ALL conditions match, False otherwise
         """
         # Get the actual field names to check (handle aliases)
         field_names = self.FIELD_ALIASES.get(field, [field])
@@ -169,7 +170,15 @@ class SearchParser:
         for field_name in field_names:
             row_value = row.get(field_name)
             if row_value is not None:
-                if self._compare_values(row_value, operator, value, field_name):
+                # Check if ALL conditions are satisfied for this field
+                all_conditions_met = True
+                for operator, value in conditions:
+                    if not self._compare_values(row_value, operator, value, field_name):
+                        all_conditions_met = False
+                        break
+                
+                # If all conditions are met for this field name, the filter passes
+                if all_conditions_met:
                     return True
         
         return False
