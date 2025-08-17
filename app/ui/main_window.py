@@ -192,6 +192,7 @@ class MainWindow(ctk.CTk):
         self.after(100, self.process_data_queue)
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.bind("<Configure>", self._on_window_configure)
+        self.bind("<Escape>", self._on_escape_key)
         
 
     def _on_window_configure(self, event):
@@ -505,6 +506,21 @@ class MainWindow(ctk.CTk):
         """Process search field changes."""
         if not self.is_placeholder_active:
             self.on_search_change()
+    
+    def _on_escape_key(self, event):
+        """Handle Escape key press to clear the search field if it has content."""
+        try:
+            search_text = self.get_search_text()
+            if search_text:
+                self.clear_search()
+                return "break"
+            elif not self.is_placeholder_active:  
+                self.clear_search()
+                return "break"
+            return None
+        except Exception as e:
+            logging.error(f"Error in Escape key handler: {e}")
+            return "break"
     
     def get_search_text(self):
         """Get the current search text (excluding placeholder)."""
