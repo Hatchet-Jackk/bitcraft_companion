@@ -28,7 +28,7 @@ class SearchParser:
     
     # Define which fields are numeric for proper comparison handling
     NUMERIC_FIELDS = {
-        'tier', 'quantity', 'time', 'effort', 'remaining_effort', 
+        'tier', 'quantity', 'qty', 'time', 'effort', 'remaining_effort', 
         'time_remaining', 'jobs', 'accept_help'
     }
     
@@ -238,23 +238,24 @@ class SearchParser:
             search_value: Search term
             
         Returns:
-            True if any container matches, False otherwise
+            True if condition matches, False otherwise
         """
         search_str = str(search_value).lower()
         
-        for container_name in containers.keys():
-            container_str = str(container_name).lower()
-            
-            if operator == '=':
+        if operator == '=':
+            # For = operator, return True if ANY container contains the search term
+            for container_name in containers.keys():
+                container_str = str(container_name).lower()
                 if search_str in container_str:
                     return True
-            elif operator == '!=':
-                if search_str not in container_str:
-                    return True
-        
-        # For != operator, return False if we found any matches (we want NO matches)
-        if operator == '!=':
-            return True
+            return False
+        elif operator == '!=':
+            # For != operator, return True if NO container contains the search term
+            for container_name in containers.keys():
+                container_str = str(container_name).lower()
+                if search_str in container_str:
+                    return False  # Found a match, so != condition fails
+            return True  # No matches found, so != condition passes
         
         return False
     
