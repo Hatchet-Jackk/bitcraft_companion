@@ -209,8 +209,6 @@ class InventoryProcessor(BaseProcessor):
                     logging.debug(f"Failed to process inventory row: {e}")
                     continue
 
-            # for building_id, items in self._inventory_data.items():
-
         except Exception as e:
             logging.error(f"Error processing inventory data: {e}")
 
@@ -343,23 +341,56 @@ class InventoryProcessor(BaseProcessor):
                         # Create InventoryState from dict to use dataclass methods
                         inventory_state = InventoryState.from_dict(inventory_record)
                         
+                        # Build simple reference data for dataclass
+                        reference_data = {}
+                        for table_name in ["item_desc", "cargo_desc"]: 
+                            items = self.reference_data.get(table_name, [])
+                            for item in items:
+                                item_id = item.get("id")
+                                if item_id is not None:
+                                    if item_id not in reference_data:
+                                        reference_data[item_id] = item
+                        
+                        # Get container info for slot-based item type detection
+                        cargo_index = inventory_state.cargo_index
+                        total_pockets = len(inventory_state.pockets)
+                        
                         # Get items from inventory state
-                        items = inventory_state.get_items({})  # Don't need to pass reference data anymore
+                        items = inventory_state.get_items(reference_data)
                         
                         for item_info in items:
                             item_id = item_info.get("item_id", 0)
                             quantity = item_info.get("quantity", 0)
+                            slot_index = item_info.get("slot_index", 0)
                             
-                            # Determine preferred source to handle cargo/item ID conflicts
-                            preferred_source = self._determine_preferred_item_source(item_id)
+                            # Determine correct table based on slot position
+                            if cargo_index == 0:
+                                # Cargo-only container: all slots are cargo
+                                correct_table = "cargo_desc"
+                            elif cargo_index >= total_pockets:
+                                # Inventory-only container: all slots are items
+                                correct_table = "item_desc"
+                            else:
+                                # Mixed container: check slot position
+                                if slot_index < cargo_index:
+                                    correct_table = "item_desc"  # Item slots (0 to cargo_index-1)
+                                else:
+                                    correct_table = "cargo_desc"  # Cargo slots (cargo_index to end)
                             
-                            # Use ItemLookupService with preferred source for all item details
-                            item_name = self.item_lookup_service.get_item_name(item_id, preferred_source)
-                            item_tier = self.item_lookup_service.get_item_tier(item_id, preferred_source)
+                            # Get the correct item from the appropriate table
+                            item_data = self.item_lookup_service.lookup_item_by_id(item_id, correct_table)
                             
-                            # Get tag from item lookup with preferred source
-                            item_data = self.item_lookup_service.lookup_item_by_id(item_id, preferred_source)
-                            item_tag = item_data.get("tag", "") if item_data else ""
+                            if item_data:
+                                item_name = item_data.get("name", f"Unknown Item ({item_id})")
+                                item_tier = item_data.get("tier", 0)
+                                item_tag = item_data.get("tag", "")
+                                
+                            else:
+                                # Fallback if not found in correct table
+                                item_name = f"Unknown Item ({item_id})"
+                                item_tier = 0
+                                item_tag = ""
+                                logging.warning(f"[InventoryProcessor] Item {item_id} not found in {correct_table} table")
 
                             # Add to consolidated inventory
                             if item_name not in consolidated:
@@ -516,55 +547,5 @@ class InventoryProcessor(BaseProcessor):
         except Exception as e:
             logging.error(f"Error getting player for recent change: {e}")
             return None
+    
 
-    def _determine_preferred_item_source(self, item_id):
-        """
-        Determine the preferred item source for inventory items.
-        
-        Adapted from crafting processor logic to handle cargo vs item conflicts.
-        
-        Args:
-            item_id: The item ID to determine source for
-            
-        Returns:
-            str: Preferred source ("item_desc", "cargo_desc", "resource_desc")
-        """
-        try:
-            # Check if item exists in multiple sources to detect conflicts
-            available_sources = []
-            item_names = {}
-            
-            for source in ["item_desc", "cargo_desc", "resource_desc"]:
-                compound_key = (item_id, source)
-                if hasattr(self, 'item_lookup_service') and self.item_lookup_service._item_lookups:
-                    if compound_key in self.item_lookup_service._item_lookups:
-                        available_sources.append(source)
-                        item_data = self.item_lookup_service._item_lookups[compound_key]
-                        item_names[source] = item_data.get("name", "").lower()
-            
-            # If no conflicts, return first available or default
-            if len(available_sources) <= 1:
-                result = available_sources[0] if available_sources else "item_desc"
-                return result
-            
-            # If we have conflicts, use cargo heuristics
-            cargo_indicators = ["pack", "package", "bundle", "crate", "supplies", "materials", "goods", "cargo", "shipment", "chunk", "ore"]
-            
-            # Check cargo_desc item name for cargo indicators
-            if "cargo_desc" in available_sources:
-                cargo_name = item_names.get("cargo_desc", "")
-                for indicator in cargo_indicators:
-                    if indicator in cargo_name:
-                        logging.debug(f"[InventoryProcessor] Item {item_id} conflict resolved: chose cargo_desc for '{cargo_name}' (indicator: '{indicator}')")
-                        return "cargo_desc"
-            
-            # Log when falling back to item_desc for conflicts
-            if len(available_sources) > 1:
-                logging.debug(f"[InventoryProcessor] Item {item_id} conflict: using item_desc fallback. Available: {available_sources}, names: {item_names}")
-            
-            # Default to item_desc for most inventory items
-            return "item_desc"
-            
-        except Exception as e:
-            logging.error(f"Error determining preferred item source for {item_id}: {e}")
-            return "item_desc"

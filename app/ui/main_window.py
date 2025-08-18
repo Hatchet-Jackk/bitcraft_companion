@@ -19,6 +19,7 @@ from app.ui.tabs.traveler_tasks_tab import TravelerTasksTab
 from app.ui.components.activity_window import ActivityWindow
 from app.services.activity_logger import ActivityLogger
 from app.ui.themes import get_theme_manager, get_color, register_theme_callback
+from app.ui.components.saved_search_dialog import SaveSearchDialog, LoadSearchDialog
 
 
 class ShutdownDialog(ctk.CTkToplevel):
@@ -231,7 +232,7 @@ class MainWindow(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def _create_search_section(self):
-        """Creates the search section with field and clear button."""
+        """Creates the search section with field and search management buttons."""
         search_frame = ctk.CTkFrame(self, fg_color="transparent")
         search_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=8)
         search_frame.grid_columnconfigure(0, weight=1)  # Make search field expand
@@ -261,6 +262,36 @@ class MainWindow(ctk.CTk):
         self.search_field.bind('<Control-BackSpace>', self._on_ctrl_backspace)
         self.search_field.grid(row=0, column=0, sticky="ew", padx=(0, 8))
 
+        # Save Search button
+        self.save_search_button = ctk.CTkButton(
+            search_frame,
+            text="Save",
+            command=self.save_search,
+            width=80,
+            height=34,
+            font=ctk.CTkFont(size=11),
+            fg_color=get_color("BACKGROUND_SECONDARY"),
+            hover_color=get_color("BUTTON_HOVER"),
+            corner_radius=8,
+            text_color="white",
+        )
+        self.save_search_button.grid(row=0, column=1, sticky="e", padx=(0, 5))
+
+        # Load Search button  
+        self.load_search_button = ctk.CTkButton(
+            search_frame,
+            text="Load",
+            command=self.load_search,
+            width=80,
+            height=34,
+            font=ctk.CTkFont(size=11),
+            fg_color=get_color("BACKGROUND_SECONDARY"),
+            hover_color=get_color("BUTTON_HOVER"),
+            corner_radius=8,
+            text_color=get_color("TEXT_PRIMARY"),
+        )
+        self.load_search_button.grid(row=0, column=2, sticky="e", padx=(0, 5))
+
         # Clear button with modern styling
         self.clear_button = ctk.CTkButton(
             search_frame,
@@ -274,7 +305,7 @@ class MainWindow(ctk.CTk):
             corner_radius=8,
             text_color=get_color("TEXT_PRIMARY"),
         )
-        self.clear_button.grid(row=0, column=2, sticky="e")
+        self.clear_button.grid(row=0, column=3, sticky="e")
 
     def _create_status_bar(self):
         """Creates the status bar with connection info, last update, and ping."""
@@ -319,6 +350,56 @@ class MainWindow(ctk.CTk):
         # Trigger search change to apply empty filter
         self.on_search_change()
         self.search_field.focus()  # Return focus to search field
+
+    def save_search(self):
+        """Opens the save search dialog to save the current search query."""
+        current_query = self.get_search_text()
+        
+        if not current_query or not current_query.strip():
+            messagebox.showwarning("No Search Query", "Please enter a search query before saving.", parent=self)
+            self.search_field.focus()
+            return
+        
+        # Callback for when search is saved successfully
+        def on_save_callback(search_id, name, query):
+            logging.info(f"Search '{name}' saved successfully with ID: {search_id}")
+        
+        # Open save dialog
+        try:
+            SaveSearchDialog(self, current_query, on_save_callback)
+        except Exception as e:
+            logging.error(f"Error opening save search dialog: {e}")
+            messagebox.showerror("Error", "Failed to open save search dialog.", parent=self)
+
+    def load_search(self):
+        """Opens the load search dialog to select and load a saved search."""
+        # Callback for when search is loaded
+        def on_load_callback(search_id, name, query):
+            logging.info(f"Loading search '{name}': {query}")
+            self._set_search_text(query)
+            # Trigger search change to apply the loaded filter
+            self.on_search_change()
+        
+        # Open load dialog
+        try:
+            LoadSearchDialog(self, on_load_callback)
+        except Exception as e:
+            logging.error(f"Error opening load search dialog: {e}")
+            messagebox.showerror("Error", "Failed to open load search dialog.", parent=self)
+
+    def _set_search_text(self, text: str):
+        """Set the search field text and handle placeholder state."""
+        # Clear current content
+        self.search_field.delete(0, 'end')
+        
+        if text and text.strip():
+            # Insert the new text
+            self.search_field.insert(0, text)
+            self.is_placeholder_active = False
+            self.search_field.configure(text_color=get_color("TEXT_PRIMARY"))
+        else:
+            # Show placeholder if text is empty
+            self._show_placeholder()
 
     def _update_search_placeholder(self, tab_name):
         """Update search field placeholder text based on current tab with keyword examples."""
