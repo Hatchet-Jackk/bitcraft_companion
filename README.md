@@ -136,6 +136,10 @@ Each tab supports different keywords based on available data:
 **Traveler Tasks:**
 - `item=`, `tier=`, `qty=`, `tag=`, `traveler=`, `status=`
 
+#### **Saving and Loading Queries**
+- **Save Queries**: You can save your search queries for later use, making it easy to reuse complex filters.
+- **Load/Delete Queries**: Access saved queries from the search bar menu to quickly load or delete them as needed.
+
 #### **Tips**
 - **Case Insensitive**: All searches work regardless of capitalization
 - **Partial Matching**: `item=plan` matches "plank", "plans", "airplane"  

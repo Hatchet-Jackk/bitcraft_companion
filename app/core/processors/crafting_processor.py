@@ -1,4 +1,5 @@
 """
+
 Crafting processor for handling passive_craft_state table updates.
 """
 
@@ -261,8 +262,15 @@ class CraftingProcessor(BaseProcessor):
 
                 if isinstance(first_item, list) and len(first_item) >= 2:
                     item_id = first_item[0]
-                    item_name = self.item_lookup_service.get_item_name(item_id)
-                    return item_name
+                    # Use compound key system for item lookup
+                    found_items = self.item_lookup_service.find_items_by_id(item_id)
+                    
+                    if found_items:
+                        # Use first found item (compound key system prevents overwrites)
+                        item_info = found_items[0]
+                        return item_info.get("name", f"Item {item_id}")
+                    else:
+                        return f"Item {item_id}"
             else:
                 # Fallback to recipe name if no crafted items
                 return re.sub(r"\{\d+\}", "", recipe_name).strip()
@@ -274,32 +282,6 @@ class CraftingProcessor(BaseProcessor):
             return f"Recipe {recipe_id}"
 
 
-    def _determine_preferred_item_source(self, recipe_info):
-        """
-        Determine the preferred item source based on recipe context.
-
-        Args:
-            recipe_info: Recipe information dictionary
-
-        Returns:
-            str: Preferred source ("item_desc", "cargo_desc", "resource_desc") or None
-        """
-        try:
-            recipe_name = recipe_info.get("name", "").lower()
-
-            # Heuristics to determine if this is likely a cargo item
-            cargo_indicators = ["pack", "package", "bundle", "crate", "supplies", "materials", "goods", "cargo", "shipment"]
-
-            for indicator in cargo_indicators:
-                if indicator in recipe_name:
-                    return "cargo_desc"
-
-            # Default to item_desc for most crafting
-            return "item_desc"
-
-        except Exception as e:
-            logging.error(f"Error determining preferred source: {e}")
-            return None
 
     def _trigger_bundled_passive_craft_notifications(self, newly_ready_items):
         """Trigger bundled passive craft completion notifications for multiple items."""
@@ -915,12 +897,25 @@ class CraftingProcessor(BaseProcessor):
                         item_id = item_stack[0]
                         quantity = item_stack[1]
 
-                        # Look up item details using shared lookup service with preferred source
-                        preferred_source = self._determine_preferred_item_source(recipe_info)
-                        item_info = self.item_lookup_service.lookup_item_by_id(item_id, preferred_source)
-                        item_name = item_info.get("name", f"Unknown Item {item_id}") if item_info else f"Unknown Item {item_id}"
-                        item_tier = item_info.get("tier", 0) if item_info else 0
-                        item_tag = item_info.get("tag", "") if item_info else ""
+                        # Look up item details using compound key system
+                        found_items = self.item_lookup_service.find_items_by_id(item_id)
+                        
+                        if found_items:
+                            # Use first found item (compound key system prevents overwrites)
+                            item_info = found_items[0]
+                            item_name = item_info.get("name", f"Unknown Item {item_id}")
+                            item_tier = item_info.get("tier", 0)
+                            item_tag = item_info.get("tag", "")
+                            
+                            # Log when there are multiple items for debugging
+                            if len(found_items) > 1:
+                                all_names = [item.get("name", "") for item in found_items]
+                                logging.debug(f"[CraftingProcessor] Item {item_id} has multiple matches: {all_names}, using: '{item_name}'")
+                        else:
+                            item_name = f"Unknown Item {item_id}"
+                            item_tier = 0
+                            item_tag = ""
+                            logging.warning(f"[CraftingProcessor] Item {item_id} not found in any reference table")
                     else:
                         logging.warning(f"Invalid item_stack format: {item_stack} - skipping")
                         continue

@@ -3,6 +3,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.28]
+### Added
+- Improved save and load for searches
+- Comprehensive tests for SavedSearchService
+
+### Fixed
+- Item overwrites due to conflicting IDs (for real this time!)
+
+### Refactored
+- Simplified reference data handling in InventoryProcessor
+- Removed unused item type determination methods
+- Simplified reference data handling in InventoryProcessor
+
 ## [0.2.27]
 ### Added
 - **Enhanced Search with Keywords & Comparison Operators**: Revolutionary search system with keyword-based filtering across all tabs

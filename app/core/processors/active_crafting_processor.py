@@ -606,14 +606,25 @@ class ActiveCraftingProcessor(BaseProcessor):
                             base_quantity = item_stack[1]
                             total_quantity = base_quantity * craft_count
 
-                            # Look up item details using shared lookup service with preferred source
-                            preferred_source = self._determine_preferred_item_source(recipe_info)
-                            item_info = self.item_lookup_service.lookup_item_by_id(item_id, preferred_source)
-                            item_name = (
-                                item_info.get("name", f"Unknown Item {item_id}") if item_info else f"Unknown Item {item_id}"
-                            )
-                            item_tier = item_info.get("tier", 0) if item_info else 0
-                            item_tag = item_info.get("tag", "") if item_info else ""
+                            # Look up item details using compound key system
+                            found_items = self.item_lookup_service.find_items_by_id(item_id)
+                            
+                            if found_items:
+                                # Use first found item (compound key system prevents overwrites)
+                                item_info = found_items[0]
+                                item_name = item_info.get("name", f"Unknown Item {item_id}")
+                                item_tier = item_info.get("tier", 0)
+                                item_tag = item_info.get("tag", "")
+                                
+                                # Log when there are multiple items for debugging
+                                if len(found_items) > 1:
+                                    all_names = [item.get("name", "") for item in found_items]
+                                    logging.debug(f"[ActiveCraftingProcessor] Item {item_id} has multiple matches: {all_names}, using: '{item_name}'")
+                            else:
+                                item_name = f"Unknown Item {item_id}"
+                                item_tier = 0
+                                item_tag = ""
+                                logging.warning(f"[ActiveCraftingProcessor] Item {item_id} not found in any reference table")
                         else:
                             logging.warning(f"Invalid item_stack format in recipe {recipe_id}: {item_stack} - skipping item")
                             continue
@@ -796,32 +807,6 @@ class ActiveCraftingProcessor(BaseProcessor):
             logging.error(f"Error formatting hierarchy for UI: {e}")
             return {}
 
-    def _determine_preferred_item_source(self, recipe_info):
-        """
-        Determine the preferred item source based on recipe context.
-
-        Args:
-            recipe_info: Recipe information dictionary
-
-        Returns:
-            str: Preferred source ("item_desc", "cargo_desc", "resource_desc") or None
-        """
-        try:
-            recipe_name = recipe_info.get("name", "").lower()
-
-            # Heuristics to determine if this is likely a cargo item
-            cargo_indicators = ["pack", "package", "bundle", "crate", "supplies", "materials", "goods", "cargo", "shipment"]
-
-            for indicator in cargo_indicators:
-                if indicator in recipe_name:
-                    return "cargo_desc"
-
-            # Default to item_desc for most crafting
-            return "item_desc"
-
-        except Exception as e:
-            logging.error(f"Error determining preferred source: {e}")
-            return None
 
     def _format_crafting_for_ui(self, consolidated_crafting):
         """
@@ -1036,9 +1021,12 @@ class ActiveCraftingProcessor(BaseProcessor):
 
                         if isinstance(first_item, list) and len(first_item) >= 2:
                             item_id = first_item[0]
-                            item_info = self.item_lookup_service.lookup_item_by_id(item_id)
-
-                            if item_info:
+                            # Use compound key system for item lookup
+                            found_items = self.item_lookup_service.find_items_by_id(item_id)
+                            
+                            if found_items:
+                                # Use first found item (compound key system prevents overwrites)
+                                item_info = found_items[0]
                                 return item_info.get("name", f"Item {item_id}")
                     else:
                         # Fallback to cleaned recipe name
