@@ -209,8 +209,6 @@ class InventoryProcessor(BaseProcessor):
                     logging.debug(f"Failed to process inventory row: {e}")
                     continue
 
-            # for building_id, items in self._inventory_data.items():
-
         except Exception as e:
             logging.error(f"Error processing inventory data: {e}")
 
@@ -343,23 +341,58 @@ class InventoryProcessor(BaseProcessor):
                         # Create InventoryState from dict to use dataclass methods
                         inventory_state = InventoryState.from_dict(inventory_record)
                         
-                        # Get items from inventory state
-                        items = inventory_state.get_items({})  # Don't need to pass reference data anymore
+                        # Build proper reference data lookup that preserves all items and prevents overwrites
+                        reference_data = {}
+                        for table_name in ["item_desc", "resource_desc", "cargo_desc"]:
+                            items = self.reference_data.get(table_name, [])
+                            for item in items:
+                                item_id = item.get("id")
+                                item_name = item.get("name", "")
+                                if item_id is not None and item_name:
+                                    # Store by compound key for completeness (preserves all items)
+                                    compound_key = (item_id, item_name)
+                                    reference_data[compound_key] = item
+                                    
+                                    # Store by ID with item_desc preference for dataclass compatibility
+                                    # This ensures dataclass gets item_desc (like Ferralith Ingot) not cargo items
+                                    if item_id not in reference_data or table_name == "item_desc":
+                                        reference_data[item_id] = item
+                        
+                        # Pass reference data so dataclass can populate item names properly
+                        items = inventory_state.get_items(reference_data)
                         
                         for item_info in items:
                             item_id = item_info.get("item_id", 0)
                             quantity = item_info.get("quantity", 0)
+                            item_name = item_info.get("item_name", "")
                             
-                            # Determine preferred source to handle cargo/item ID conflicts
-                            preferred_source = self._determine_preferred_item_source(item_id)
-                            
-                            # Use ItemLookupService with preferred source for all item details
-                            item_name = self.item_lookup_service.get_item_name(item_id, preferred_source)
-                            item_tier = self.item_lookup_service.get_item_tier(item_id, preferred_source)
-                            
-                            # Get tag from item lookup with preferred source
-                            item_data = self.item_lookup_service.lookup_item_by_id(item_id, preferred_source)
-                            item_tag = item_data.get("tag", "") if item_data else ""
+                            if item_name and item_name != f"Item {item_id}":
+                                # Use the exact (id, name) compound key from dataclass
+                                item_data = self.item_lookup_service.lookup_item_by_id_and_name(item_id, item_name)
+                                
+                                if item_data:
+                                    # Use data from compound key lookup
+                                    item_tier = item_data.get("tier", 0)
+                                    item_tag = item_data.get("tag", "")
+                                else:
+                                    # Fallback to dataclass values if compound lookup fails
+                                    item_tier = item_info.get("tier", 0)
+                                    item_tag = item_info.get("tag", "")
+                                    logging.debug(f"[InventoryProcessor] Using dataclass fallback for item {item_id}: '{item_name}'")
+                            else:
+                                # No item name from dataclass - fallback to any available item with this ID
+                                found_items = self.item_lookup_service.find_items_by_id(item_id)
+                                if found_items:
+                                    item_data = found_items[0]
+                                    item_name = item_data.get("name", f"Unknown Item ({item_id})")
+                                    item_tier = item_data.get("tier", 0)
+                                    item_tag = item_data.get("tag", "")
+                                    logging.debug(f"[InventoryProcessor] No name from dataclass for item {item_id}, using fallback: '{item_name}'")
+                                else:
+                                    item_name = f"Unknown Item ({item_id})"
+                                    item_tier = 0
+                                    item_tag = ""
+                                    logging.warning(f"[InventoryProcessor] Item {item_id} not found in any reference table")
 
                             # Add to consolidated inventory
                             if item_name not in consolidated:
@@ -517,54 +550,3 @@ class InventoryProcessor(BaseProcessor):
             logging.error(f"Error getting player for recent change: {e}")
             return None
 
-    def _determine_preferred_item_source(self, item_id):
-        """
-        Determine the preferred item source for inventory items.
-        
-        Adapted from crafting processor logic to handle cargo vs item conflicts.
-        
-        Args:
-            item_id: The item ID to determine source for
-            
-        Returns:
-            str: Preferred source ("item_desc", "cargo_desc", "resource_desc")
-        """
-        try:
-            # Check if item exists in multiple sources to detect conflicts
-            available_sources = []
-            item_names = {}
-            
-            for source in ["item_desc", "cargo_desc", "resource_desc"]:
-                compound_key = (item_id, source)
-                if hasattr(self, 'item_lookup_service') and self.item_lookup_service._item_lookups:
-                    if compound_key in self.item_lookup_service._item_lookups:
-                        available_sources.append(source)
-                        item_data = self.item_lookup_service._item_lookups[compound_key]
-                        item_names[source] = item_data.get("name", "").lower()
-            
-            # If no conflicts, return first available or default
-            if len(available_sources) <= 1:
-                result = available_sources[0] if available_sources else "item_desc"
-                return result
-            
-            # If we have conflicts, use cargo heuristics
-            cargo_indicators = ["pack", "package", "bundle", "crate", "supplies", "materials", "goods", "cargo", "shipment", "chunk", "ore"]
-            
-            # Check cargo_desc item name for cargo indicators
-            if "cargo_desc" in available_sources:
-                cargo_name = item_names.get("cargo_desc", "")
-                for indicator in cargo_indicators:
-                    if indicator in cargo_name:
-                        logging.debug(f"[InventoryProcessor] Item {item_id} conflict resolved: chose cargo_desc for '{cargo_name}' (indicator: '{indicator}')")
-                        return "cargo_desc"
-            
-            # Log when falling back to item_desc for conflicts
-            if len(available_sources) > 1:
-                logging.debug(f"[InventoryProcessor] Item {item_id} conflict: using item_desc fallback. Available: {available_sources}, names: {item_names}")
-            
-            # Default to item_desc for most inventory items
-            return "item_desc"
-            
-        except Exception as e:
-            logging.error(f"Error determining preferred item source for {item_id}: {e}")
-            return "item_desc"

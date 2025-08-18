@@ -400,7 +400,9 @@ class TasksProcessor(BaseProcessor):
                     quantity = item_raw[1]
 
                     # Look up item details using shared lookup service
-                    item_info = self.item_lookup_service.lookup_item_by_id(item_id)
+                    # Use best source determination for task items
+                    table_source = self.item_lookup_service.determine_best_source_for_item(item_id, "inventory")
+                    item_info = self.item_lookup_service.lookup_item_by_id(item_id, table_source)
                     item_name = item_info.get("name", f"Unknown Item {item_id}") if item_info else f"Unknown Item {item_id}"
                     item_tier = item_info.get("tier", 0) if item_info else 0
                     item_tag = item_info.get("tag", "") if item_info else ""
