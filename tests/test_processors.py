@@ -381,10 +381,10 @@ class TestInventoryProcessor:
             # Consolidate inventory
             consolidated = processor._consolidate_inventory()
 
-            # With new compound key system and item_desc preference, should show item_desc items
-            assert "Ancient Journal Page #2" in consolidated, "Should show item_desc items due to preference"
-            assert "Iron Sword" in consolidated, "Should show item_desc items due to preference"
-            # Cargo items would show if they were in regular slots, but our test uses item_desc preference
+            # With new slot-based logic, should show cargo items (test data represents cargo slots)
+            assert "Pyrelite Ore Chunk" in consolidated, "Should show cargo items based on slot logic"
+            assert "Supply Package" in consolidated, "Should show cargo items based on slot logic"
+            # Slot-based logic correctly determines these are cargo slots, so cargo items are returned
 
     def test_missing_item_lookup_service(self, mock_data_queue, mock_services, mock_reference_data):
         """Test graceful handling when item_lookup_service is missing."""
