@@ -341,14 +341,13 @@ class InventoryProcessor(BaseProcessor):
                         # Create InventoryState from dict to use dataclass methods
                         inventory_state = InventoryState.from_dict(inventory_record)
                         
-                        # Build simple reference data for dataclass (items are corrected afterward)
+                        # Build simple reference data for dataclass
                         reference_data = {}
                         for table_name in ["item_desc", "cargo_desc"]: 
                             items = self.reference_data.get(table_name, [])
                             for item in items:
                                 item_id = item.get("id")
                                 if item_id is not None:
-                                    # Just provide first item found (correct by container slot later)
                                     if item_id not in reference_data:
                                         reference_data[item_id] = item
                         
@@ -356,9 +355,7 @@ class InventoryProcessor(BaseProcessor):
                         cargo_index = inventory_state.cargo_index
                         total_pockets = len(inventory_state.pockets)
                         
-                        logging.info(f"[InventoryProcessor] Container info: cargo_index={cargo_index}, total_pockets={total_pockets}")
-                        
-                        # Pass reference data so dataclass can populate item names properly
+                        # Get items from inventory state
                         items = inventory_state.get_items(reference_data)
                         
                         for item_info in items:
@@ -551,63 +548,4 @@ class InventoryProcessor(BaseProcessor):
             logging.error(f"Error getting player for recent change: {e}")
             return None
     
-    def _determine_item_type_by_slot(self, slot_index: int, cargo_index: int, total_pockets: int) -> str:
-        """
-        Determine if a slot should contain items or cargo based on BitCraft's slot logic.
-        
-        Args:
-            slot_index: The slot position (0-based)
-            cargo_index: The cargo_index from inventory_state
-            total_pockets: Total number of pockets in the container
-            
-        Returns:
-            "item_desc" for item slots, "cargo_desc" for cargo slots
-        """
-        if cargo_index == 0:
-            # Cargo-only container: all slots are cargo
-            return "cargo_desc"
-        elif cargo_index >= total_pockets:
-            # Inventory-only container: all slots are items
-            return "item_desc"
-        else:
-            # Mixed container
-            if slot_index < cargo_index:
-                # Slots 0 to cargo_index-1 are inventory slots (items)
-                return "item_desc"
-            else:
-                # Slots cargo_index to end are cargo slots
-                return "cargo_desc"
-    
-    def _get_item_table_from_data(self, item_data: dict) -> str:
-        """
-        Determine which table an item came from based on its data characteristics.
-        
-        Args:
-            item_data: Item dictionary from reference data
-            
-        Returns:
-            Table name: "item_desc", "cargo_desc", or "resource_desc"
-        """
-        # Use model_asset_name to determine table
-        model_asset = item_data.get("model_asset_name", "")
-        
-        if model_asset.startswith("Cargo/"):
-            return "cargo_desc"
-        elif model_asset.startswith("Resources/"):
-            return "resource_desc"
-        else:
-            return "item_desc"
-    
-    def _table_matches_expected_type(self, actual_table: str, expected_type: str) -> bool:
-        """
-        Check if the actual item table matches the expected type.
-        
-        Args:
-            actual_table: The table the item came from ("item_desc", "cargo_desc", etc.)
-            expected_type: The expected type ("item_desc" or "cargo_desc")
-            
-        Returns:
-            True if they match, False otherwise
-        """
-        return actual_table == expected_type
 
