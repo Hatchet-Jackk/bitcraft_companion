@@ -341,22 +341,22 @@ class InventoryProcessor(BaseProcessor):
                         # Create InventoryState from dict to use dataclass methods
                         inventory_state = InventoryState.from_dict(inventory_record)
                         
-                        # Build proper reference data lookup that preserves all items and prevents overwrites
+                        # Build simple reference data for dataclass (items are corrected afterward)
                         reference_data = {}
-                        for table_name in ["item_desc", "resource_desc", "cargo_desc"]:
+                        for table_name in ["item_desc", "cargo_desc"]: 
                             items = self.reference_data.get(table_name, [])
                             for item in items:
                                 item_id = item.get("id")
-                                item_name = item.get("name", "")
-                                if item_id is not None and item_name:
-                                    # Store by compound key for completeness (preserves all items)
-                                    compound_key = (item_id, item_name)
-                                    reference_data[compound_key] = item
-                                    
-                                    # Store by ID with item_desc preference for dataclass compatibility
-                                    # This ensures dataclass gets item_desc (like Ferralith Ingot) not cargo items
-                                    if item_id not in reference_data or table_name == "item_desc":
+                                if item_id is not None:
+                                    # Just provide first item found (correct by container slot later)
+                                    if item_id not in reference_data:
                                         reference_data[item_id] = item
+                        
+                        # Get container info for slot-based item type detection
+                        cargo_index = inventory_state.cargo_index
+                        total_pockets = len(inventory_state.pockets)
+                        
+                        logging.info(f"[InventoryProcessor] Container info: cargo_index={cargo_index}, total_pockets={total_pockets}")
                         
                         # Pass reference data so dataclass can populate item names properly
                         items = inventory_state.get_items(reference_data)
@@ -364,35 +364,36 @@ class InventoryProcessor(BaseProcessor):
                         for item_info in items:
                             item_id = item_info.get("item_id", 0)
                             quantity = item_info.get("quantity", 0)
-                            item_name = item_info.get("item_name", "")
+                            slot_index = item_info.get("slot_index", 0)
                             
-                            if item_name and item_name != f"Item {item_id}":
-                                # Use the exact (id, name) compound key from dataclass
-                                item_data = self.item_lookup_service.lookup_item_by_id_and_name(item_id, item_name)
-                                
-                                if item_data:
-                                    # Use data from compound key lookup
-                                    item_tier = item_data.get("tier", 0)
-                                    item_tag = item_data.get("tag", "")
-                                else:
-                                    # Fallback to dataclass values if compound lookup fails
-                                    item_tier = item_info.get("tier", 0)
-                                    item_tag = item_info.get("tag", "")
-                                    logging.debug(f"[InventoryProcessor] Using dataclass fallback for item {item_id}: '{item_name}'")
+                            # Determine correct table based on slot position
+                            if cargo_index == 0:
+                                # Cargo-only container: all slots are cargo
+                                correct_table = "cargo_desc"
+                            elif cargo_index >= total_pockets:
+                                # Inventory-only container: all slots are items
+                                correct_table = "item_desc"
                             else:
-                                # No item name from dataclass - fallback to any available item with this ID
-                                found_items = self.item_lookup_service.find_items_by_id(item_id)
-                                if found_items:
-                                    item_data = found_items[0]
-                                    item_name = item_data.get("name", f"Unknown Item ({item_id})")
-                                    item_tier = item_data.get("tier", 0)
-                                    item_tag = item_data.get("tag", "")
-                                    logging.debug(f"[InventoryProcessor] No name from dataclass for item {item_id}, using fallback: '{item_name}'")
+                                # Mixed container: check slot position
+                                if slot_index < cargo_index:
+                                    correct_table = "item_desc"  # Item slots (0 to cargo_index-1)
                                 else:
-                                    item_name = f"Unknown Item ({item_id})"
-                                    item_tier = 0
-                                    item_tag = ""
-                                    logging.warning(f"[InventoryProcessor] Item {item_id} not found in any reference table")
+                                    correct_table = "cargo_desc"  # Cargo slots (cargo_index to end)
+                            
+                            # Get the correct item from the appropriate table
+                            item_data = self.item_lookup_service.lookup_item_by_id(item_id, correct_table)
+                            
+                            if item_data:
+                                item_name = item_data.get("name", f"Unknown Item ({item_id})")
+                                item_tier = item_data.get("tier", 0)
+                                item_tag = item_data.get("tag", "")
+                                
+                            else:
+                                # Fallback if not found in correct table
+                                item_name = f"Unknown Item ({item_id})"
+                                item_tier = 0
+                                item_tag = ""
+                                logging.warning(f"[InventoryProcessor] Item {item_id} not found in {correct_table} table")
 
                             # Add to consolidated inventory
                             if item_name not in consolidated:
@@ -549,4 +550,64 @@ class InventoryProcessor(BaseProcessor):
         except Exception as e:
             logging.error(f"Error getting player for recent change: {e}")
             return None
+    
+    def _determine_item_type_by_slot(self, slot_index: int, cargo_index: int, total_pockets: int) -> str:
+        """
+        Determine if a slot should contain items or cargo based on BitCraft's slot logic.
+        
+        Args:
+            slot_index: The slot position (0-based)
+            cargo_index: The cargo_index from inventory_state
+            total_pockets: Total number of pockets in the container
+            
+        Returns:
+            "item_desc" for item slots, "cargo_desc" for cargo slots
+        """
+        if cargo_index == 0:
+            # Cargo-only container: all slots are cargo
+            return "cargo_desc"
+        elif cargo_index >= total_pockets:
+            # Inventory-only container: all slots are items
+            return "item_desc"
+        else:
+            # Mixed container
+            if slot_index < cargo_index:
+                # Slots 0 to cargo_index-1 are inventory slots (items)
+                return "item_desc"
+            else:
+                # Slots cargo_index to end are cargo slots
+                return "cargo_desc"
+    
+    def _get_item_table_from_data(self, item_data: dict) -> str:
+        """
+        Determine which table an item came from based on its data characteristics.
+        
+        Args:
+            item_data: Item dictionary from reference data
+            
+        Returns:
+            Table name: "item_desc", "cargo_desc", or "resource_desc"
+        """
+        # Use model_asset_name to determine table
+        model_asset = item_data.get("model_asset_name", "")
+        
+        if model_asset.startswith("Cargo/"):
+            return "cargo_desc"
+        elif model_asset.startswith("Resources/"):
+            return "resource_desc"
+        else:
+            return "item_desc"
+    
+    def _table_matches_expected_type(self, actual_table: str, expected_type: str) -> bool:
+        """
+        Check if the actual item table matches the expected type.
+        
+        Args:
+            actual_table: The table the item came from ("item_desc", "cargo_desc", etc.)
+            expected_type: The expected type ("item_desc" or "cargo_desc")
+            
+        Returns:
+            True if they match, False otherwise
+        """
+        return actual_table == expected_type
 
