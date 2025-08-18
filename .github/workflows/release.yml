@@ -13,7 +13,7 @@ jobs:
       tag: ${{ steps.get-version.outputs.tag }}
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Extract version from pyproject.toml
       id: get-version
@@ -42,7 +42,7 @@ jobs:
     needs: extract-version
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -129,7 +129,7 @@ jobs:
       contents: write
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0  # Need full history for changelog
 
