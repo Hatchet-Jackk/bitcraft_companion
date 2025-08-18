@@ -110,15 +110,21 @@ class MainWindow(ctk.CTk):
         self.tabs: Dict[str, ctk.CTkFrame] = {}
         self.tab_buttons: Dict[str, ctk.CTkButton] = {}
         self.active_tab_name = None
-        
-        
+        self.previous_tab_name = None
+
+        # Cache button styles to avoid repeated get_color() calls during tab switching
+        self._cache_button_styles()
+
+        # Cache keyword examples to avoid repeated string generation
+        self._cache_keyword_examples()
+
         # Initialize theme manager and register for theme changes
         self.theme_manager = get_theme_manager()
         register_theme_callback(self._on_theme_changed)
-        
+
         # Activity logging service (always available)
         self.activity_logger = ActivityLogger()
-        
+
         # Activity window reference (UI only created when needed)
         self.activity_window = None
 
@@ -153,11 +159,11 @@ class MainWindow(ctk.CTk):
         # Create tab content area with modern styling
         logging.debug("Creating tab content area")
         self.tab_content_area = ctk.CTkFrame(
-            self, 
-            fg_color=get_color("BACKGROUND_PRIMARY"), 
-            border_width=2, 
-            border_color=get_color("BORDER_DEFAULT"), 
-            corner_radius=12
+            self,
+            fg_color=get_color("BACKGROUND_PRIMARY"),
+            border_width=2,
+            border_color=get_color("BORDER_DEFAULT"),
+            corner_radius=12,
         )
         self.tab_content_area.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 10))
         self.tab_content_area.grid_columnconfigure(0, weight=1)
@@ -194,7 +200,6 @@ class MainWindow(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.bind("<Configure>", self._on_window_configure)
         self.bind("<Escape>", self._on_escape_key)
-        
 
     def _on_window_configure(self, event):
         """Handles window configure events to detect resize operations for performance optimization."""
@@ -219,8 +224,6 @@ class MainWindow(ctk.CTk):
         self.is_resizing = False
         self.resize_timer = None
         logging.debug("Window resize completed - resuming normal performance")
-
-
 
     def _set_tab_buttons_state(self, state: str):
         """Enable or disable all tab buttons."""
@@ -247,19 +250,19 @@ class MainWindow(ctk.CTk):
             text_color=get_color("TEXT_PRIMARY"),
             corner_radius=8,
         )
-        
+
         # Manual placeholder implementation
         self.placeholder_text = "Search Claim Inventory..."
         self.is_placeholder_active = True
         self._show_placeholder()
-        
+
         # Bind events for placeholder behavior
-        self.search_field.bind('<FocusIn>', self._on_search_focus_in)
-        self.search_field.bind('<FocusOut>', self._on_search_focus_out)
-        self.search_field.bind('<Key>', self._on_search_key)
-        self.search_field.bind('<KeyRelease>', self._on_search_change_event)
-        self.search_field.bind('<Control-Delete>', self._on_ctrl_delete)
-        self.search_field.bind('<Control-BackSpace>', self._on_ctrl_backspace)
+        self.search_field.bind("<FocusIn>", self._on_search_focus_in)
+        self.search_field.bind("<FocusOut>", self._on_search_focus_out)
+        self.search_field.bind("<Key>", self._on_search_key)
+        self.search_field.bind("<KeyRelease>", self._on_search_change_event)
+        self.search_field.bind("<Control-Delete>", self._on_ctrl_delete)
+        self.search_field.bind("<Control-BackSpace>", self._on_ctrl_backspace)
         self.search_field.grid(row=0, column=0, sticky="ew", padx=(0, 8))
 
         # Save Search button
@@ -277,7 +280,7 @@ class MainWindow(ctk.CTk):
         )
         self.save_search_button.grid(row=0, column=1, sticky="e", padx=(0, 5))
 
-        # Load Search button  
+        # Load Search button
         self.load_search_button = ctk.CTkButton(
             search_frame,
             text="Load",
@@ -310,12 +313,12 @@ class MainWindow(ctk.CTk):
     def _create_status_bar(self):
         """Creates the status bar with connection info, last update, and ping."""
         self.status_frame = ctk.CTkFrame(
-            self, 
+            self,
             height=32,
-            fg_color=get_color("BACKGROUND_SECONDARY"), 
-            border_width=1, 
-            border_color=get_color("BORDER_DEFAULT"), 
-            corner_radius=8
+            fg_color=get_color("BACKGROUND_SECONDARY"),
+            border_width=1,
+            border_color=get_color("BORDER_DEFAULT"),
+            corner_radius=8,
         )
         self.status_frame.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 10))
         self.status_frame.grid_columnconfigure(0, weight=1)
@@ -327,17 +330,16 @@ class MainWindow(ctk.CTk):
 
         # Last update (left aligned)
         self.last_update_label = ctk.CTkLabel(
-            inner_frame, 
+            inner_frame,
             text="Last Update: Never",
             font=ctk.CTkFont(family="Segoe UI", size=11, weight="normal"),
-            text_color=get_color("TEXT_PRIMARY")
+            text_color=get_color("TEXT_PRIMARY"),
         )
         self.last_update_label.pack(side="left", padx=(8, 0))
 
-
         # Initialize status tracking
         self.last_message_time = None
-        
+
         # Start status update timer
         self._update_status_display()
         self.after(1000, self._schedule_status_update)  # Update every second
@@ -345,7 +347,7 @@ class MainWindow(ctk.CTk):
     def clear_search(self):
         """Clears the search field."""
         # Clear the entry and show placeholder
-        self.search_field.delete(0, 'end')
+        self.search_field.delete(0, "end")
         self._show_placeholder()
         # Trigger search change to apply empty filter
         self.on_search_change()
@@ -354,16 +356,16 @@ class MainWindow(ctk.CTk):
     def save_search(self):
         """Opens the save search dialog to save the current search query."""
         current_query = self.get_search_text()
-        
+
         if not current_query or not current_query.strip():
             messagebox.showwarning("No Search Query", "Please enter a search query before saving.", parent=self)
             self.search_field.focus()
             return
-        
+
         # Callback for when search is saved successfully
         def on_save_callback(search_id, name, query):
             logging.info(f"Search '{name}' saved successfully with ID: {search_id}")
-        
+
         # Open save dialog
         try:
             SaveSearchDialog(self, current_query, on_save_callback)
@@ -373,13 +375,14 @@ class MainWindow(ctk.CTk):
 
     def load_search(self):
         """Opens the load search dialog to select and load a saved search."""
+
         # Callback for when search is loaded
         def on_load_callback(search_id, name, query):
             logging.info(f"Loading search '{name}': {query}")
             self._set_search_text(query)
             # Trigger search change to apply the loaded filter
             self.on_search_change()
-        
+
         # Open load dialog
         try:
             LoadSearchDialog(self, on_load_callback)
@@ -390,8 +393,8 @@ class MainWindow(ctk.CTk):
     def _set_search_text(self, text: str):
         """Set the search field text and handle placeholder state."""
         # Clear current content
-        self.search_field.delete(0, 'end')
-        
+        self.search_field.delete(0, "end")
+
         if text and text.strip():
             # Insert the new text
             self.search_field.insert(0, text)
@@ -404,82 +407,105 @@ class MainWindow(ctk.CTk):
     def _update_search_placeholder(self, tab_name):
         """Update search field placeholder text based on current tab with keyword examples."""
         try:
-            old_placeholder = getattr(self, 'placeholder_text', '')
-            
-            # Create enhanced placeholder with keyword examples
-            base_placeholder = f"Search {tab_name}"
-            keyword_examples = self._get_keyword_examples_for_tab(tab_name)
-            if keyword_examples:
-                new_placeholder = f"{base_placeholder}... (e.g., {keyword_examples})"
-            else:
-                new_placeholder = f"{base_placeholder}..."
-            
+            placeholder_update_start = time.time()
+
+            old_placeholder = getattr(self, "placeholder_text", "")
+
+            # Use cached placeholder to avoid string generation
+            tab_key = tab_name.lower()
+            new_placeholder = self.cached_placeholders.get(tab_key)
+
+            if not new_placeholder:
+                # Fallback for unrecognized tab names
+                new_placeholder = f"Search {tab_name}..."
+
+            # Optimization: Skip if placeholder hasn't changed
+            if new_placeholder == old_placeholder:
+                placeholder_skip_time = time.time() - placeholder_update_start
+                logging.debug(f"[PLACEHOLDER] No change needed for {tab_name} ({placeholder_skip_time:.4f}s)")
+                return
+
+            placeholder_generation_time = time.time() - placeholder_update_start
+
             # Check if the current field content is the old placeholder
+            widget_start = time.time()
             current_text = self.search_field.get()
+
             if current_text == old_placeholder and self.is_placeholder_active:
                 # Replace old placeholder with new one
-                self.search_field.delete(0, 'end')
+                self.search_field.delete(0, "end")
                 self.placeholder_text = new_placeholder
                 self._show_placeholder()
             elif current_text == old_placeholder and not self.is_placeholder_active:
                 # Field contains old placeholder but not marked as placeholder (bug case)
-                self.search_field.delete(0, 'end')
+                self.search_field.delete(0, "end")
                 self.placeholder_text = new_placeholder
                 self._show_placeholder()
             else:
                 # Just update the placeholder text for future use
                 self.placeholder_text = new_placeholder
+
+            widget_time = time.time() - widget_start
+            total_time = time.time() - placeholder_update_start
+
+            if total_time > 0.01:  # Log if placeholder update is slow (>10ms)
+                logging.warning(
+                    f"[PLACEHOLDER] SLOW UPDATE for {tab_name} ({total_time:.4f}s total: generation {placeholder_generation_time:.4f}s + widget {widget_time:.4f}s)"
+                )
+            else:
+                logging.debug(f"[PLACEHOLDER] Updated for {tab_name} ({total_time:.4f}s)")
+
         except Exception as e:
             logging.error(f"Error updating search placeholder: {e}")
-    
+
     def _get_keyword_examples_for_tab(self, tab_name):
         """Get keyword examples for the current tab."""
         tab_lower = tab_name.lower()
-        
-        if 'inventory' in tab_lower:
+
+        if "inventory" in tab_lower:
             return "item=plank, tier>2, container=carving, qty<100"
-        elif 'passive' in tab_lower or 'crafting' in tab_lower:
+        elif "passive" in tab_lower or "crafting" in tab_lower:
             return "item=stone, tier>=3, building=workshop, qty>5"
-        elif 'active' in tab_lower:
+        elif "active" in tab_lower:
             return "item=tool, crafter=john, tier<5, qty!=0"
-        elif 'task' in tab_lower or 'traveler' in tab_lower:
+        elif "task" in tab_lower or "traveler" in tab_lower:
             return "traveler=merchant, item=ore, status=active, qty>1"
         else:
             return "item=plank, tier>2, qty<100"
-    
+
     def _show_placeholder(self):
         """Show placeholder text in search field."""
         if self.search_field.get() == "":
             self.is_placeholder_active = True
             self.search_field.insert(0, self.placeholder_text)
             self.search_field.configure(text_color=get_color("TEXT_DISABLED"))
-    
+
     def _hide_placeholder(self):
         """Hide placeholder text from search field."""
         if self.is_placeholder_active and self.search_field.get() == self.placeholder_text:
             self.is_placeholder_active = False
-            self.search_field.delete(0, 'end')
+            self.search_field.delete(0, "end")
             self.search_field.configure(text_color=get_color("TEXT_PRIMARY"))
-    
+
     def _on_search_focus_in(self, event):
         """Handle search field gaining focus."""
         self._hide_placeholder()
-    
+
     def _on_search_focus_out(self, event):
         """Handle search field losing focus."""
         if self.search_field.get() == "":
             self._show_placeholder()
-    
+
     def _on_search_key(self, event):
         """Handle key press in search field."""
         if self.is_placeholder_active:
             self._hide_placeholder()
-    
+
     def _on_search_change_event(self, event):
         """Handle search field content change via key release."""
         # Small delay to ensure the text has been updated
         self.after(10, self._process_search_change)
-    
+
     def _on_ctrl_delete(self, event):
         """Handle Ctrl+Delete to delete from cursor to end of next word."""
         try:
@@ -487,59 +513,59 @@ class MainWindow(ctk.CTk):
             if self.is_placeholder_active:
                 self._hide_placeholder()
                 return "break"
-            
+
             # Get current text and cursor position
             current_text = self.search_field.get()
-            cursor_pos = self.search_field.index('insert')
-            
+            cursor_pos = self.search_field.index("insert")
+
             # If cursor is at the end, nothing to delete
             if cursor_pos >= len(current_text):
                 return "break"
-            
+
             # Find the end position for deletion (next word boundary)
             delete_end_pos = self._find_next_word_boundary(current_text, cursor_pos)
-            
+
             # Delete text from cursor to end of next word
             if delete_end_pos > cursor_pos:
                 # Use CustomTkinter's delete method
                 self.search_field.delete(cursor_pos, delete_end_pos)
-                
+
                 # Trigger search change
                 self._process_search_change()
-            
+
             return "break"  # Prevent default key handling
-            
+
         except Exception as e:
             logging.error(f"Error in Ctrl+Delete handler: {e}")
             return "break"
-    
+
     def _find_next_word_boundary(self, text: str, start_pos: int) -> int:
         """
         Find the position of the end of the next word from start_pos.
-        
+
         Args:
             text: The text to search in
             start_pos: Starting position (cursor position)
-            
+
         Returns:
             int: Position of the end of the next word
         """
         if start_pos >= len(text):
             return start_pos
-        
+
         pos = start_pos
-        
+
         # Skip any whitespace characters immediately after cursor
         while pos < len(text) and text[pos].isspace():
             pos += 1
-        
+
         # If we're now at a word, find the end of this word
         if pos < len(text) and not text[pos].isspace():
             while pos < len(text) and not text[pos].isspace():
                 pos += 1
-        
+
         return pos
-    
+
     def _on_ctrl_backspace(self, event):
         """Handle Ctrl+Backspace to delete from start of previous word to cursor."""
         try:
@@ -547,52 +573,52 @@ class MainWindow(ctk.CTk):
             if self.is_placeholder_active:
                 self._hide_placeholder()
                 return "break"
-            
+
             # Get current text and cursor position
             current_text = self.search_field.get()
-            cursor_pos = self.search_field.index('insert')
-            
+            cursor_pos = self.search_field.index("insert")
+
             # If cursor is at the beginning, nothing to delete
             if cursor_pos <= 0:
                 return "break"
-            
+
             # Find the start position for deletion (previous word boundary)
             delete_start_pos = self._find_previous_word_boundary(current_text, cursor_pos)
-            
+
             # Delete text from start of previous word to cursor
             if delete_start_pos < cursor_pos:
                 # Use CustomTkinter's delete method
                 self.search_field.delete(delete_start_pos, cursor_pos)
-                
+
                 # Trigger search change
                 self._process_search_change()
-            
+
             return "break"  # Prevent default key handling
-            
+
         except Exception as e:
             logging.error(f"Error in Ctrl+Backspace handler: {e}")
             return "break"
-    
+
     def _find_previous_word_boundary(self, text: str, start_pos: int) -> int:
         """
         Find the position of the start of the previous word from start_pos.
-        
+
         Args:
             text: The text to search in
             start_pos: Starting position (cursor position)
-            
+
         Returns:
             int: Position of the start of the previous word
         """
         if start_pos <= 0:
             return 0
-        
+
         pos = start_pos - 1
-        
+
         # Skip any whitespace characters immediately before cursor
         while pos >= 0 and text[pos].isspace():
             pos -= 1
-        
+
         # If we're now at the end of a word, find the start of this word
         if pos >= 0 and not text[pos].isspace():
             while pos >= 0 and not text[pos].isspace():
@@ -602,14 +628,14 @@ class MainWindow(ctk.CTk):
         else:
             # If we stopped at whitespace, that's our boundary
             pos += 1
-        
+
         return max(0, pos)
-    
+
     def _process_search_change(self):
         """Process search field changes."""
         if not self.is_placeholder_active:
             self.on_search_change()
-    
+
     def _on_escape_key(self, event):
         """Handle Escape key press to clear the search field if it has content."""
         try:
@@ -617,14 +643,14 @@ class MainWindow(ctk.CTk):
             if search_text:
                 self.clear_search()
                 return "break"
-            elif not self.is_placeholder_active:  
+            elif not self.is_placeholder_active:
                 self.clear_search()
                 return "break"
             return None
         except Exception as e:
             logging.error(f"Error in Escape key handler: {e}")
             return "break"
-    
+
     def get_search_text(self):
         """Get the current search text (excluding placeholder)."""
         if self.is_placeholder_active:
@@ -641,16 +667,10 @@ class MainWindow(ctk.CTk):
                     time_text = f"{int(time_since_update)}s ago"
                 else:
                     time_text = f"{int(time_since_update // 60)}m ago"
-                
-                self.last_update_label.configure(
-                    text=f"Last Update: {time_text}",
-                    text_color=get_color("TEXT_PRIMARY")
-                )
+
+                self.last_update_label.configure(text=f"Last Update: {time_text}", text_color=get_color("TEXT_PRIMARY"))
             else:
-                self.last_update_label.configure(
-                    text="Last Update: Never",
-                    text_color=get_color("TEXT_PRIMARY")
-                )
+                self.last_update_label.configure(text="Last Update: Never", text_color=get_color("TEXT_PRIMARY"))
 
         except Exception as e:
             logging.error(f"Error updating status display: {e}")
@@ -685,11 +705,15 @@ class MainWindow(ctk.CTk):
             image_label.pack(pady=(20, 0))
 
         # Main loading title with modern styling
-        self.loading_title = ctk.CTkLabel(loading_frame, text="", font=ctk.CTkFont(size=24, weight="bold"), text_color=get_color("TEXT_ACCENT"))
+        self.loading_title = ctk.CTkLabel(
+            loading_frame, text="", font=ctk.CTkFont(size=24, weight="bold"), text_color=get_color("TEXT_ACCENT")
+        )
         self.loading_title.pack(pady=(0, 0))
 
         # Animated loading indicator (will be updated with dots)
-        self.loading_indicator = ctk.CTkLabel(loading_frame, text="●●●", font=ctk.CTkFont(size=18), text_color=get_color("TEXT_ACCENT"))
+        self.loading_indicator = ctk.CTkLabel(
+            loading_frame, text="●●●", font=ctk.CTkFont(size=18), text_color=get_color("TEXT_ACCENT")
+        )
         self.loading_indicator.pack(pady=(0, 8))
 
         # Loading message with better formatting
@@ -712,17 +736,17 @@ class MainWindow(ctk.CTk):
             current_dir = os.path.dirname(os.path.abspath(__file__))
             images_dir = os.path.join(current_dir, "images")
             loading_path = os.path.join(images_dir, "loading.png")
-            
+
             if os.path.exists(loading_path):
                 pil_image = Image.open(loading_path)
                 width, height = pil_image.size
                 new_width, new_height = width // 2, height // 2
-                
+
                 resized_pil = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
                 return ctk.CTkImage(light_image=resized_pil, dark_image=resized_pil, size=(new_width, new_height))
             else:
                 return None
-                
+
         except Exception as e:
             logging.error(f"Error loading loading image: {e}")
             return None
@@ -829,69 +853,58 @@ class MainWindow(ctk.CTk):
             btn.grid(row=0, column=i, padx=(0 if i == 0 else 4, 0), pady=(0, 2), sticky="w")
             self.tab_buttons[name] = btn
 
-
     def _on_theme_changed(self, old_theme: str, new_theme: str):
         """Handle theme change by updating UI colors."""
         try:
             logging.info(f"Applying theme change from {old_theme} to {new_theme}")
-            
+
             # Update main window background
             self.configure(fg_color=get_color("BACKGROUND_PRIMARY"))
-            
-            # Update all tab buttons
-            for btn in self.tab_buttons.values():
-                btn.configure(
-                    border_color=get_color("BORDER_DEFAULT"),
-                    fg_color=get_color("BUTTON_BACKGROUND"),
-                    text_color=get_color("TAB_INACTIVE"),
-                    hover_color=get_color("BUTTON_HOVER")
-                )
-            
-            # Update active tab highlighting
-            if self.active_tab_name and self.active_tab_name in self.tab_buttons:
-                self.tab_buttons[self.active_tab_name].configure(
-                    text_color=get_color("TAB_ACTIVE"),
-                    border_color=get_color("TAB_ACTIVE")
-                )
-            
+
+            # Refresh cached button styles with new theme colors
+            self._cache_button_styles()
+
+            # Update tab buttons with optimized approach
+            for name, btn in self.tab_buttons.items():
+                if name == self.active_tab_name:
+                    # Active tab using cached active style
+                    btn.configure(**self.cached_active_style)
+                else:
+                    # Inactive tab using cached inactive style
+                    btn.configure(**self.cached_inactive_style)
+
             # Update status bar components
-            if hasattr(self, 'status_frame'):
-                self.status_frame.configure(
-                    fg_color=get_color("BACKGROUND_SECONDARY"),
-                    border_color=get_color("BORDER_DEFAULT")
-                )
-            
-            if hasattr(self, 'last_update_label'):
+            if hasattr(self, "status_frame"):
+                self.status_frame.configure(fg_color=get_color("BACKGROUND_SECONDARY"), border_color=get_color("BORDER_DEFAULT"))
+
+            if hasattr(self, "last_update_label"):
                 # Simple text color update for last update label
                 self.last_update_label.configure(text_color=get_color("TEXT_PRIMARY"))
-            
+
             # Update search components
-            if hasattr(self, 'search_field'):
-                self.search_field.configure(
-                    fg_color=get_color("BACKGROUND_TERTIARY"),
-                    border_color=get_color("BORDER_DEFAULT")
-                )
+            if hasattr(self, "search_field"):
+                self.search_field.configure(fg_color=get_color("BACKGROUND_TERTIARY"), border_color=get_color("BORDER_DEFAULT"))
                 # Update text color based on current state
-                if hasattr(self, 'is_placeholder_active'):
+                if hasattr(self, "is_placeholder_active"):
                     if self.is_placeholder_active:
                         self.search_field.configure(text_color=get_color("TEXT_DISABLED"))
                     else:
                         self.search_field.configure(text_color=get_color("TEXT_PRIMARY"))
                 else:
                     self.search_field.configure(text_color=get_color("TEXT_PRIMARY"))
-            
-            if hasattr(self, 'clear_button'):
+
+            if hasattr(self, "clear_button"):
                 self.clear_button.configure(
                     fg_color=get_color("BACKGROUND_SECONDARY"),
                     hover_color=get_color("BUTTON_HOVER"),
-                    text_color=get_color("TEXT_PRIMARY")
+                    text_color=get_color("TEXT_PRIMARY"),
                 )
-            
+
             # Update other UI components that need theme updates
             # The individual tabs will handle their own theme updates via their own callbacks
-            
+
             logging.debug(f"Theme change applied successfully")
-            
+
         except Exception as e:
             logging.error(f"Error applying theme change: {e}")
 
@@ -900,18 +913,18 @@ class MainWindow(ctk.CTk):
         try:
             if not self.activity_window or not self.activity_window.winfo_exists():
                 self.activity_window = ActivityWindow(self)
-                
+
                 # Update claim info if available
-                if hasattr(self, 'claim_info_header') and self.claim_info_header:
-                    claim_name = getattr(self.claim_info_header, 'claim_name', 'Unknown Claim')
+                if hasattr(self, "claim_info_header") and self.claim_info_header:
+                    claim_name = getattr(self.claim_info_header, "claim_name", "Unknown Claim")
                     self.activity_window.update_claim_info(claim_name)
-                
+
                 logging.info("Activity window opened")
             else:
                 # Bring existing window to front
                 self.activity_window.lift()
                 self.activity_window.focus()
-                
+
         except Exception as e:
             logging.error(f"Error opening activity window: {e}")
 
@@ -924,44 +937,121 @@ class MainWindow(ctk.CTk):
         except Exception as e:
             logging.error(f"Error updating activity window claim info: {e}")
 
+    def _cache_button_styles(self):
+        """Cache button styles to avoid repeated get_color() calls during tab switching."""
+        self.cached_active_style = {
+            "fg_color": get_color("TAB_ACTIVE"),
+            "text_color": get_color("TEXT_PRIMARY"),
+            "border_color": get_color("TAB_ACTIVE"),
+            "hover_color": get_color("TAB_ACTIVE"),
+        }
+
+        self.cached_inactive_style = {
+            "fg_color": get_color("BUTTON_BACKGROUND"),
+            "text_color": get_color("TAB_INACTIVE"),
+            "border_color": get_color("BORDER_DEFAULT"),
+            "hover_color": get_color("BUTTON_HOVER"),
+        }
+
+    def _cache_keyword_examples(self):
+        """Cache keyword examples for all tabs to avoid repeated string generation."""
+        self.cached_keyword_examples = {
+            "claim inventory": "item=plank, tier>2, container=carving, qty<100",
+            "passive crafting": "item=stone, tier>=3, building=workshop, qty>5",
+            "active crafting": "item=tool, crafter=john, tier<5, qty!=0",
+            "traveler tasks": "traveler=rumbagh, item=ink, status=active, qty>1",
+        }
+
+        # Cache full placeholder strings to avoid repeated concatenation
+        self.cached_placeholders = {}
+        for tab_name, examples in self.cached_keyword_examples.items():
+            base_placeholder = f"Search {tab_name.title()}"
+            self.cached_placeholders[tab_name] = f"{base_placeholder}..."
+            # self.cached_placeholders[tab_name] = f"{base_placeholder}... (e.g., {examples})"
+
     def show_tab(self, tab_name):
         """Shows the specified tab and updates button states with enhanced visual feedback."""
+        tab_switch_start = time.time()
+
         if self.active_tab_name == tab_name:
+            skip_time = time.time() - tab_switch_start
+            logging.debug(f"[TAB SWITCH] SKIPPED - Already on {tab_name}")
             return
 
-        self.active_tab_name = tab_name
-        self.tabs[tab_name].tkraise()
-        
-        # Update search placeholder to match current tab
-        self._update_search_placeholder(tab_name)
+        logging.info(f"[TAB SWITCH] START - From '{self.active_tab_name}' to '{tab_name}'")
 
-        # Update button appearances with theme-aware styling
-        for i, (name, button) in enumerate(self.tab_buttons.items()):
-            if name == tab_name:
-                # Active tab using theme colors
-                button.configure(
-                    fg_color=get_color("TAB_ACTIVE"),
-                    text_color=get_color("TEXT_PRIMARY"),
-                    border_color=get_color("TAB_ACTIVE"),
-                    hover_color=get_color("TAB_ACTIVE"),
-                )
+        # Store previous tab for selective button updates
+        self.previous_tab_name = self.active_tab_name
+
+        # Tab state change
+        state_start = time.time()
+        self.active_tab_name = tab_name
+
+        # Track tab widget size for performance analysis
+        tab_widget = self.tabs[tab_name]
+        widget_info_start = time.time()
+        try:
+            widget_children = len(tab_widget.winfo_children()) if hasattr(tab_widget, "winfo_children") else 0
+            if hasattr(tab_widget, "tree") and hasattr(tab_widget.tree, "get_children"):
+                tree_children = len(tab_widget.tree.get_children())
             else:
-                # Inactive tab using theme colors
-                button.configure(
-                    fg_color=get_color("BUTTON_BACKGROUND"),
-                    text_color=get_color("TAB_INACTIVE"),
-                    border_color=get_color("BORDER_DEFAULT"),
-                    hover_color=get_color("BUTTON_HOVER"),
-                )
+                tree_children = 0
+        except Exception:
+            widget_children = tree_children = 0
+        widget_info_time = time.time() - widget_info_start
+
+        tab_widget.tkraise()
+        state_time = time.time() - state_start
+
+        logging.debug(
+            f"[TAB WIDGET] {tab_name} - widget_children: {widget_children}, tree_children: {tree_children}, info_time: {widget_info_time:.4f}s"
+        )
+
+        # Update search placeholder to match current tab
+        placeholder_start = time.time()
+        self._update_search_placeholder(tab_name)
+        placeholder_time = time.time() - placeholder_start
+
+        # Optimized button styling - only update buttons that actually changed
+        button_start = time.time()
+        if self.previous_tab_name and self.previous_tab_name in self.tab_buttons:
+            # Set previous active button to inactive style
+            self.tab_buttons[self.previous_tab_name].configure(**self.cached_inactive_style)
+
+        # Set new active button to active style
+        if tab_name in self.tab_buttons:
+            self.tab_buttons[tab_name].configure(**self.cached_active_style)
+        button_time = time.time() - button_start
 
         # Apply current search filter to the new tab
+        filter_start = time.time()
         self.on_search_change()
-        logging.info(f"Switched to tab: {tab_name}")
+        filter_time = time.time() - filter_start
+
+        total_time = time.time() - tab_switch_start
+        logging.info(
+            f"[TAB SWITCH] COMPLETE - '{tab_name}' ({total_time:.4f}s total: state {state_time:.4f}s + placeholder {placeholder_time:.4f}s + buttons {button_time:.4f}s + filter {filter_time:.4f}s) [widgets: {widget_children}, tree_items: {tree_children}]"
+        )
+
+        # Force UI update and measure complete rendering time
+        ui_update_start = time.time()
+        self.update_idletasks()
+        ui_update_time = time.time() - ui_update_start
+
+        complete_time = time.time() - tab_switch_start
+        if ui_update_time > 0.001:  # Only log if significant
+            logging.info(
+                f"[TAB SWITCH] UI_UPDATE - '{tab_name}' (+{ui_update_time:.4f}s for UI updates, {complete_time:.4f}s total)"
+            )
 
     def on_search_change(self, *args):
         """Applies search filter to the currently active tab."""
         if self.active_tab_name and hasattr(self.tabs[self.active_tab_name], "apply_filter"):
+            filter_start = time.time()
             self.tabs[self.active_tab_name].apply_filter()
+            filter_time = time.time() - filter_start
+            if filter_time > 0.001:  # Only log if significant
+                logging.debug(f"[SEARCH FILTER] Applied to {self.active_tab_name}")
 
     def _check_all_data_loaded(self):
         """Check if all expected data types have been received and hide loading if so."""
@@ -1056,7 +1146,9 @@ class MainWindow(ctk.CTk):
             else:
                 message = f"{quantity}x {item_name} ready!"
 
-            label = ctk.CTkLabel(notification, text=message, font=ctk.CTkFont(size=14, weight="bold"), text_color=get_color("STATUS_SUCCESS"))
+            label = ctk.CTkLabel(
+                notification, text=message, font=ctk.CTkFont(size=14, weight="bold"), text_color=get_color("STATUS_SUCCESS")
+            )
             label.pack(expand=True)
 
             # Auto-close after 3 seconds
@@ -1096,7 +1188,7 @@ class MainWindow(ctk.CTk):
 
                     # Stop task refresh timer
                     if hasattr(self, "claim_info") and self.claim_info:
-                        logging.info("[MainWindow] Stopping task refresh timer...")
+                        logging.debug("[MainWindow] Stopping task refresh timer...")
                         self.claim_info.stop_task_refresh_timer()
 
                     self.shutdown_dialog.update_status("Saving data...")
@@ -1374,25 +1466,21 @@ class MainWindow(ctk.CTk):
             retry_count = msg_data.get("retry_count", 0)
             max_retries = msg_data.get("max_retries", 0)
             message = msg_data.get("message", "")
-            
+
             logging.info(f"[MainWindow] Task retry status: {status} - {message}")
-            
+
             if status == "retrying":
                 delay = msg_data.get("delay", 0)
                 # Update claim info header with retry status
                 self.claim_info.update_task_refresh_retry_status(
-                    status="retrying",
-                    message=f"Retrying in {delay}s... ({retry_count}/{max_retries})",
-                    delay=delay
+                    status="retrying", message=f"Retrying in {delay}s... ({retry_count}/{max_retries})", delay=delay
                 )
             elif status == "failed":
                 # Update claim info header with failure status
                 self.claim_info.update_task_refresh_retry_status(
-                    status="failed", 
-                    message=f"Failed after {max_retries} attempts",
-                    delay=0
+                    status="failed", message=f"Failed after {max_retries} attempts", delay=0
                 )
-                
+
         except Exception as e:
             logging.error(f"Error handling traveler task retry status: {e}")
 
@@ -1405,7 +1493,7 @@ class MainWindow(ctk.CTk):
                 message_count += 1
                 msg_type = message.get("type")
                 msg_data = message.get("data")
-                
+
                 # Update last message time for status bar
                 self.update_last_message_time()
 

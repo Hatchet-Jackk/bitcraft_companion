@@ -8,6 +8,7 @@ from .processors import InventoryProcessor, CraftingProcessor, TasksProcessor, C
 from .utils import ItemLookupService
 from ..services.notification_service import NotificationService
 from ..services.claim_service import ClaimService
+from ..services.background_processor import BackgroundProcessor
 from ..client.query_service import QueryService
 from ..models.claim import Claim
 
@@ -42,6 +43,9 @@ class DataService:
         self.message_router = None
         self.processors = []
 
+        # Background processing
+        self.background_processor = None
+
         self.data_queue = queue.Queue()
         self._stop_event = threading.Event()
         self.service_thread = None
@@ -50,6 +54,10 @@ class DataService:
         """Set the main app reference and initialize notification service."""
         self.main_app = main_app
         self.notification_service = NotificationService(main_app)
+        
+        # Set up main thread scheduler for background processor if initialized
+        if self.background_processor and hasattr(main_app, 'after'):
+            self.background_processor.set_main_thread_scheduler(main_app.after)
 
     def start(self, username, password, region, player_name):
         """Starts the data fetching thread with user credentials."""
@@ -71,8 +79,13 @@ class DataService:
             if hasattr(self, "processors"):
                 for processor in self.processors:
                     if hasattr(processor, "stop_real_time_timer"):
-                        logging.info(f"Stopping timer for {processor.__class__.__name__}...")
+                        logging.debug(f"Stopping timer for {processor.__class__.__name__}...")
                         processor.stop_real_time_timer()
+
+            # Shutdown background processor
+            if self.background_processor:
+                logging.info("Shutting down background processor...")
+                self.background_processor.shutdown(wait=True, timeout=10.0)
 
             if self.claim_manager:
                 logging.info("Saving claims cache...")
@@ -126,7 +139,7 @@ class DataService:
                 return
 
             total_startup_time = time.time() - thread_start_time
-            logging.info(f"BitCraft Companion ready! Startup completed in {total_startup_time:.1f}s")
+            logging.info("BitCraft Companion ready!")
             logging.info("Monitoring for game data updates...")
 
             # Keep thread alive
@@ -165,7 +178,6 @@ class DataService:
                 return False
 
             auth_time = time.time() - auth_start
-            logging.debug(f"[DEBUG] Authentication completed in {auth_time:.3f}s")
             return True
 
         except Exception as e:
@@ -190,13 +202,11 @@ class DataService:
             self.client.set_region(region)
             self.client.set_endpoint("subscribe")
             self.client.set_websocket_uri()
-            logging.debug(f"[DEBUG] Connection configured for region: {region}")
 
             # Test basic connectivity first
             logging.info("Testing server connectivity...")
             if not self.client.test_server_connectivity():
                 # Run full diagnostics if basic connectivity fails
-                logging.debug("[DEBUG] Running connection diagnostics...")
                 self.client.diagnose_connection_issues()
 
                 error_msg = "Server connectivity test failed. Check your internet connection and try again."
@@ -210,7 +220,6 @@ class DataService:
             logging.info("Connecting to BitCraft servers...")
             self.client.connect_websocket_with_retry(max_retries=3, base_delay=2.0)
             ws_time = time.time() - ws_start
-            logging.debug(f"[DEBUG] WebSocket connection established in {ws_time:.3f}s")
             self.data_queue.put({"type": "connection_status", "data": {"status": "connected"}})
             return True
 
@@ -232,7 +241,6 @@ class DataService:
         try:
             # Set player info directly
             self.username = player_name
-            logging.debug(f"[DEBUG] Player name set: {player_name}")
 
             # Get user ID
             user_start = time.time()
@@ -245,23 +253,21 @@ class DataService:
                 return None, None, None
             self.user_id = user_id
             user_time = time.time() - user_start
-            logging.debug(f"[DEBUG] User ID retrieved in {user_time:.3f}s")
 
             # Initialize claim manager and query service
-            logging.debug("[DEBUG] Initializing claim manager")
             query_service = QueryService(self.client)
             self.claim_manager = ClaimService(self.client, query_service)
             
             # Load reference data via one-off queries 
             ref_start = time.time()
-            logging.info("Loading reference data...")
+            logging.debug("Loading reference data...")
             reference_data = query_service.get_reference_data()
             ref_time = time.time() - ref_start
-            logging.info(f"Reference data loaded in {ref_time:.3f}s")
+            logging.debug(f"Reference data loaded in {ref_time:.3f}s")
 
             # Fetch all claims for the user using query service
             claims_start = time.time()
-            logging.info("Loading your claims...")
+            logging.debug("Loading your claims...")
             all_claims = self.claim_manager.fetch_all_user_claims(self.user_id)
             if not all_claims:
                 logging.error(f"No claims found for player: {player_name}")
@@ -270,8 +276,7 @@ class DataService:
                 return None, None, None
 
             claims_time = time.time() - claims_start
-            logging.info(f"Found {len(all_claims)} claims")
-            logging.debug(f"[DEBUG] Claims loaded in {claims_time:.3f}s")
+            logging.debug(f"Found {len(all_claims)} claims")
 
             # Standardize claim keys for UI compatibility
             for claim in all_claims:
@@ -322,6 +327,14 @@ class DataService:
         try:
             # Note: TravelerTasksService was removed - TasksProcessor handles all traveler task functionality
 
+            # Initialize background processor for heavy operations
+            self.background_processor = BackgroundProcessor(max_workers=3)
+            logging.info(f"[DataService] BackgroundProcessor initialized with 3 workers")
+            
+            # Set up main thread scheduler if main app is available
+            if self.main_app and hasattr(self.main_app, 'after'):
+                self.background_processor.set_main_thread_scheduler(self.main_app.after)
+
             # Initialize shared utilities
             item_lookup_service = ItemLookupService(reference_data)
             logging.debug(f"[DataService] ItemLookupService initialized with {item_lookup_service.get_stats()}")
@@ -333,6 +346,7 @@ class DataService:
                 "claim": self.claim,
                 "item_lookup_service": item_lookup_service,
                 "data_service": self,
+                "background_processor": self.background_processor,
             }
 
             self.processors = [
@@ -584,7 +598,7 @@ class DataService:
                         "data": {"claims": updated_claims, "current_claim_id": self.claim_manager.current_claim_id},
                     }
                 )
-                logging.info(f"Claims list refreshed: {len(updated_claims)} claims")
+                logging.debug(f"Claims list refreshed: {len(updated_claims)} claims")
                 return True
             else:
                 logging.warning("No claims found during refresh")
