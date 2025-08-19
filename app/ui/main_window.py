@@ -1212,6 +1212,17 @@ class MainWindow(ctk.CTk):
                         logging.debug("[MainWindow] Stopping task refresh timer...")
                         self.claim_info.stop_task_refresh_timer()
 
+                    # Cleanup tabs with background processors
+                    if hasattr(self, "tabs"):
+                        logging.debug("[MainWindow] Cleaning up tabs...")
+                        for tab_name, tab in self.tabs.items():
+                            if hasattr(tab, 'shutdown'):
+                                try:
+                                    tab.shutdown()
+                                    logging.debug(f"[MainWindow] Cleaned up tab: {tab_name}")
+                                except Exception as e:
+                                    logging.error(f"[MainWindow] Error cleaning up tab {tab_name}: {e}")
+
                     self.shutdown_dialog.update_status("Saving data...")
 
                     # Give services a moment to clean up
