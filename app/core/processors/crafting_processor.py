@@ -553,11 +553,11 @@ class CraftingProcessor(BaseProcessor):
 
         self.timer_thread = threading.Thread(target=self._timer_loop, daemon=True)
         self.timer_thread.start()
-        logging.info("Started real-time crafting countdown timer in processor")
+        logging.debug("Started real-time crafting countdown timer in processor")
 
     def stop_real_time_timer(self):
         """Stop the real-time countdown timer with improved cleanup."""
-        logging.info("Stopping real-time crafting countdown timer in processor...")
+        logging.debug("Stopping real-time crafting countdown timer in processor...")
 
         try:
             if self.timer_thread:
@@ -578,7 +578,7 @@ class CraftingProcessor(BaseProcessor):
         except Exception as e:
             logging.error(f"Error stopping timer thread: {e}")
         finally:
-            logging.info("Real-time timer shutdown complete")
+            logging.debug("Real-time timer shutdown complete")
 
     def _timer_loop(self):
         """Background thread that updates timers every second."""

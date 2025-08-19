@@ -1,5 +1,7 @@
 import logging
+import time
 from typing import Dict, List, Optional
+from app.services.reference_cache_service import ReferenceCacheService
 
 
 class QueryService:
@@ -24,6 +26,7 @@ class QueryService:
 
     def __init__(self, client):
         self.client = client
+        self.cache_service = ReferenceCacheService()
 
     # ========== ONE-OFF QUERIES (Initial Setup & Authentication) ==========
 
@@ -99,55 +102,108 @@ class QueryService:
 
     def get_reference_data(self) -> Dict:
         """
-        Fetch static reference data via one-off queries.
-        
+        Fetch static reference data via one-off queries with caching.
+
         Loads game reference tables that rarely change (items, buildings, recipes, etc.)
-        instead of using subscriptions. Data is loaded once and cached.
-        
+        using local cache when possible to dramatically reduce startup time.
+
         Returns:
             Dict: Reference data organized by table name
         """
+        load_start_time = time.time()
+
+        # Try to load from cache first
+        cached_data = self.cache_service.get_cached_reference_data()
+        if cached_data:
+            cache_load_time = time.time() - load_start_time
+            logging.debug(f"Reference data loaded from cache in {cache_load_time:.3f}s")
+            return cached_data
+
+        # Cache miss - fetch from server
+        logging.info("Reference cache miss - fetching from server...")
+
         reference_queries = [
             "SELECT * FROM resource_desc;",
-            "SELECT * FROM item_desc;", 
+            "SELECT * FROM item_desc;",
             "SELECT * FROM cargo_desc;",
             "SELECT * FROM building_desc;",
             "SELECT * FROM building_function_type_mapping_desc;",
             "SELECT * FROM building_type_desc;",
             "SELECT * FROM crafting_recipe_desc;",
             "SELECT * FROM claim_tile_cost;",
-            "SELECT * FROM npc_desc;"
+            "SELECT * FROM npc_desc;",
         ]
-        
+
         reference_data = {}
         total_records = 0
-        
+
         try:
             for query in reference_queries:
                 # Extract table name from query
                 table_name = query.split("FROM ")[1].split(";")[0].strip()
-                
+
                 logging.info(f"Loading reference data: {table_name}")
-                results = self.client.query(query)
-                reference_data[table_name] = results if results else []
+                query_start = time.time()
                 
-                record_count = len(reference_data[table_name])
-                total_records += record_count
-                logging.info(f"Loaded {record_count} records from {table_name}")
+                try:
+                    results = self.client.query(query)
+                    query_time = time.time() - query_start
+
+                    reference_data[table_name] = results if results else []
+
+                    record_count = len(reference_data[table_name])
+                    total_records += record_count
+                    logging.debug(f"Loaded {record_count} records from {table_name} ({query_time:.3f}s)")
+                    
+                    # Special logging for traveler_task_desc
+                    if table_name == "traveler_task_desc":
+                        if record_count == 0:
+                            logging.warning(f"[QueryService] traveler_task_desc table is empty - this will cause task display issues")
+                        else:
+                            logging.info(f"[QueryService] Successfully loaded {record_count} traveler task descriptions")
                 
-            logging.info(f"Reference data loading completed: {total_records} total records across {len(reference_queries)} tables")
-                
+                except Exception as e:
+                    logging.error(f"[QueryService] Error loading {table_name}: {e}")
+                    reference_data[table_name] = []  # Ensure the table exists even if empty
+
+            total_load_time = time.time() - load_start_time
+            logging.info(
+                f"Reference data loading completed: {total_records} total records across {len(reference_queries)} tables ({total_load_time:.3f}s)"
+            )
+
+            # Cache the data for next time
+            self.cache_service.cache_reference_data(reference_data)
+
         except Exception as e:
             logging.error(f"Error fetching reference data: {e}")
             # Return partial data if some queries succeeded
-            
+
         return reference_data
 
+    def clear_reference_cache(self) -> bool:
+        """
+        Clear the reference data cache.
+
+        Useful for forcing a fresh download of reference data or troubleshooting.
+
+        Returns:
+            bool: True if cache was cleared successfully
+        """
+        return self.cache_service.clear_cache()
+
+    def get_cache_info(self) -> Dict:
+        """
+        Get information about the reference data cache.
+
+        Returns:
+            Dict: Cache status, age, size, and validity information
+        """
+        return self.cache_service.get_cache_info()
 
     def get_subscription_queries(self, user_id: str, claim_id: str) -> List[str]:
         """
         Get dynamic subscription queries for real-time data flow.
-        
+
         Static reference data (items, buildings, recipes, etc.) is now loaded
         via get_reference_data() instead of subscriptions for better performance.
         """
@@ -174,7 +230,7 @@ class QueryService:
                 "JOIN claim_member_state ON claim_local_state.entity_id = claim_member_state.claim_entity_id "
                 "WHERE claim_member_state.player_entity_id = '{user_id}';".format(user_id=user_id)
             ),
-            # Get current traveler tasks
+            # Get current traveler task descriptions
             (
                 "SELECT traveler_task_desc.* "
                 "FROM traveler_task_desc "
