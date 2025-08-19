@@ -265,6 +265,7 @@ class InventoryProcessor(BaseProcessor):
     def _send_inventory_update(self):
         """
         Send consolidated inventory update by combining all cached data.
+        Uses background processing for heavy consolidation operations.
         """
         try:
             if not (hasattr(self, "_inventory_data") and self._inventory_data):
@@ -277,14 +278,55 @@ class InventoryProcessor(BaseProcessor):
             if not hasattr(self, "_building_nicknames"):
                 self._building_nicknames = {}
 
-            # Consolidate inventory by item
-            consolidated_inventory = self._consolidate_inventory()
-
-            # Send to UI
-            self._queue_update("inventory_update", consolidated_inventory)
+            # Use background processing for consolidation if available
+            background_processor = self.services.get("background_processor")
+            if background_processor:
+                # Submit consolidation to background thread
+                background_processor.submit_task(
+                    self._consolidate_inventory,
+                    callback=self._on_inventory_consolidated,
+                    error_callback=self._on_inventory_consolidation_error,
+                    priority=1,
+                    task_name="inventory_consolidation"
+                )
+            else:
+                # Fallback to synchronous processing
+                consolidated_inventory = self._consolidate_inventory()
+                self._queue_update("inventory_update", consolidated_inventory)
 
         except Exception as e:
             logging.error(f"Error sending inventory update: {e}")
+    
+    def _on_inventory_consolidated(self, consolidated_inventory):
+        """
+        Callback when inventory consolidation completes in background.
+        
+        Args:
+            consolidated_inventory: The consolidated inventory data
+        """
+        try:
+            # Send the consolidated data to UI
+            self._queue_update("inventory_update", consolidated_inventory)
+            logging.debug("[InventoryProcessor] Background inventory consolidation completed")
+        except Exception as e:
+            logging.error(f"Error handling inventory consolidation result: {e}")
+    
+    def _on_inventory_consolidation_error(self, error):
+        """
+        Callback when inventory consolidation fails in background.
+        
+        Args:
+            error: The error that occurred
+        """
+        logging.error(f"Background inventory consolidation failed: {error}")
+        
+        # Fallback to synchronous processing
+        try:
+            consolidated_inventory = self._consolidate_inventory()
+            self._queue_update("inventory_update", consolidated_inventory)
+            logging.info("Inventory consolidation completed using synchronous fallback")
+        except Exception as e:
+            logging.error(f"Synchronous inventory consolidation fallback also failed: {e}")
 
     def _is_town_bank_building(self, building_description_id):
         """

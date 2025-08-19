@@ -3,6 +3,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.30]
+### Added
+- Implemented ReferenceCacheService for local caching of reference data.
+- Methods for caching, retrieving, validating, and clearing reference data with version tracking and TTL.
+- MainWindow caching optimizations, including cached button styles and keyword examples for improved UI responsiveness.
+- Background processing for filtering and sorting in ClaimInventoryTab to efficiently handle large datasets.
+- Callbacks for background task completion and error handling to ensure a smooth user experience.
+
 ## [0.2.28]
 ### Added
 - Improved save and load for searches

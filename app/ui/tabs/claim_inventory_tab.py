@@ -398,6 +398,56 @@ class ClaimInventoryTab(ctk.CTkFrame):
     def apply_filter(self):
         """Filters the master data list based on search and column filters."""
         search_text = self.app.get_search_text()
+        
+        # Use background processing for large datasets
+        background_processor = self._get_background_processor()
+        if background_processor and len(self.all_data) > 500:  # Use background for large datasets
+            # Submit filtering to background thread
+            background_processor.submit_task(
+                self._filter_data_background,
+                self.all_data[:], search_text, self.active_filters.copy(),
+                callback=self._on_filter_completed,
+                error_callback=self._on_filter_error,
+                priority=2,
+                task_name="table_filtering"
+            )
+        else:
+            # Synchronous filtering for small datasets
+            self._filter_data_sync(search_text)
+    
+    def _get_background_processor(self):
+        """Get the background processor from the main app's data service."""
+        try:
+            if hasattr(self.app, 'data_service') and self.app.data_service:
+                return self.app.data_service.background_processor
+        except Exception as e:
+            logging.debug(f"Could not access background processor: {e}")
+        return None
+    
+    def _filter_data_background(self, all_data, search_text, active_filters):
+        """Background thread filtering operation."""
+        temp_data = all_data[:]
+
+        # Apply column filters first
+        if active_filters:
+            for header, values in active_filters.items():
+                if header.lower() == "containers":
+                    temp_data = [row for row in temp_data if self._container_matches_filter(row, values)]
+                else:
+                    # Map header names to data keys
+                    header_to_key = {"Item": "name"}
+                    data_key = header_to_key.get(header, header.lower())
+                    temp_data = [row for row in temp_data if str(row.get(data_key, "")) in values]
+
+        # Apply keyword-based search
+        if search_text:
+            parsed_query = self.search_parser.parse_search_query(search_text)
+            temp_data = [row for row in temp_data if self.search_parser.match_row(row, parsed_query)]
+
+        return temp_data
+    
+    def _filter_data_sync(self, search_text):
+        """Synchronous filtering operation."""
         temp_data = self.all_data[:]
 
         # Apply column filters first
@@ -418,6 +468,21 @@ class ClaimInventoryTab(ctk.CTkFrame):
 
         self.filtered_data = temp_data
         self.sort_by(self.sort_column, self.sort_reverse)
+    
+    def _on_filter_completed(self, filtered_data):
+        """Callback when background filtering completes."""
+        try:
+            self.filtered_data = filtered_data
+            self.sort_by(self.sort_column, self.sort_reverse)
+            logging.debug(f"[ClaimInventoryTab] Background filtering completed - {len(filtered_data)} items")
+        except Exception as e:
+            logging.error(f"Error handling background filter result: {e}")
+    
+    def _on_filter_error(self, error):
+        """Callback when background filtering fails."""
+        logging.error(f"Background filtering failed: {error}")
+        # Fallback to synchronous filtering
+        self._filter_data_sync(self.app.get_search_text())
 
     def _container_matches_filter(self, row, selected_values):
         """Checks if a row matches the container filter."""
@@ -453,6 +518,38 @@ class ClaimInventoryTab(ctk.CTkFrame):
             self.sort_column = header
             self.sort_reverse = reverse if reverse is not None else False
 
+        # Use background processing for large datasets
+        background_processor = self._get_background_processor()
+        if background_processor and len(self.filtered_data) > 500:  # Use background for large datasets
+            # Submit sorting to background thread
+            background_processor.submit_task(
+                self._sort_data_background,
+                self.filtered_data[:], self.sort_column, self.sort_reverse,
+                callback=self._on_sort_completed,
+                error_callback=self._on_sort_error,
+                priority=2,
+                task_name="table_sorting"
+            )
+        else:
+            # Synchronous sorting for small datasets
+            self._sort_data_sync()
+    
+    def _sort_data_background(self, data_to_sort, sort_column, sort_reverse):
+        """Background thread sorting operation."""
+        # Map header names to data keys
+        header_to_key = {"Item": "name"}
+        sort_key = header_to_key.get(sort_column, sort_column.lower())
+        is_numeric = sort_key in ["tier", "quantity"]
+
+        sorted_data = sorted(
+            data_to_sort,
+            key=lambda x: (float(x.get(sort_key, 0)) if is_numeric else str(x.get(sort_key, "")).lower()),
+            reverse=sort_reverse,
+        )
+        return sorted_data
+    
+    def _sort_data_sync(self):
+        """Synchronous sorting operation."""
         # Map header names to data keys
         header_to_key = {"Item": "name"}
         sort_key = header_to_key.get(self.sort_column, self.sort_column.lower())
@@ -464,6 +561,22 @@ class ClaimInventoryTab(ctk.CTkFrame):
         )
         self.render_table()
         self.update_header_sort_indicators()
+    
+    def _on_sort_completed(self, sorted_data):
+        """Callback when background sorting completes."""
+        try:
+            self.filtered_data = sorted_data
+            self.render_table()
+            self.update_header_sort_indicators()
+            logging.debug(f"[ClaimInventoryTab] Background sorting completed - {len(sorted_data)} items")
+        except Exception as e:
+            logging.error(f"Error handling background sort result: {e}")
+    
+    def _on_sort_error(self, error):
+        """Callback when background sorting fails."""
+        logging.error(f"Background sorting failed: {error}")
+        # Fallback to synchronous sorting
+        self._sort_data_sync()
 
     def update_header_sort_indicators(self):
         """Updates the arrows on column headers."""
