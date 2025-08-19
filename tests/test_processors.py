@@ -209,11 +209,12 @@ class TestTasksProcessor:
         processor._process_task_state_transaction(update, completed_tasks)
 
         # Should have processed the replacement (delete + insert)
-        assert 1001 in processor._task_states
-        task_data = processor._task_states[1001]
+        assert 123 in processor._task_states  # Now keyed by entity_id, not task_id
+        task_data = processor._task_states[123]
         assert task_data["entity_id"] == 123
         assert task_data["player_entity_id"] == 456
         assert task_data["traveler_id"] == 789
+        assert task_data["task_id"] == 1001  # task_id is now a field, not the key
         assert task_data["completed"] == False
 
     def test_task_desc_transaction_parsing(self, mock_data_queue, mock_services, mock_reference_data):

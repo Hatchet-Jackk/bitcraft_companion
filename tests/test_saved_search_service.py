@@ -293,7 +293,7 @@ class TestSavedSearchService:
         # Use some searches with timing
         import time
         query1 = service.use_search(id1)
-        time.sleep(0.01)
+        time.sleep(0.1)  # Increased sleep time for more reliable ordering
         query3 = service.use_search(id3)
         
         assert query1 == "item=log tier>2"
