@@ -900,6 +900,21 @@ class MainWindow(ctk.CTk):
                     text_color=get_color("TEXT_PRIMARY"),
                 )
 
+            # Update save/load search buttons
+            if hasattr(self, "save_search_button"):
+                self.save_search_button.configure(
+                    fg_color=get_color("STATUS_SUCCESS"),
+                    hover_color=get_color("STATUS_SUCCESS"),
+                    text_color=get_color("TEXT_PRIMARY"),
+                )
+                
+            if hasattr(self, "load_search_button"):
+                self.load_search_button.configure(
+                    fg_color=get_color("STATUS_INFO"),
+                    hover_color=get_color("BUTTON_HOVER"),
+                    text_color=get_color("TEXT_PRIMARY"),
+                )
+
             # Update other UI components that need theme updates
             # The individual tabs will handle their own theme updates via their own callbacks
 
