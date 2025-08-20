@@ -410,7 +410,7 @@ class PassiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin):
         """Process passive crafting data update with background processing for large datasets."""
         try:
             data_size = len(new_data) if new_data else 0
-            logging.info(f"[PassiveCraftingTab] Updating data - {data_size} items")
+            logging.debug(f"[PassiveCraftingTab] Updating data - {data_size} items")
 
             # Use background processing for large datasets
             if new_data and len(new_data) > 50:

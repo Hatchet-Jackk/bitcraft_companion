@@ -193,7 +193,7 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin):
         """Process inventory data update with background processing for large datasets."""
         try:
             data_size = len(new_data) if isinstance(new_data, (dict, list)) else 0
-            logging.info(f"[ClaimInventoryTab] Updating data - type: {type(new_data)}, size: {data_size}")
+            logging.debug(f"[ClaimInventoryTab] Updating data - type: {type(new_data)}, size: {data_size}")
             
             if hasattr(new_data, 'get') and new_data.get('transaction_update'):
                 logging.info(f"[ClaimInventoryTab] Received transaction update flag")

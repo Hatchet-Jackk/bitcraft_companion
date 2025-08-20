@@ -280,7 +280,7 @@ class TravelerTasksTab(ctk.CTkFrame, OptimizedTableMixin):
         """Process traveler tasks data update with background processing for large datasets."""
         try:
             data_size = len(new_data) if new_data else 0
-            logging.info(f"[TravelerTasksTab] Updating data - {data_size} traveler groups")
+            logging.debug(f"[TravelerTasksTab] Updating data - {data_size} traveler groups")
 
             # Use background processing for large datasets
             if isinstance(new_data, list) and len(new_data) > 20:
