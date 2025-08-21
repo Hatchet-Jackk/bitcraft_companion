@@ -3,6 +3,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.34]
+### Added
+- New custom sounds for notifications (credit to Blizzard for job's done sound from Warcraft II).
+- Silent notifications.
+- Test each notification type.
+- Enhanced notification settings with sound customization.
+  - Refactored SettingsWindow to include sound options for notifications.
+  - Added methods to handle sound selection and testing for passive crafts, active crafts, and stamina recharged notifications.
+  - Integrated notification service to fetch available sound options and display names.
+  - Updated settings loading and saving to support new sound settings.
+  - Added new sound files: `jobs_done.mp3`, `notification.wav`, `piano.wav`, `confirmation.wav`, and `mystic_chimes.wav`.
+  - Updated application specification to include sounds directory and pygame dependency.
+
 ## [0.2.33]
 ### Added
 - **Stamina Processing and Notifications**: Implemented comprehensive stamina tracking system.
