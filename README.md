@@ -36,7 +36,7 @@ BitCraft Companion connects directly to BitCraft game servers via WebSocket to p
 - **Data Export**: Easily export your claim inventory data to CSV or JSON formats for external analysis or sharing.
 - **Theme Selection** *(work in progress)*: Switch between Light and Dark themes to match your personal preference or system settings.
 - **Force Refresh**: Instantly reload all claim and inventory data from the server. Use this option if you suspect data is out of sync or want to ensure you have the latest updates.
-- **Notification Controls**: Enable or disable Windows toast notifications for craft completions.
+- **Notification Controls**: Enable or disable Windows toast notifications for crafting and stamina. Now with custom sounds!
 - **About & Version Info**: View application version, update status, and links to documentation or support.
 
 #### 🔢 **Available Data**
