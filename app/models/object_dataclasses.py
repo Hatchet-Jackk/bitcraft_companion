@@ -29,18 +29,16 @@ class ClaimLocalState:
     def from_array(cls, data: List) -> "ClaimLocalState":
         """
         Create ClaimLocalState from SpacetimeDB array format.
-        
+
         The actual array format appears to be much larger (78-80+ elements) than the original
         11-element format expected. We'll extract the core fields we need from the first elements
         and gracefully handle the variable array size.
         """
         if not isinstance(data, list):
             raise ValueError(f"Invalid claim_local_state array format: expected list, got {type(data)}")
-            
+
         if len(data) < 11:
-            raise ValueError(
-                f"Invalid claim_local_state array format: expected at least 11 elements, got {len(data)}"
-            )
+            raise ValueError(f"Invalid claim_local_state array format: expected at least 11 elements, got {len(data)}")
 
         # Extract known fields from the beginning of the array
         # Based on the original format but handling the actual longer format
@@ -600,15 +598,15 @@ class InventoryState:
             except (json.JSONDecodeError, TypeError) as e:
                 logging.error(f"[InventoryState.from_array] Failed to parse JSON string: {e}")
                 raise ValueError(f"Invalid inventory_state JSON string: {e}")
-        
+
         if not isinstance(data, list):
             logging.error(f"[InventoryState.from_array] Expected list after parsing, got {type(data)}")
             raise ValueError(f"Invalid inventory_state array format: expected list, got {type(data)}")
-        
+
         if len(data) < 6:
             logging.error(f"[InventoryState.from_array] Array too short: {len(data)} elements, expected 6+")
             raise ValueError(f"Invalid inventory_state array format: expected at least 6 elements, got {len(data)}")
-        
+
         return cls(
             entity_id=data[0] if len(data) > 0 else 0,
             pockets=data[1] if len(data) > 1 else [],
@@ -1183,12 +1181,12 @@ class PassiveCraftState:
         """Create PassiveCraftState from JSON string"""
         data = json.loads(json_str)
         return cls.from_dict(data)
-    
+
     @property
     def timestamp_micros(self) -> Optional[int]:
         """
         Extract timestamp in microseconds from the timestamp dict.
-        
+
         Returns:
             int: Timestamp in microseconds since unix epoch, or None if not found
         """
@@ -1207,7 +1205,7 @@ class PassiveCraftState:
             "recipe_id": self.recipe_id,
             "building_entity_id": self.building_entity_id,
             "timestamp": self.timestamp,
-            "timestamp_micros": self.timestamp_micros,  
+            "timestamp_micros": self.timestamp_micros,
             "status": self.status,
             "slot": self.slot,
             "craft_info": self.get_craft_info(crafting_recipe_data, building_desc_data),
@@ -1297,9 +1295,11 @@ class PassiveCraftState:
 # These dataclasses represent static reference data from BitCraft's database
 # that rarely changes but provides essential game information.
 
+
 @dataclass
 class ResourceDesc:
     """Resource description data from resource_desc table."""
+
     id: int
     name: str
     description: str
@@ -1380,18 +1380,21 @@ class ResourceDesc:
         items = []
         for yield_data in self.on_destroy_yield:
             if isinstance(yield_data, list) and len(yield_data) >= 2:
-                items.append({
-                    "item_id": yield_data[0],
-                    "quantity": yield_data[1],
-                    "rarity_data": yield_data[2] if len(yield_data) > 2 else [0, []],
-                    "bonus_data": yield_data[3] if len(yield_data) > 3 else [0, 0]
-                })
+                items.append(
+                    {
+                        "item_id": yield_data[0],
+                        "quantity": yield_data[1],
+                        "rarity_data": yield_data[2] if len(yield_data) > 2 else [0, []],
+                        "bonus_data": yield_data[3] if len(yield_data) > 3 else [0, 0],
+                    }
+                )
         return items
 
 
 @dataclass
 class ItemDesc:
     """Item description data from item_desc table."""
+
     id: int
     name: str
     description: str
@@ -1461,6 +1464,7 @@ class ItemDesc:
 @dataclass
 class CargoDesc:
     """Cargo description data from cargo_desc table."""
+
     id: int
     name: str
     description: str
@@ -1559,6 +1563,7 @@ class CargoDesc:
 @dataclass
 class BuildingDesc:
     """Building description data from building_desc table."""
+
     id: int
     functions: List
     name: str
@@ -1664,25 +1669,27 @@ class BuildingDesc:
         parsed_functions = []
         for func in self.functions:
             if isinstance(func, list) and len(func) >= 16:
-                parsed_functions.append({
-                    "function_type": func[0],
-                    "param_1": func[1],
-                    "param_2": func[2],
-                    "param_3": func[3],
-                    "param_4": func[4],
-                    "param_5": func[5],
-                    "param_6": func[6],
-                    "inventory_size": func[7],
-                    "cargo_size": func[8],
-                    "param_9": func[9],
-                    # Additional parameters as needed
-                })
+                parsed_functions.append(
+                    {
+                        "function_type": func[0],
+                        "param_1": func[1],
+                        "param_2": func[2],
+                        "param_3": func[3],
+                        "param_4": func[4],
+                        "param_5": func[5],
+                        "param_6": func[6],
+                        "inventory_size": func[7],
+                        "cargo_size": func[8],
+                        "param_9": func[9],
+                    }
+                )
         return parsed_functions
 
 
 @dataclass
 class BuildingTypeDesc:
     """Building type description data from building_type_desc table."""
+
     id: int
     name: str
     category: List
@@ -1714,6 +1721,7 @@ class BuildingTypeDesc:
 @dataclass
 class CraftingRecipeDesc:
     """Crafting recipe description data from crafting_recipe_desc table."""
+
     id: int
     name: str
     time_requirement: float
@@ -1820,6 +1828,7 @@ class CraftingRecipeDesc:
 @dataclass
 class ClaimTileCost:
     """Claim tile cost data from claim_tile_cost table."""
+
     tile_count: int
     cost_per_tile: float
 
@@ -1868,6 +1877,7 @@ class ClaimTileCost:
 @dataclass
 class NpcDesc:
     """NPC description data from npc_desc table (formerly traveler_desc)."""
+
     npc_type: int
     name: str
     population: float
@@ -1918,49 +1928,221 @@ class NpcDesc:
         return self.task_skill_check.copy() if self.task_skill_check else []
 
 
-
 @dataclass
 class BuildingFunctionTypeMappingDesc:
     """
     Building function type mapping descriptor for SpacetimeDB building_function_type_mapping_desc table.
-    
+
     Maps type IDs to arrays of description IDs for building function type lookups.
     Replaces the old type_desc_ids SQLite table.
     """
-    
+
     type_id: int
     desc_ids: List[int]
-    
+
     @classmethod
     def from_dict(cls, data: dict):
         """Create instance from dictionary (subscription data)."""
-        return cls(
-            type_id=data.get("type_id", 0),
-            desc_ids=data.get("desc_ids", [])
-        )
-    
-    @classmethod 
+        return cls(type_id=data.get("type_id", 0), desc_ids=data.get("desc_ids", []))
+
+    @classmethod
     def from_array(cls, data: list):
         """Create instance from array (transaction data)."""
         if not isinstance(data, list) or len(data) < 2:
             raise ValueError(f"BuildingFunctionTypeMappingDesc requires array with at least 2 elements, got: {data}")
-            
-        return cls(
-            type_id=data[0] if len(data) > 0 else 0,
-            desc_ids=data[1] if len(data) > 1 else []
-        )
-    
+
+        return cls(type_id=data[0] if len(data) > 0 else 0, desc_ids=data[1] if len(data) > 1 else [])
+
     def to_dict(self) -> dict:
         """Convert to dictionary for backward compatibility."""
-        return {
-            "type_id": self.type_id,
-            "desc_ids": self.desc_ids.copy() if self.desc_ids else []
-        }
-    
+        return {"type_id": self.type_id, "desc_ids": self.desc_ids.copy() if self.desc_ids else []}
+
     def contains_desc_id(self, desc_id: int) -> bool:
         """Check if a description ID is contained in this mapping."""
         return desc_id in (self.desc_ids or [])
-    
+
     def get_desc_count(self) -> int:
         """Get the number of description IDs in this mapping."""
         return len(self.desc_ids or [])
+
+
+@dataclass
+class StaminaState:
+    """
+    Data class for stamina_state data from SpacetimeDB.
+    JSON format: {"entity_id": int, "stamina": float, "last_stamina_decrease_timestamp": {...}}
+    """
+
+    entity_id: int  # This is the player entity ID
+    stamina: float  # Current stamina value
+    last_stamina_decrease_timestamp: int  # Microseconds since unix epoch
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "StaminaState":
+        """Create StaminaState from SpacetimeDB JSON format."""
+        if not isinstance(data, dict):
+            raise ValueError(f"Invalid stamina_state format: expected dict, got {type(data)}")
+
+        required_fields = ["entity_id", "stamina"]
+        for field in required_fields:
+            if field not in data:
+                raise ValueError(f"Missing required field '{field}' in stamina_state data")
+
+        # Extract timestamp from nested structure
+        timestamp_data = data.get("last_stamina_decrease_timestamp", {})
+        if isinstance(timestamp_data, dict):
+            timestamp = timestamp_data.get("__timestamp_micros_since_unix_epoch__", 0)
+        else:
+            timestamp = timestamp_data or 0
+
+        return cls(
+            entity_id=data["entity_id"],
+            stamina=float(data["stamina"]),
+            last_stamina_decrease_timestamp=timestamp,
+        )
+
+    @classmethod
+    def from_array(cls, data: list) -> "StaminaState":
+        """Create StaminaState from transaction array format [entity_id, timestamp_array, stamina]."""
+        if not isinstance(data, list) or len(data) < 3:
+            raise ValueError(f"Invalid stamina_state array format: expected list with 3+ elements, got {data}")
+
+        entity_id = data[0]
+        timestamp_array = data[1] if isinstance(data[1], list) else [data[1]]
+        stamina = float(data[2])
+
+        # Extract timestamp from array format
+        timestamp = timestamp_array[0] if timestamp_array else 0
+
+        return cls(
+            entity_id=entity_id,
+            stamina=stamina,
+            last_stamina_decrease_timestamp=timestamp,
+        )
+
+    @property
+    def player_entity_id(self) -> int:
+        """Alias for entity_id to maintain backward compatibility."""
+        return self.entity_id
+
+    @classmethod
+    def from_json_string(cls, json_str: str) -> "StaminaState":
+        """Create StaminaState from JSON string."""
+        data = json.loads(json_str)
+        return cls.from_dict(data)
+
+    @property
+    def current(self) -> float:
+        """Alias for stamina to maintain backward compatibility."""
+        return self.stamina
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary format for backward compatibility."""
+        return {
+            "entity_id": self.entity_id,
+            "player_entity_id": self.entity_id,  # Include both for compatibility
+            "stamina": self.stamina,
+            "current": self.stamina,  # Backward compatibility
+            "last_stamina_decrease_timestamp": self.last_stamina_decrease_timestamp,
+        }
+
+    def is_full(self, max_stamina: float = 300.0) -> bool:
+        """Check if stamina is at maximum (default max 300)."""
+        return self.stamina >= max_stamina
+
+    def get_percentage(self, max_stamina: float = 300.0) -> float:
+        """Get stamina as percentage of maximum (default max 300)."""
+        if max_stamina <= 0:
+            return 0.0
+        return (self.stamina / max_stamina) * 100.0
+
+    def is_low(self, max_stamina: float = 300.0, threshold: float = 20.0) -> bool:
+        """Check if stamina is below threshold percentage."""
+        return self.get_percentage(max_stamina) < threshold
+
+    def get_timestamp_seconds(self) -> float:
+        """Convert timestamp from microseconds to seconds."""
+        return self.last_stamina_decrease_timestamp / 1_000_000.0
+
+
+@dataclass
+class CharacterStatsState:
+    """
+    Data class for character_stats_state data from SpacetimeDB.
+    JSON format: {"entity_id": int, "values": [float, float, ...]}
+    The values array contains character stats where values[1] is max stamina.
+    """
+
+    entity_id: int  # This is the player entity ID
+    values: list  # Array of character stat values
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "CharacterStatsState":
+        """Create CharacterStatsState from SpacetimeDB JSON format."""
+        if not isinstance(data, dict):
+            raise ValueError(f"Invalid character_stats_state format: expected dict, got {type(data)}")
+
+        required_fields = ["entity_id", "values"]
+        for field in required_fields:
+            if field not in data:
+                raise ValueError(f"Missing required field '{field}' in character_stats_state data")
+
+        return cls(
+            entity_id=data["entity_id"],
+            values=data.get("values", []),
+        )
+
+    @classmethod
+    def from_array(cls, data) -> "CharacterStatsState":
+        """Create CharacterStatsState from SpacetimeDB array format for transactions."""
+        # Handle JSON string parsing if needed
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (json.JSONDecodeError, TypeError) as e:
+                logging.error(f"[CharacterStatsState.from_array] Failed to parse JSON string: {e}")
+                raise ValueError(f"Invalid character_stats_state JSON string: {e}")
+
+        if not isinstance(data, list):
+            logging.error(f"[CharacterStatsState.from_array] Expected list after parsing, got {type(data)}")
+            raise ValueError(f"Invalid character_stats_state array format: expected list, got {type(data)}")
+
+        if len(data) < 2:
+            logging.error(f"[CharacterStatsState.from_array] Array too short: {len(data)} elements, expected 2")
+            raise ValueError(f"Invalid character_stats_state array format: expected at least 2 elements, got {len(data)}")
+
+        return cls(
+            entity_id=data[0] if len(data) > 0 else 0,
+            values=data[1] if len(data) > 1 else [],
+        )
+
+    @property
+    def player_entity_id(self) -> int:
+        """Alias for entity_id to maintain backward compatibility."""
+        return self.entity_id
+
+    @classmethod
+    def from_json_string(cls, json_str: str) -> "CharacterStatsState":
+        """Create CharacterStatsState from JSON string."""
+        data = json.loads(json_str)
+        return cls.from_dict(data)
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary format for backward compatibility."""
+        return {
+            "entity_id": self.entity_id,
+            "player_entity_id": self.entity_id,  # Include both for compatibility
+            "values": self.values,
+        }
+
+    def get_max_stamina(self) -> float:
+        """Get maximum stamina from values array (values[1])."""
+        if isinstance(self.values, list) and len(self.values) > 1:
+            return float(self.values[1])
+        return 0.0
+
+    def get_stat_by_index(self, index: int, default=0.0):
+        """Get a specific stat value by array index."""
+        if isinstance(self.values, list) and 0 <= index < len(self.values):
+            return float(self.values[index])
+        return default
