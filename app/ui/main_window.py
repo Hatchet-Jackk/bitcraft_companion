@@ -1620,6 +1620,12 @@ class MainWindow(ctk.CTk):
                         self.received_data_types.add("claim_info")
                         self._check_all_data_loaded()
 
+                elif msg_type == "activity_status":
+                    # Update player activity status in the claim info header
+                    if hasattr(self, "claim_info") and self.claim_info:
+                        self.claim_info.update_player_activity_status(msg_data)
+                        logging.debug(f"Activity status updated: {msg_data.get('status', 'Unknown')}")
+
                 elif msg_type == "reference_data_update":
                     # Update ClaimInfoHeader when claim_tile_cost data changes
                     table_name = msg_data.get('table', '')

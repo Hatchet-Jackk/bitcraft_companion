@@ -236,7 +236,18 @@ class SettingsWindow(ctk.CTkToplevel):
             command=self._on_setting_change,
             font=ctk.CTkFont(size=13),
         )
-        active_switch.pack(fill="x", anchor="w", pady=(0, 15))
+        active_switch.pack(fill="x", anchor="w", pady=(0, 8))
+
+        # Stamina recharged toggle
+        self.stamina_recharged_var = ctk.BooleanVar(value=self.settings.get("notifications", {}).get("stamina_recharged_enabled", True))
+        stamina_switch = ctk.CTkSwitch(
+            parent,
+            text="Stamina Recharged Notifications",
+            variable=self.stamina_recharged_var,
+            command=self._on_setting_change,
+            font=ctk.CTkFont(size=13),
+        )
+        stamina_switch.pack(fill="x", anchor="w", pady=(0, 15))
 
         # Test notification button (modular)
         if self.settings.get("debug", {}).get("show_test_notification", True):
@@ -419,7 +430,7 @@ class SettingsWindow(ctk.CTkToplevel):
         except Exception as e:
             logging.error(f"Error loading settings: {e}")
             return {
-                "notifications": {"passive_crafts_enabled": True, "active_crafts_enabled": True},
+                "notifications": {"passive_crafts_enabled": True, "active_crafts_enabled": True, "stamina_recharged_enabled": True},
                 "debug": {"show_test_notification": True},
             }
 
@@ -427,9 +438,10 @@ class SettingsWindow(ctk.CTkToplevel):
         """Save settings to persistent storage."""
         try:
             # Update settings based on UI state (only if UI components exist)
-            if hasattr(self, "passive_crafts_var") and hasattr(self, "active_crafts_var"):
+            if hasattr(self, "passive_crafts_var") and hasattr(self, "active_crafts_var") and hasattr(self, "stamina_recharged_var"):
                 self.settings["notifications"]["passive_crafts_enabled"] = self.passive_crafts_var.get()
                 self.settings["notifications"]["active_crafts_enabled"] = self.active_crafts_var.get()
+                self.settings["notifications"]["stamina_recharged_enabled"] = self.stamina_recharged_var.get()
             else:
                 logging.warning("Settings UI components not yet initialized, skipping UI state update")
 
@@ -547,16 +559,18 @@ class SettingsWindow(ctk.CTkToplevel):
         """Show a test notification."""
         try:
             # Update notification service settings from UI (if UI components exist)
-            if hasattr(self, "passive_crafts_var") and hasattr(self, "active_crafts_var"):
+            if hasattr(self, "passive_crafts_var") and hasattr(self, "active_crafts_var") and hasattr(self, "stamina_recharged_var"):
                 notification_settings = {
                     "passive_crafts_enabled": self.passive_crafts_var.get(),
                     "active_crafts_enabled": self.active_crafts_var.get(),
+                    "stamina_recharged_enabled": self.stamina_recharged_var.get(),
                 }
             else:
                 # Use default settings if UI not initialized
                 notification_settings = {
                     "passive_crafts_enabled": True,
                     "active_crafts_enabled": True,
+                    "stamina_recharged_enabled": True,
                 }
             self.notification_service.update_settings(notification_settings)
 
