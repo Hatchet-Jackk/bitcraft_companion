@@ -3,6 +3,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.33]
+### Added
+- **Stamina Processing and Notifications**: Implemented comprehensive stamina tracking system.
+  - Tracks stamina across active, resting, and idle statuses for all relevant entities.
+  - Real-time updates and display of current stamina state in the UI.
+  - Notifications for full stamina.
+
 ## [0.2.32]
 ### Added
 - Enhance search parser to support multi-value OR/AND operations for more flexible filtering
