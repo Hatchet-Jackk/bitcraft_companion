@@ -19,6 +19,10 @@ class StaminaProcessor(BaseProcessor):
         self._last_status_change: Dict[int, float] = {}
         self._persistent_max_stamina: Dict[int, float] = {}
 
+        # Track if stamina has decreased at least once to allow notifications
+        self._stamina_has_decreased = False
+        self._initial_subscription_received = False
+
     def get_table_names(self):
         """Return the table names this processor handles."""
         return ["stamina_state", "character_stats_state"]
@@ -117,6 +121,9 @@ class StaminaProcessor(BaseProcessor):
                     stamina_state = StaminaState.from_dict(data)
                     self._update_stamina_state(stamina_state, current_time)
                     stamina_records_processed += 1
+
+                    # Mark that initial subscription has been received
+                    self._initial_subscription_received = True
 
                 except Exception as e:
                     logging.error(f"Error processing stamina subscription insert: {e}")
@@ -248,7 +255,11 @@ class StaminaProcessor(BaseProcessor):
 
         old_status = self._current_activity_status.get(player_id)
         status_changed = new_status != old_status
-        
+
+        # Track if stamina has decreased (from transaction updates, not initial subscription)
+        if previous_stamina is not None and current_stamina < previous_stamina and self._initial_subscription_received:
+            self._stamina_has_decreased = True
+
         self._current_activity_status[player_id] = new_status
         self._last_status_change[player_id] = timestamp
 
@@ -266,10 +277,9 @@ class StaminaProcessor(BaseProcessor):
         )
 
         if status_changed and old_status == "Resting" and new_status == "Idle":
-            self._show_stamina_notification(
-                "Stamina Recharged",
-                "Your stamina is fully recharged and ready for action!"
-            )
+            # Only send notification if stamina has decreased at least once since initial load
+            if self._stamina_has_decreased:
+                self._show_stamina_notification("Stamina Recharged", "Your stamina is fully recharged and ready for action!")
 
     def _get_max_stamina_for_player(self, player_id: int) -> float:
         """Get max stamina for player from persistent storage, character stats cache, or use default."""
