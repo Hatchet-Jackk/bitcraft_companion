@@ -59,6 +59,7 @@ class NotificationService:
                 "notifications": {
                     "passive_crafts_enabled": True,
                     "active_crafts_enabled": True,
+                    "stamina_recharged_enabled": True,
                 }
             }
             
@@ -70,6 +71,7 @@ class NotificationService:
                 "notifications": {
                     "passive_crafts_enabled": True,
                     "active_crafts_enabled": True,
+                    "stamina_recharged_enabled": True,
                 }
             }
     
@@ -192,6 +194,26 @@ class NotificationService:
             
         except Exception as e:
             logging.error(f"Error showing active craft notification: {e}")
+    
+    def show_stamina_notification(self, title: str, message: str):
+        """
+        Show a notification for stamina events.
+        
+        Args:
+            title: Notification title
+            message: Notification message
+        """
+        try:
+            if not self.settings.get("notifications", {}).get("stamina_recharged_enabled", True):
+                return
+            
+            icon = "⚡"
+            self._show_notification(title, message, icon)
+                
+            logging.info(f"Stamina notification shown: {title}")
+            
+        except Exception as e:
+            logging.error(f"Error showing stamina notification: {e}")
     
     def show_test_notification(self):
         """Show a test notification for settings verification."""

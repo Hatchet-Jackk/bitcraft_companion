@@ -108,6 +108,7 @@ Use operators for precise numeric filtering:
 - `tier>=4` - Tier 4 or higher
 - `tier<=2` - Tier 2 or lower
 - `tier!=3` - Not tier 3
+- `item=ore||plank` - Return item values with EITHER keyword
 
 #### **Combined Search**
 Mix multiple keywords and regular terms:
