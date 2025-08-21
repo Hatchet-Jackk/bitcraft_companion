@@ -225,17 +225,17 @@ class SettingsWindow(ctk.CTkToplevel):
 
         # Create passive crafts section
         self._create_notification_group(
-            parent, "Passive Craft Notifications", "passive_crafts_enabled", "passive_crafts_sound", "jobs_done.mp3"
+            parent, "Passive Craft Notifications", "passive_crafts_enabled", "passive_crafts_sound", "system_default"
         )
 
         # Create active crafts section
         self._create_notification_group(
-            parent, "Active Craft Notifications", "active_crafts_enabled", "active_crafts_sound", "notification.wav"
+            parent, "Active Craft Notifications", "active_crafts_enabled", "active_crafts_sound", "system_default"
         )
 
         # Create stamina recharged section
         self._create_notification_group(
-            parent, "Stamina Recharged Notifications", "stamina_recharged_enabled", "stamina_recharged_sound", "piano.wav"
+            parent, "Stamina Recharged Notifications", "stamina_recharged_enabled", "stamina_recharged_sound", "system_default"
         )
 
     def _create_notification_group(self, parent, title, enabled_key, sound_key, default_sound):
@@ -523,11 +523,11 @@ class SettingsWindow(ctk.CTkToplevel):
             default_settings = {
                 "notifications": {
                     "passive_crafts_enabled": True,
-                    "passive_crafts_sound": "jobs_done.mp3",
+                    "passive_crafts_sound": "system_default",
                     "active_crafts_enabled": True,
-                    "active_crafts_sound": "notification.wav",
+                    "active_crafts_sound": "system_default",
                     "stamina_recharged_enabled": True,
-                    "stamina_recharged_sound": "piano.wav",
+                    "stamina_recharged_sound": "system_default",
                 },
                 "debug": {"show_test_notification": True},
             }
@@ -564,11 +564,11 @@ class SettingsWindow(ctk.CTkToplevel):
             return {
                 "notifications": {
                     "passive_crafts_enabled": True,
-                    "passive_crafts_sound": "jobs_done.mp3",
+                    "passive_crafts_sound": "system_default",
                     "active_crafts_enabled": True,
-                    "active_crafts_sound": "notification.wav",
+                    "active_crafts_sound": "system_default",
                     "stamina_recharged_enabled": True,
-                    "stamina_recharged_sound": "piano.wav",
+                    "stamina_recharged_sound": "system_default",
                 },
                 "debug": {"show_test_notification": True},
             }

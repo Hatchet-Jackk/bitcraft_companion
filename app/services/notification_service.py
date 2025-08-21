@@ -65,11 +65,11 @@ class NotificationService:
             default_settings = {
                 "notifications": {
                     "passive_crafts_enabled": True,
-                    "passive_crafts_sound": "jobs_done.mp3",
+                    "passive_crafts_sound": "system_default",
                     "active_crafts_enabled": True,
-                    "active_crafts_sound": "notification.wav",
+                    "active_crafts_sound": "system_default",
                     "stamina_recharged_enabled": True,
-                    "stamina_recharged_sound": "piano.wav",
+                    "stamina_recharged_sound": "system_default",
                 }
             }
             
@@ -80,11 +80,11 @@ class NotificationService:
             return {
                 "notifications": {
                     "passive_crafts_enabled": True,
-                    "passive_crafts_sound": "jobs_done.mp3",
+                    "passive_crafts_sound": "system_default",
                     "active_crafts_enabled": True,
-                    "active_crafts_sound": "notification.wav",
+                    "active_crafts_sound": "system_default",
                     "stamina_recharged_enabled": True,
-                    "stamina_recharged_sound": "piano.wav",
+                    "stamina_recharged_sound": "system_default",
                 }
             }
     
@@ -166,7 +166,7 @@ class NotificationService:
                     message = f"{first_two} and {remaining_types} more types ready!"
             
             icon = "🛠️"
-            sound_file = self.settings.get("notifications", {}).get("passive_crafts_sound", "jobs_done.mp3")
+            sound_file = self.settings.get("notifications", {}).get("passive_crafts_sound", "system_default")
             self._show_notification(title, message, icon, sound_file)
             
             item_summary = ", ".join([f"{count}x {name}" for name, count in item_counts.items()])
@@ -195,7 +195,7 @@ class NotificationService:
             title = "Active Craft Complete!"
             message = f"{quantity}x {item_name} ready!" if quantity > 1 else f"{item_name} is ready!"
             icon = "🔨"
-            sound_file = self.settings.get("notifications", {}).get("active_crafts_sound", "notification.wav")
+            sound_file = self.settings.get("notifications", {}).get("active_crafts_sound", "system_default")
             
             self._show_notification(title, message, icon, sound_file)
             logging.debug(f"Active craft notification shown: {quantity}x {item_name}")
@@ -216,7 +216,7 @@ class NotificationService:
                 return
             
             icon = "⚡"
-            sound_file = self.settings.get("notifications", {}).get("stamina_recharged_sound", "piano.wav")
+            sound_file = self.settings.get("notifications", {}).get("stamina_recharged_sound", "system_default")
             self._show_notification(title, message, icon, sound_file)
             logging.debug(f"Stamina notification shown: {title}")
             
@@ -246,7 +246,7 @@ class NotificationService:
             title = "Passive Craft Complete!"
             message = "Your Iron Ingots are ready!"
             icon = "🛠️"
-            sound_file = self.settings.get("notifications", {}).get("passive_crafts_sound", "jobs_done.mp3")
+            sound_file = self.settings.get("notifications", {}).get("passive_crafts_sound", "system_default")
             
             self._show_notification(title, message, icon, sound_file)
             logging.debug(f"Test passive craft notification shown with sound: {sound_file}")
@@ -264,7 +264,7 @@ class NotificationService:
             title = "Active Craft Complete!"
             message = "Your Wooden Plank is ready!"
             icon = "🔨"
-            sound_file = self.settings.get("notifications", {}).get("active_crafts_sound", "notification.wav")
+            sound_file = self.settings.get("notifications", {}).get("active_crafts_sound", "system_default")
             
             self._show_notification(title, message, icon, sound_file)
             logging.debug(f"Test active craft notification shown with sound: {sound_file}")
@@ -282,7 +282,7 @@ class NotificationService:
             title = "Stamina Recharged!"
             message = "Your stamina is fully restored!"
             icon = "⚡"
-            sound_file = self.settings.get("notifications", {}).get("stamina_recharged_sound", "piano.wav")
+            sound_file = self.settings.get("notifications", {}).get("stamina_recharged_sound", "system_default")
             
             self._show_notification(title, message, icon, sound_file)
             logging.debug(f"Test stamina notification shown with sound: {sound_file}")
