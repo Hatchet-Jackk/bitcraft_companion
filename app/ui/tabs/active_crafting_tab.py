@@ -255,6 +255,15 @@ class ActiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin):
         if self._has_data_changed(new_flattened_data):
             self.all_data = new_flattened_data
             self._increment_data_version()
+            
+            # Notify MainWindow that data loading completed (for loading overlay detection)
+            if hasattr(self.app, 'is_loading') and self.app.is_loading:
+                if hasattr(self.app, 'received_data_types'):
+                    self.app.received_data_types.add("active_crafting")
+                    logging.info(f"[ActiveCraftingTab] Notified MainWindow of active crafting data completion")
+                    if hasattr(self.app, '_check_all_data_loaded'):
+                        self.app._check_all_data_loaded()
+            
             self.apply_filter()
 
     def _on_data_error(self, error):

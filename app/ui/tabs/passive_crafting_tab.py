@@ -441,6 +441,14 @@ class PassiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin):
             self.all_data = processed_data
             logging.info(f"[PassiveCraftingTab] Background processing completed - {len(processed_data)} items")
             
+            # Notify MainWindow that data loading completed (for loading overlay detection)
+            if hasattr(self.app, 'is_loading') and self.app.is_loading:
+                if hasattr(self.app, 'received_data_types'):
+                    self.app.received_data_types.add("crafting")
+                    logging.info(f"[PassiveCraftingTab] Notified MainWindow of crafting data completion")
+                    if hasattr(self.app, '_check_all_data_loaded'):
+                        self.app._check_all_data_loaded()
+            
             # Apply current filters to new data
             self._apply_all_filters()
             

@@ -262,6 +262,14 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin):
             self.all_data = table_data
             logging.info(f"[ClaimInventoryTab] Background processing completed - {len(table_data)} items")
             
+            # Notify MainWindow that data loading completed (for loading overlay detection)
+            if hasattr(self.app, 'is_loading') and self.app.is_loading:
+                if hasattr(self.app, 'received_data_types'):
+                    self.app.received_data_types.add("inventory")
+                    logging.info(f"[ClaimInventoryTab] Notified MainWindow of inventory data completion")
+                    if hasattr(self.app, '_check_all_data_loaded'):
+                        self.app._check_all_data_loaded()
+            
             # Apply filter and render table
             self.apply_filter()
             

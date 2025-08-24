@@ -314,6 +314,14 @@ class TravelerTasksTab(ctk.CTkFrame, OptimizedTableMixin):
             self.all_data = processed_data
             logging.info(f"[TravelerTasksTab] Background processing completed - {len(processed_data)} traveler groups")
             
+            # Notify MainWindow that data loading completed (for loading overlay detection)
+            if hasattr(self.app, 'is_loading') and self.app.is_loading:
+                if hasattr(self.app, 'received_data_types'):
+                    self.app.received_data_types.add("tasks")
+                    logging.info(f"[TravelerTasksTab] Notified MainWindow of tasks data completion")
+                    if hasattr(self.app, '_check_all_data_loaded'):
+                        self.app._check_all_data_loaded()
+            
             self.apply_filter()
                 
         except Exception as e:
