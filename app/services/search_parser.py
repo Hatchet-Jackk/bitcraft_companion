@@ -30,7 +30,7 @@ class SearchParser:
     # Define which fields are numeric for proper comparison handling
     NUMERIC_FIELDS = {
         'tier', 'quantity', 'qty', 'time', 'effort', 'remaining_effort', 
-        'time_remaining', 'jobs', 'accept_help'
+        'time_remaining', 'jobs', 'accept_help', 'need', 'supply', 'progress'
     }
     
     # Define field aliases for different tabs
@@ -49,7 +49,21 @@ class SearchParser:
         'time': ['time_remaining', 'time'],
         'effort': ['remaining_effort', 'effort'],
         'jobs': ['jobs'],
-        'help': ['accept_help']
+        'help': ['accept_help'],
+        # Codex-specific field aliases
+        'material': ['material', 'name'],  # Material name
+        'mats': ['material', 'name'],  # Shortcut alias for materials
+        'need': ['need'],  # Quantity needed
+        'supply': ['supply'],  # Quantity supplied/available
+        'progress': ['progress'],  # Progress percentage
+        'profession': ['profession'],  # Profession type (Cloth, Metal, Plank, Brick, Leather, Journal)
+        # Additional profession aliases for the new product names
+        'cloth': ['profession'],
+        'metal': ['profession'], 
+        'plank': ['profession'],
+        'brick': ['profession'],
+        'leather': ['profession'],
+        'journal': ['profession']
     }
     
     def __init__(self):
@@ -119,10 +133,7 @@ class SearchParser:
             processed_values = []
             for v in values:
                 if field in self.NUMERIC_FIELDS:
-                    try:
-                        processed_values.append(float(v) if '.' in v else int(v))
-                    except ValueError:
-                        processed_values.append(v.lower())
+                    processed_values.append(self._convert_field_value(field, v))
                 else:
                     processed_values.append(v.lower())
             return {'type': 'or', 'values': processed_values}
@@ -133,26 +144,40 @@ class SearchParser:
             processed_values = []
             for v in values:
                 if field in self.NUMERIC_FIELDS:
-                    try:
-                        processed_values.append(float(v) if '.' in v else int(v))
-                    except ValueError:
-                        processed_values.append(v.lower())
+                    processed_values.append(self._convert_field_value(field, v))
                 else:
                     processed_values.append(v.lower())
             return {'type': 'and', 'values': processed_values}
         
         # Standard single value processing
         if field in self.NUMERIC_FIELDS:
-            try:
-                if '.' in value_str:
-                    return float(value_str)
-                else:
-                    return int(value_str)
-            except ValueError:
-                self.logger.warning(f"Failed to convert '{value_str}' to number for field '{field}', treating as string")
-                return value_str.lower()
+            return self._convert_field_value(field, value_str)
         
         return value_str.lower()
+    
+    def _convert_field_value(self, field: str, value_str: str) -> Union[int, float, str]:
+        """
+        Convert a field value with special handling for progress field percentages.
+        
+        Args:
+            field: The field name
+            value_str: The raw value string
+            
+        Returns:
+            Converted value appropriate for the field type
+        """
+        try:
+            # Special handling for progress field with percentage values
+            if field == 'progress' and value_str.endswith('%'):
+                # Convert percentage to decimal (e.g., "50%" -> 0.5)
+                return float(value_str[:-1]) / 100.0
+            elif '.' in value_str:
+                return float(value_str)
+            else:
+                return int(value_str)
+        except ValueError:
+            self.logger.warning(f"Failed to convert '{value_str}' to number for field '{field}', treating as string")
+            return value_str.lower()
     
     def match_row(self, row: Dict[str, Any], parsed_query: Dict[str, Any]) -> bool:
         """
@@ -431,7 +456,8 @@ class SearchParser:
             # Handle percentage values
             if clean_value.endswith('%'):
                 try:
-                    return float(clean_value[:-1])
+                    # Convert percentage to decimal for progress field comparison
+                    return float(clean_value[:-1]) / 100.0
                 except ValueError:
                     pass
             
@@ -489,5 +515,7 @@ class SearchParser:
             return base_suggestions + ['building=workshop', 'crafter=john', 'time<60', 'item=log||plank||lumber']
         elif 'task' in tab_name.lower():
             return base_suggestions + ['traveler=merchant', 'status=active', 'status=active||pending']
+        elif 'codex' in tab_name.lower():
+            return ['material=stone', 'mats=iron', 'tier>3', 'need<100', 'supply>50', 'progress<100%', 'progress>=50%', 'profession=cloth', 'material=iron||copper', 'tier>=4']
         
         return base_suggestions
