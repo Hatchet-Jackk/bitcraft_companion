@@ -8,12 +8,14 @@ from tkinter import Menu, ttk
 
 from app.ui.components.filter_popup import FilterPopup
 from app.ui.components.optimized_table_mixin import OptimizedTableMixin
+from app.ui.mixins.async_rendering_mixin import AsyncRenderingMixin
+from app.ui.mixins.loading_state_mixin import LoadingStateMixin
 from app.ui.styles import TreeviewStyles
 from app.ui.themes import get_color, register_theme_callback
 from app.services.search_parser import SearchParser
 
 
-class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin):
+class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin, LoadingStateMixin):
     """The tab for displaying claim inventory with expandable rows for multi-container items."""
 
     def __init__(self, master, app):
@@ -52,6 +54,90 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin):
         
         # Initialize optimization features after UI is created
         self.__init_optimization__(max_workers=2, max_cache_size_mb=75)
+        
+        # Initialize loading state management
+        self._setup_loading_state()
+        
+        # Initialize async rendering with inventory specific settings
+        self._setup_async_rendering(
+            chunk_size=75,  # Larger chunks for simpler inventory data
+            enable_progress=True
+        )
+        
+        # Configure thresholds for claim inventory (typically 505+ items)
+        self._configure_async_rendering(
+            enabled=True,
+            chunk_size=75,
+            async_threshold=50,  # Use async for medium datasets
+            progress_threshold=150  # Show progress for large datasets
+        )
+        
+        # Track current async operation for cancellation
+        self.current_render_operation = None
+        
+        # Tab identification for visibility checks
+        self._tab_name = "Claim Inventory"
+
+    def _format_row_for_display(self, row_data: Dict) -> Dict[str, str]:
+        """Format an inventory item for async display rendering with hierarchical support."""
+        item_name = row_data.get("name", "")
+        containers = row_data.get("containers", {})
+        base_quantity = row_data.get("quantity", 0)
+
+        # Format quantity with change indicators
+        quantity_display = self._format_quantity_with_change(item_name, base_quantity)
+        
+        # Generate tags for quantity changes
+        tags = []
+        if item_name in self.quantity_changes:
+            change = self.quantity_changes[item_name]
+            if change > 0:
+                tags.append("quantity_increase")
+            elif change < 0:
+                tags.append("quantity_decrease")
+
+        # Base row data
+        formatted_row = {
+            "Item": item_name,
+            "Tier": str(row_data.get("tier", "")),
+            "Quantity": quantity_display,
+            "Tag": str(row_data.get("tag", "")),
+            "Containers": f"{len(containers)} Containers" if len(containers) > 1 else next(iter(containers.keys()), "N/A"),
+            "_tags": tuple(tags)
+        }
+        
+        # Add hierarchical data for multi-container items
+        if len(containers) > 1:
+            # Add unique identifier for this parent item
+            formatted_row["_item_key"] = self._generate_item_key(row_data)
+            
+            # Create child entries for each container
+            children = []
+            for container_name, container_quantity in containers.items():
+                container_quantity_display = self._format_quantity_with_change(item_name, container_quantity, container_name)
+                
+                # Generate tags for container-level changes
+                container_tags = []
+                if (item_name in self.container_quantity_changes and 
+                    container_name in self.container_quantity_changes[item_name]):
+                    change = self.container_quantity_changes[item_name][container_name]
+                    if change > 0:
+                        container_tags.append("quantity_increase")
+                    elif change < 0:
+                        container_tags.append("quantity_decrease")
+                
+                children.append({
+                    "Item": "",  # Empty for child rows
+                    "Tier": "",
+                    "Quantity": container_quantity_display,
+                    "Tag": "",
+                    "Containers": container_name,
+                    "_tags": tuple(container_tags)
+                })
+            
+            formatted_row["_children"] = children
+
+        return formatted_row
 
     def _create_widgets(self):
         """Creates the styled Treeview and its scrollbars."""
@@ -202,8 +288,10 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin):
                 sample_items = list(new_data.keys())[:3]
                 logging.debug(f"[ClaimInventoryTab] Sample items in update: {sample_items}")
 
-            # Use background processing for large datasets
+            # Show loading state for large datasets
             if isinstance(new_data, dict) and len(new_data) > 100:
+                self._show_loading("Processing inventory data...")
+                
                 self._submit_background_task(
                     "inventory_processing",
                     self._process_inventory_data_background,
@@ -259,8 +347,12 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin):
             # Calculate quantity changes
             self._calculate_quantity_changes(current_quantities, current_container_quantities)
             
+            # Store raw data - formatting happens during rendering
             self.all_data = table_data
-            logging.info(f"[ClaimInventoryTab] Background processing completed - {len(table_data)} items")
+            logging.info(f"[ClaimInventoryTab] Background processing completed - {len(table_data)} items (with hierarchy)")
+            
+            # Hide loading state
+            self._hide_loading()
             
             # Notify MainWindow that data loading completed (for loading overlay detection)
             if hasattr(self.app, 'is_loading') and self.app.is_loading:
@@ -275,10 +367,13 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin):
             
         except Exception as e:
             logging.error(f"Error handling background inventory processing result: {e}")
+            self._hide_loading()  # Hide loading even on error
 
     def _on_inventory_processing_error(self, error):
         """Callback when background inventory processing fails."""
         logging.error(f"Background inventory processing failed: {error}")
+        # Hide loading state
+        self._hide_loading()
         # Fallback to synchronous processing
         self._process_inventory_data_sync(self._last_raw_data if hasattr(self, '_last_raw_data') else {})
 
@@ -307,8 +402,9 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin):
             # Calculate quantity changes
             self._calculate_quantity_changes(current_quantities, current_container_quantities)
             
+            # Store raw data - formatting happens during rendering
             self.all_data = table_data
-            logging.info(f"[ClaimInventoryTab] Successfully processed {len(table_data)} inventory items")
+            logging.info(f"[ClaimInventoryTab] Successfully processed {len(table_data)} inventory items (with hierarchy)")
         else:
             self.all_data = new_data if isinstance(new_data, list) else []
             logging.info(f"[ClaimInventoryTab] Set data to list with {len(self.all_data)} items")
@@ -510,46 +606,46 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin):
         return None
     
     def _filter_data_background(self, all_data, search_text, active_filters):
-        """Background thread filtering operation."""
+        """Background thread filtering operation - works with raw inventory data."""
         temp_data = all_data[:]
 
-        # Apply column filters first
+        # Apply column filters first (work with raw data field names)
         if active_filters:
             for header, values in active_filters.items():
                 if header.lower() == "containers":
                     temp_data = [row for row in temp_data if self._container_matches_filter(row, values)]
                 else:
-                    # Map header names to data keys
-                    header_to_key = {"Item": "name"}
+                    # Map header names to raw data keys
+                    header_to_key = {"Item": "name", "Tier": "tier", "Quantity": "quantity", "Tag": "tag"}
                     data_key = header_to_key.get(header, header.lower())
                     temp_data = [row for row in temp_data if str(row.get(data_key, "")) in values]
 
-        # Apply keyword-based search
+        # Apply keyword-based search (work with raw data)
         if search_text:
-            parsed_query = self.search_parser.parse_search_query(search_text)
-            temp_data = [row for row in temp_data if self.search_parser.match_row(row, parsed_query)]
+            search_term = search_text.lower()
+            temp_data = [row for row in temp_data if self._row_matches_search(row, search_term)]
 
         return temp_data
     
     def _filter_data_sync(self, search_text):
-        """Synchronous filtering operation."""
+        """Synchronous filtering operation - works with raw inventory data."""
         temp_data = self.all_data[:]
 
-        # Apply column filters first
+        # Apply column filters first (work with raw data field names)
         if self.active_filters:
             for header, values in self.active_filters.items():
                 if header.lower() == "containers":
                     temp_data = [row for row in temp_data if self._container_matches_filter(row, values)]
                 else:
-                    # Map header names to data keys
-                    header_to_key = {"Item": "name"}
+                    # Map header names to raw data keys
+                    header_to_key = {"Item": "name", "Tier": "tier", "Quantity": "quantity", "Tag": "tag"}
                     data_key = header_to_key.get(header, header.lower())
                     temp_data = [row for row in temp_data if str(row.get(data_key, "")) in values]
 
-        # Apply keyword-based search
+        # Apply keyword-based search (work with raw data)
         if search_text:
-            parsed_query = self.search_parser.parse_search_query(search_text)
-            temp_data = [row for row in temp_data if self.search_parser.match_row(row, parsed_query)]
+            search_term = search_text.lower()
+            temp_data = [row for row in temp_data if self._row_matches_search(row, search_term)]
 
         self.filtered_data = temp_data
         self.sort_by(self.sort_column, self.sort_reverse)
@@ -580,6 +676,28 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin):
             locations_text = f"{len(containers)} Containers"
             return locations_text in selected_values
 
+        return False
+    
+    def _container_matches_formatted_filter(self, formatted_row, selected_values):
+        """Checks if a formatted row matches the container filter."""
+        containers_display = formatted_row.get("Containers", "")
+        return containers_display in selected_values
+    
+    def _row_matches_formatted_search(self, formatted_row, search_term):
+        """Check if formatted row matches search term."""
+        # Search in main display fields
+        searchable_fields = ["Item", "Tier", "Quantity", "Tag", "Containers"]
+        for field in searchable_fields:
+            if search_term in str(formatted_row.get(field, "")).lower():
+                return True
+        
+        # Also search in child containers if they exist
+        children = formatted_row.get("_children", [])
+        for child in children:
+            for field in searchable_fields:
+                if search_term in str(child.get(field, "")).lower():
+                    return True
+        
         return False
 
     def _row_matches_search(self, row, search_term):
@@ -693,74 +811,33 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin):
             logging.debug(traceback.format_exc())
 
     def _render_direct(self, data):
-        """Direct rendering for smaller datasets."""
-        # Clear existing rows
-        existing_children = self.tree.get_children()
-        self.tree.delete(*existing_children)
+        """Render inventory data using async rendering for better performance."""
+        # Cancel any existing render operation
+        if self.current_render_operation:
+            self._cancel_async_rendering(self.current_render_operation)
+            self.current_render_operation = None
 
-        rows_added = 0
-        child_rows_added = 0
-        for row_data in data:
-            item_name = row_data.get("name", "")
-            containers = row_data.get("containers", {})
-            base_quantity = row_data.get("quantity", 0)
+        if not data:
+            # Clear and show empty message
+            self.tree.delete(*self.tree.get_children())
+            empty_item = self.tree.insert("", "end", values=["No items in claim inventory", "", "", "", ""])
+            self.tree.item(empty_item, tags=("empty",))
+            return
 
-            # Format quantity with change indicators
-            quantity_display = self._format_quantity_with_change(item_name, base_quantity)
+        def completion_callback(item_count: int):
+            """Called when async rendering completes."""
+            self.current_render_operation = None
+            logging.debug(f"[ClaimInventoryTab] Async rendering completed - {item_count} items")
 
-            values = [
-                item_name,
-                str(row_data.get("tier", "")),
-                quantity_display,
-                str(row_data.get("tag", "")),
-                f"{len(containers)} Containers" if len(containers) > 1 else next(iter(containers.keys()), "N/A"),
-            ]
-
-            # Apply color tags only to quantity column when there are changes
-            tags = []
-            if item_name in self.quantity_changes:
-                change = self.quantity_changes[item_name]
-                if change > 0:
-                    tags.append("quantity_increase")
-                elif change < 0:
-                    tags.append("quantity_decrease")
-
-            try:
-                if len(containers) > 1:
-                    item_id = self.tree.insert("", "end", values=values, tags=tags)
-                else:
-                    item_id = self.tree.insert("", "end", text="", values=values, open=False, tags=tags)
-                rows_added += 1
-
-                if len(containers) > 1:
-                    for container_name, quantity in containers.items():
-                        # Format container quantity with container-specific changes
-                        container_quantity_display = self._format_quantity_with_change(item_name, quantity, container_name)
-                        
-                        # Apply container-specific color tags when there are changes
-                        child_tags = ["child"]
-                        if (item_name in self.container_quantity_changes and 
-                            container_name in self.container_quantity_changes[item_name]):
-                            change = self.container_quantity_changes[item_name][container_name]
-                            if change > 0:
-                                child_tags.append("quantity_increase")
-                            elif change < 0:
-                                child_tags.append("quantity_decrease")
-                        
-                        child_values = [
-                            f"  └─ {item_name}",
-                            str(row_data.get("tier", "")),
-                            container_quantity_display,
-                            str(row_data.get("tag", "")),
-                            container_name,
-                        ]
-                        self.tree.insert(item_id, "end", text="", values=child_values, tags=child_tags)
-                        child_rows_added += 1
-
-            except Exception as e:
-                logging.error(f"[ClaimInventoryTab] Error adding row for {item_name}: {e}")
-
-        logging.debug(f"[ClaimInventoryTab] Direct render complete - added {rows_added} main rows, {child_rows_added} child rows")
+        # Start async rendering with proper formatting
+        self.current_render_operation = self._render_tree_async(
+            tree_widget=self.tree,
+            data=data,
+            columns=self.headers,
+            format_row_func=self._format_row_for_display,
+            completion_callback=completion_callback,
+            operation_name="claim_inventory"
+        )
     
     def _setup_column_headers(self):
         """Set up column headers and initial widths."""
@@ -838,9 +915,20 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin):
     def destroy(self):
         """Clean up resources when tab is destroyed."""
         try:
+            # Cancel any active async rendering operations
+            if hasattr(self, 'current_render_operation') and self.current_render_operation:
+                self._cancel_async_rendering(self.current_render_operation)
+            
+            # Clean up loading state
+            self._cleanup_loading_state()
+            
+            # Clean up async rendering resources
+            self._cleanup_async_rendering()
+            
+            # Clean up optimization resources
             self.optimization_shutdown()
         except Exception as e:
-            logging.error(f"Error during optimization shutdown: {e}")
+            logging.error(f"Error during tab cleanup: {e}")
         super().destroy()
 
     def _get_comparison_fields(self) -> List[str]:

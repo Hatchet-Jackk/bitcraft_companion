@@ -6,12 +6,13 @@ from tkinter import Menu, ttk
 
 from app.ui.components.filter_popup import FilterPopup
 from app.ui.components.optimized_table_mixin import OptimizedTableMixin
+from app.ui.mixins.async_rendering_mixin import AsyncRenderingMixin
 from app.ui.styles import TreeviewStyles
 from app.ui.themes import get_color, register_theme_callback
 from app.services.search_parser import SearchParser
 
 
-class PassiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin):
+class PassiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
     """The tab for displaying passive crafting status with item-focused, expandable rows."""
 
     def __init__(self, master, app):
@@ -43,6 +44,26 @@ class PassiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin):
         
         # Initialize optimization features after UI is created
         self.__init_optimization__(max_workers=2, max_cache_size_mb=50)
+        
+        # Initialize async rendering with passive crafting specific settings
+        self._setup_async_rendering(
+            chunk_size=50,  # Smaller chunks for complex hierarchical data
+            enable_progress=True
+        )
+        
+        # Configure thresholds for passive crafting (typically 188+ items)
+        self._configure_async_rendering(
+            enabled=True,
+            chunk_size=50,
+            async_threshold=30,  # Lower threshold due to complex rendering
+            progress_threshold=80  # Show progress for medium-large datasets
+        )
+        
+        # Track current async operation for cancellation
+        self.current_render_operation = None
+        
+        # Tab identification for visibility checks
+        self._tab_name = "Passive Crafting"
 
     def _create_widgets(self):
         """Creates the styled Treeview and its scrollbars."""
@@ -483,7 +504,12 @@ class PassiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin):
             self.has_had_first_load = True
 
     def _update_display(self):
-        """Update the TreeView display with optimization support."""
+        """Update the TreeView display with async rendering support."""
+        # Cancel any existing render operation
+        if self.current_render_operation:
+            self._cancel_async_rendering(self.current_render_operation)
+            self.current_render_operation = None
+
         if not self.filtered_data:
             # Clear and show empty message
             self.tree.delete(*self.tree.get_children())
@@ -491,16 +517,49 @@ class PassiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin):
             self.tree.item(empty_item, tags=("empty",))
             return
 
-        # Use lazy loading for large datasets
-        if len(self.filtered_data) > self._lazy_load_threshold:
-            self._render_lazy_loading(self.filtered_data)
-        else:
-            # Direct rendering for smaller datasets
-            self.tree.delete(*self.tree.get_children())
+        # Clear the UI cache for fresh rendering
+        if hasattr(self, '_ui_item_cache'):
             self._ui_item_cache.clear()
+
+        # Use async rendering for datasets
+        def completion_callback(item_count: int):
+            """Called when async rendering completes."""
+            self.current_render_operation = None
             
-            for item in self.filtered_data:
-                self._insert_tree_item(item)
+            # Auto-expand on first load if enabled
+            if not self.has_had_first_load and self.auto_expand_on_first_load and item_count > 0:
+                self.has_had_first_load = True
+                self.after(100, self._expand_all_items)  # Small delay to ensure rendering is complete
+            elif not self.has_had_first_load:
+                self.has_had_first_load = True
+
+        # Use debounced rendering for frequent updates
+        self.current_render_operation = self._render_tree_debounced(
+            tree_widget=self.tree,
+            data=self.filtered_data,
+            columns=self.headers,
+            format_row_func=self._format_row_for_display,
+            completion_callback=completion_callback,
+            operation_name="passive_crafting"
+        )
+
+    def _format_row_for_display(self, item: Dict) -> Dict[str, str]:
+        """Format a passive crafting item for async display rendering."""
+        # Determine item-level tag based on time remaining (same logic as _add_item_to_tree)
+        item_tag = "ready" if "READY" in item.get("time_remaining", "") else "crafting"
+        
+        # This is for the main parent rows - child operations are handled separately
+        return {
+            "Item": item.get("item", ""),
+            "Tier": item.get("tier", ""),
+            "Quantity": item.get("total_quantity", ""),
+            "Tag": item.get("tag", ""),
+            "Jobs": f"{item.get('completed_jobs', 0)}/{item.get('total_jobs', 0)}",
+            "Time Remaining": item.get("time_remaining", ""),
+            "Crafter": item.get("crafter", ""),
+            "Building": item.get("building_name", ""),
+            "_tags": (item_tag,)  # Special field for tree item tags
+        }
 
     def _add_item_to_tree(self, item):
         """Add a single item with its operations to the tree."""
@@ -550,9 +609,17 @@ class PassiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin):
     def destroy(self):
         """Clean up resources when tab is destroyed."""
         try:
+            # Cancel any active async rendering operations
+            if hasattr(self, 'current_render_operation') and self.current_render_operation:
+                self._cancel_async_rendering(self.current_render_operation)
+            
+            # Clean up async rendering resources
+            self._cleanup_async_rendering()
+            
+            # Clean up optimization resources
             self.optimization_shutdown()
         except Exception as e:
-            logging.error(f"Error during optimization shutdown: {e}")
+            logging.error(f"Error during tab cleanup: {e}")
         super().destroy()
 
     def _get_comparison_fields(self) -> List[str]:
@@ -608,3 +675,19 @@ class PassiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin):
 
         item_key = self._generate_item_key(item_data)
         self._ui_item_cache[item_key] = parent_id
+    
+    def destroy(self):
+        """Clean up resources when tab is destroyed."""
+        try:
+            # Cancel any active async rendering operations
+            if hasattr(self, 'current_render_operation') and self.current_render_operation:
+                self._cancel_async_rendering(self.current_render_operation)
+            
+            # Clean up async rendering resources
+            self._cleanup_async_rendering()
+            
+            # Clean up optimization resources
+            self.optimization_shutdown()
+        except Exception as e:
+            logging.error(f"Error during tab cleanup: {e}")
+        super().destroy()

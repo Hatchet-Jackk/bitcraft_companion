@@ -194,16 +194,14 @@ class MainWindow(ctk.CTk, SearchableWindowMixin):
         self._create_tab_buttons()
         self.show_tab("Claim Inventory")
 
-        # Ensure loading overlay is visible on top and lock tab buttons
-        # Just show the overlay and set initial state
-        logging.debug(f"[LOADING STATE] Showing initial loading overlay")
-        self.loading_overlay.grid(row=0, column=0, sticky="nsew")
-        self.loading_overlay.tkraise()
-        self._set_tab_buttons_state("disabled")
-
-        # Start loading animation
-        if hasattr(self, "loading_indicator"):
-            self._start_loading_animation()
+        # Enable immediate tab navigation - no blocking startup
+        # Individual tabs will show their own loading states
+        logging.debug(f"[NON-BLOCKING STARTUP] Tabs ready for immediate navigation")
+        self._set_tab_buttons_state("normal")
+        
+        # Hide main loading overlay - let tabs handle their own loading
+        self.is_loading = False
+        self.loading_overlay.grid_remove()
 
         # Start data processing with enhanced timer support and resize detection
         logging.debug("Starting data processing loop with enhanced timer support")
