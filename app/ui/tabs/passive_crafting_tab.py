@@ -1,4 +1,6 @@
 import logging
+
+
 from typing import Dict, List
 
 import customtkinter as ctk

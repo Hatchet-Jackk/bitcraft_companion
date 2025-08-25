@@ -235,7 +235,7 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
 
         # Create UI immediately (no blocking)
         self._create_widgets()
-        
+
         # Show loading overlay immediately - BEFORE any data operations
         self._show_loading_overlay()
 
@@ -536,28 +536,24 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
     def _load_all_profession_requirements_and_finish(self, claim_info):
         """Load profession requirements in background thread to avoid blocking."""
         # Start background calculation
-        calc_thread = threading.Thread(
-            target=self._calculate_requirements_async, 
-            args=(claim_info,), 
-            daemon=True
-        )
+        calc_thread = threading.Thread(target=self._calculate_requirements_async, args=(claim_info,), daemon=True)
         calc_thread.start()
-    
+
     def _calculate_requirements_async(self, claim_info):
         """Calculate requirements in background thread."""
         try:
             codex_service = self.data_service.codex_service
-            
+
             # This now uses caching and is much faster
             requirements = codex_service.calculate_tier_requirements()
-            
+
             # Schedule UI update on main thread
             self.after(10, lambda: self._update_ui_with_requirements(requirements))
-            
+
         except Exception as e:
             logging.error(f"Error calculating requirements: {e}")
             self.after(10, lambda: self._show_error_and_hide_loading(f"Error calculating requirements: {e}"))
-    
+
     def _update_ui_with_requirements(self, requirements):
         """Update UI with calculated requirements (runs on main thread)."""
         try:
@@ -589,7 +585,7 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
 
             # Hide loading overlay after successful data load
             self._hide_loading_overlay()
-            
+
         except Exception as e:
             logging.error(f"Error updating UI with requirements: {e}")
             self._show_error_and_hide_loading(f"Error updating UI: {e}")
@@ -636,6 +632,8 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
             target_tier = claim_info["target_tier"]
             target_codex = tier_names.get(target_tier, f"T{target_tier}")
 
+            logging.debug(f"Codex calculation: current_tier={current_tier}, target_tier={target_tier}")
+
             # Get codex requirements from codex service
             codex_requirements = {}
             try:
@@ -646,8 +644,8 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
 
             # Calculate codex count and progress
             supplies_cost = codex_requirements.get("supplies_cost", max(0, (target_tier - 2) * 5000))
-            # Estimate codex count based on supplies cost (rough estimate: 1 codex per 1000 supplies)
-            codex_required = max(1, supplies_cost // 1000)
+            # Get actual codex count from input array (not calculated from supplies)
+            codex_required = self._extract_codex_quantity_from_requirements(codex_requirements, target_tier)
             codex_current = 0  # TODO: Get from inventory/requirements calculation
 
             # Update tier progress header (top)
@@ -658,6 +656,31 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
             progress = codex_current / codex_required if codex_required > 0 else 0
             self.tier_progress_bar.set(progress)
 
+    def _extract_codex_quantity_from_requirements(self, requirements: Dict, target_tier: int) -> int:
+        """
+        Extract actual codex quantity from claim_tech_desc input array.
+
+        Args:
+            requirements: codex requirements dict containing input array
+            target_tier: target tier for fallback calculation
+
+        Returns:
+            Actual codex quantity required
+        """
+        try:
+            input_array = requirements.get("input", [])
+            logging.debug(f"DEBUG CODEX: tier {target_tier}, input_array: {input_array}")
+            logging.debug(f"DEBUG CODEX: requirements dict: {requirements}")
+            
+            if input_array and len(input_array) > 0 and len(input_array[0]) >= 2:
+                codex_quantity = input_array[0][1]
+                return codex_quantity
+        except (IndexError, TypeError) as e:
+            logging.error(f"Failed to extract codex quantity from input array for tier {target_tier}: {e}")
+
+        # NO FALLBACK - if we can't get the actual data, something is wrong
+        logging.error(f"NO CODEX DATA AVAILABLE FOR TIER {target_tier} - this should not happen")
+        return 0
 
     def _show_error(self, message):
         """Show an error message in the window."""
@@ -693,50 +716,43 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
             from pathlib import Path
             import os
 
-            loading_image_path = Path(__file__).parent.parent / "ui" / "images" / "loading.png"
+            loading_image_path = Path(__file__).parent.parent / "images" / "loading.png"
             logging.info(f"Attempting to load loading image from: {loading_image_path}")
             logging.info(f"Image path exists: {loading_image_path.exists()}")
             logging.info(f"Absolute path: {loading_image_path.resolve()}")
-            
+
             if loading_image_path.exists():
                 # Test image loading
                 img = Image.open(loading_image_path)
                 logging.info(f"Successfully loaded image: {img.size}, mode: {img.mode}")
-                
-                loading_image = ctk.CTkImage(
-                    light_image=img,
-                    dark_image=img,
-                    size=(64, 64)
-                )
+
+                loading_image = ctk.CTkImage(light_image=img, dark_image=img, size=(64, 64))
 
                 self.loading_image_label = ctk.CTkLabel(center_frame, image=loading_image, text="")
                 self.loading_image_label.pack(pady=(0, 20))
-                
+
                 # Keep a reference to prevent garbage collection
                 self._loading_image_ref = loading_image
-                
+
                 logging.info("Loading image displayed successfully")
             else:
                 logging.warning(f"Loading image not found: {loading_image_path}")
-                
+
                 # Fallback: show text-based loading indicator
                 self.loading_image_label = ctk.CTkLabel(
                     center_frame,
                     text="⟳",  # Unicode loading symbol
                     font=ctk.CTkFont(size=48),
-                    text_color=get_color("TEXT_ACCENT")
+                    text_color=get_color("TEXT_ACCENT"),
                 )
                 self.loading_image_label.pack(pady=(0, 20))
-                
+
         except Exception as e:
             logging.error(f"Error loading loading image: {e}")
-            
+
             # Fallback: show text-based loading indicator
             self.loading_image_label = ctk.CTkLabel(
-                center_frame,
-                text="⟳",  # Unicode loading symbol
-                font=ctk.CTkFont(size=48),
-                text_color=get_color("TEXT_ACCENT")
+                center_frame, text="⟳", font=ctk.CTkFont(size=48), text_color=get_color("TEXT_ACCENT")  # Unicode loading symbol
             )
             self.loading_image_label.pack(pady=(0, 20))
 
@@ -790,7 +806,7 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
             )
 
             # Register all profession tabs with search state manager
-            if hasattr(self, 'search_state_manager'):
+            if hasattr(self, "search_state_manager"):
                 for profession in self.professions:
                     profession_window_id = f"codex_{profession}"
                     self.search_state_manager.register_window(profession_window_id)
@@ -818,103 +834,103 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
 
     def _switch_search_context(self, new_profession: str):
         """Switch search context to a new profession, preserving per-tab search state."""
-        if not hasattr(self, 'search_bar') or not hasattr(self, 'search_state_manager'):
+        if not hasattr(self, "search_bar") or not hasattr(self, "search_state_manager"):
             return
-            
+
         try:
             # Save current search state for the old profession
             if self.active_profession:
                 old_window_id = f"codex_{self.active_profession}"
                 current_search = self.search_bar.get_search_text()
                 self.search_state_manager.save_search_state(old_window_id, current_search)
-            
+
             # Update active profession
             self.active_profession = new_profession
-            
+
             # Switch to new profession's search context
             new_window_id = f"codex_{new_profession}"
             self.window_id = new_window_id
-            
+
             # Restore search state for new profession
             saved_search = self.search_state_manager.restore_search_state(new_window_id)
             if saved_search:
                 self.search_bar.set_search_text(saved_search)
             else:
                 self.search_bar.clear_search()
-            
+
             # Update placeholder text
             self.search_bar.set_placeholder_text(self._get_profession_search_placeholder())
-            
+
             # Trigger search update
             self._apply_search_filter()
-            
+
             logging.debug(f"Switched search context to {new_profession} (ID: {new_window_id})")
-            
+
         except Exception as e:
             logging.error(f"Error switching search context to {new_profession}: {e}")
 
     def update_data(self, inventory_data):
         """
         Handle live inventory updates - recalculate requirements when inventory changes.
-        
+
         Args:
             inventory_data: New inventory data (dict or any data structure)
         """
         try:
             # Only update if we have loaded data and a codex service
-            if not hasattr(self, 'data_service') or not self.data_service:
+            if not hasattr(self, "data_service") or not self.data_service:
                 return
-                
-            if not hasattr(self.data_service, 'codex_service') or not self.data_service.codex_service:
+
+            if not hasattr(self.data_service, "codex_service") or not self.data_service.codex_service:
                 return
-                
+
             # Only update if we have requirements data loaded
-            if not hasattr(self, 'all_requirements') or not self.all_requirements:
+            if not hasattr(self, "all_requirements") or not self.all_requirements:
                 return
-                
+
             # Invalidate codex service caches since inventory changed
             self.data_service.codex_service.invalidate_cache()
-            
+
             # Debounce updates to avoid excessive recalculation
-            if hasattr(self, '_update_timer'):
+            if hasattr(self, "_update_timer"):
                 self.after_cancel(self._update_timer)
-            
+
             # Schedule update after short delay
             self._update_timer = self.after(500, self._perform_live_update)
-            
+
             logging.debug("Scheduled live codex update due to inventory change")
-            
+
         except Exception as e:
             logging.error(f"Error in codex live update: {e}")
-    
+
     def _perform_live_update(self):
         """Perform the actual live update of requirements."""
         try:
             # Clear the update timer
-            if hasattr(self, '_update_timer'):
+            if hasattr(self, "_update_timer"):
                 del self._update_timer
-            
+
             # Recalculate requirements with fresh inventory data
             codex_service = self.data_service.codex_service
             updated_requirements = codex_service.calculate_tier_requirements()
-            
+
             # Update UI with new requirements
             self.all_requirements = updated_requirements
-            
+
             # Update each profession tab with new data
             for profession, materials in updated_requirements.items():
                 if profession in self.profession_tabs:
                     self.profession_tabs[profession].update_materials(materials)
-            
+
             # Update progress summary
             self._update_progress_summary()
-            
+
             # Reapply current search filter
-            if hasattr(self, 'search_bar'):
+            if hasattr(self, "search_bar"):
                 self._apply_search_filter()
-            
+
             logging.debug("Completed live codex update")
-            
+
         except Exception as e:
             logging.error(f"Error performing live codex update: {e}")
 

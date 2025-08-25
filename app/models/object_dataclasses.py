@@ -2264,6 +2264,29 @@ class ClaimTechDesc:
             xp_to_mint_hex_coin=data.get("xp_to_mint_hex_coin", 0),
         )
 
+    @classmethod
+    def from_array(cls, data: list) -> "ClaimTechDesc":
+        """Create ClaimTechDesc from transaction array format."""
+        if not isinstance(data, list):
+            raise ValueError(f"ClaimTechDesc.from_array requires list, got: {type(data)}")
+        
+        if len(data) < 11:
+            raise ValueError(f"ClaimTechDesc requires array with at least 11 elements, got {len(data)}")
+        
+        return cls(
+            id=data[0] if len(data) > 0 else 0,
+            description=data[1] if len(data) > 1 else "",
+            tier=data[2] if len(data) > 2 else 0,
+            supplies_cost=data[3] if len(data) > 3 else 0,
+            research_time=data[4] if len(data) > 4 else 0,
+            requirements=data[5] if len(data) > 5 and isinstance(data[5], list) else [],
+            input=data[6] if len(data) > 6 and isinstance(data[6], list) else [],
+            members=data[7] if len(data) > 7 else 0,
+            area=data[8] if len(data) > 8 else 0,
+            supplies=data[9] if len(data) > 9 else 0,
+            xp_to_mint_hex_coin=data[10] if len(data) > 10 else 0,
+        )
+
     def get_required_codex_info(self) -> tuple[int, int]:
         """
         Extract (codex_id, quantity) from input array.

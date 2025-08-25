@@ -314,34 +314,51 @@ class CodexService:
         """
         Get codex requirements for a specific tier from reference data.
         
-        Uses cached reference data instead of queries.
+        Uses cached reference data from the reference processor.
         """
         try:
-            # Get claim tech desc from reference data cache
-            if hasattr(self.data_service, 'query_service'):
-                reference_data = self.data_service.query_service.get_reference_data()
-                
-                if 'claim_tech_desc' in reference_data:
-                    for tech_desc in reference_data['claim_tech_desc']:
-                        if isinstance(tech_desc, dict) and tech_desc.get('tier') == tier:
-                            return {
-                                'tier': tier,
-                                'supplies_cost': tech_desc.get('supplies_cost', 0),
-                                'requirements': tech_desc.get('requirements', []),
-                                'input': tech_desc.get('input', [])
-                            }
+            reference_processor = None
+            if hasattr(self.data_service, 'processors'):
+                for processor in self.data_service.processors:
+                    if type(processor).__name__ == 'ReferenceDataProcessor':
+                        reference_processor = processor
+                        break
             
-            # Fallback: estimate based on tier
-            return {
-                'tier': tier,
-                'supplies_cost': max(0, (tier - 2) * 5000),  # T3=5k, T4=10k, T5=15k, etc.
-                'requirements': [tier * 100] if tier > 1 else [],  # Previous tier marker
-                'input': []
-            }
+            if reference_processor:
+                # Get claim_tech_desc items from the processor cache
+                tech_items = reference_processor.get_reference_items('claim_tech_desc')
+                
+                for tech_item in tech_items:
+                    if hasattr(tech_item, 'tier') and tech_item.tier == tier:
+                        return {
+                            'tier': tier,
+                            'supplies_cost': tech_item.supplies_cost,
+                            'requirements': tech_item.requirements,
+                            'input': tech_item.input
+                        }
+                
+                # Also check the backward compatibility dict format
+                if hasattr(reference_processor, 'reference_data') and reference_processor.reference_data:
+                    reference_data = reference_processor.reference_data
+                    if 'claim_tech_desc' in reference_data:
+                        for tech_desc in reference_data['claim_tech_desc']:
+                            if isinstance(tech_desc, dict) and tech_desc.get('tier') == tier:
+                                return {
+                                    'tier': tier,
+                                    'supplies_cost': tech_desc.get('supplies_cost', 0),
+                                    'requirements': tech_desc.get('requirements', []),
+                                    'input': tech_desc.get('input', [])
+                                }
+                
+            else:
+                logging.error(f"No ReferenceDataProcessor found in processors list")
+            
+            logging.error(f"Could not find tier {tier} data - returning error")
+            return {'tier': tier, 'supplies_cost': 0, 'requirements': [], 'input': [], 'error': 'no_data'}
             
         except Exception as e:
-            logging.debug(f"Error getting codex requirements for tier {tier}: {e}")
-            return {'tier': tier, 'supplies_cost': 0, 'requirements': [], 'input': []}
+            logging.error(f"Error getting codex requirements for tier {tier}: {e}")
+            return {'tier': tier, 'supplies_cost': 0, 'requirements': [], 'input': [], 'error': str(e)}
     
     def calculate_tier_requirements(self, current_tier: int = None, target_tier: int = None) -> Dict[str, Dict[str, float]]:
         """
