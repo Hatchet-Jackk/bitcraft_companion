@@ -220,9 +220,10 @@ class CodexProfessionTab(ctk.CTkFrame):
             if self.codex_window and hasattr(self.codex_window, "refined_mats"):
                 display_name = self.codex_window.refined_mats.get(self.profession_name)
                 if not display_name:
-                    display_name = f"Refined {self.profession_name.title()}"
+                    # Show error instead of fallback
+                    display_name = f"ERROR: No refined item for {self.profession_name}"
             else:
-                display_name = f"Refined {self.profession_name.title()}"
+                display_name = f"ERROR: No refined data"
 
             refined_text = f"T{target_tier} {display_name}: {refined_count}/{codex_required}"
             self.refined_status_label.configure(text=refined_text)
@@ -965,9 +966,9 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
         name = self.refined_mats.get(profession)
         if name:
             return name
-        # Fallback to sensible default
-        display_name = self.profession_display_names.get(profession, profession.title())
-        return f"Refined {display_name}"
+        # No fallback - return empty string to expose issues
+        logging.error(f"No refined item name found for {profession} T{target_tier} - check template generation")
+        return ""
 
     def _show_error(self, message):
         """Show an error message in the window."""

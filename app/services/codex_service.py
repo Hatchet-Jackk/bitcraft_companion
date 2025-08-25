@@ -20,6 +20,8 @@ import json
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
+from .cascading_inventory_service import CascadingInventoryCalculator, extract_dependency_trees_from_templates
+
 
 class CodexService:
     """
@@ -53,6 +55,10 @@ class CodexService:
         self._inventory_hash_cache = None  # current inventory hash
         self._last_inventory_check = 0
         self._requirements_cache_ttl = 300  # 5 minutes for requirements cache
+        
+        # Cascading inventory calculator
+        self._cascading_calculator = CascadingInventoryCalculator()
+        self._dependency_trees = {}  # Will be loaded when templates are loaded
         
         logging.info("CodexService initialized (lazy mode - no expensive operations)")
     
@@ -100,7 +106,14 @@ class CodexService:
                         self._static_templates[profession] = {}
                 
                 self._templates_loaded = templates_loaded > 0
-                logging.info(f"Templates loaded successfully: {templates_loaded} professions")
+                
+                # Extract dependency trees for cascading calculator
+                if self._templates_loaded:
+                    self._dependency_trees = extract_dependency_trees_from_templates(self._static_templates)
+                    logging.info(f"Templates loaded successfully: {templates_loaded} professions, {len(self._dependency_trees)} dependency trees")
+                else:
+                    logging.info(f"Templates loaded successfully: {templates_loaded} professions")
+                
                 return self._templates_loaded
                 
             except Exception as e:
@@ -461,9 +474,9 @@ class CodexService:
         # Batch inventory lookup: get all supplies at once
         batch_supplies = self._get_batch_supply(list(all_required_materials))
         
-        # Second pass: build results using cached supplies and adjustments
+        # Prepare base requirements for cascading calculator
+        base_requirements = {}
         for profession, template in profession_templates.items():
-            profession_materials = {}
             adjustment_factor = profession_adjustments.get(profession, 1.0)
             
             for material_name, material_data in template.items():
@@ -472,8 +485,49 @@ class CodexService:
                     base_quantity = material_data.get('quantity', 0)
                     tier = material_data.get('tier', 1)
                 else:
-                    # Legacy format compatibility
                     base_quantity = material_data
+                    tier = 1
+                
+                # Tier filtering: Only include materials with tier <= target_tier
+                if tier <= target_tier:
+                    # Apply adjustment factor for refined products
+                    quantity_needed = int(base_quantity * adjustment_factor)
+                    
+                    # Accumulate requirements across professions (some materials appear in multiple)
+                    if material_name in base_requirements:
+                        base_requirements[material_name] += quantity_needed
+                    else:
+                        base_requirements[material_name] = quantity_needed
+        
+        # Apply cascading inventory reductions
+        cascaded_requirements = {}
+        if self._dependency_trees and base_requirements:
+            # Debug: check what inventory we have
+            inventory_with_items = {k: v for k, v in batch_supplies.items() if v > 0}
+            logging.debug(f"Batch supplies with inventory: {len(inventory_with_items)} items: {list(inventory_with_items.keys())[:5]}...")
+            
+            cascaded_results = self._cascading_calculator.apply_cascading_reductions(
+                base_requirements, batch_supplies, self._dependency_trees
+            )
+            
+            # Convert cascaded results to simple requirement dict
+            for material_name, info in cascaded_results.items():
+                cascaded_requirements[material_name] = info['final_need']
+                
+            logging.debug(f"Applied cascading reductions: {len([m for m, info in cascaded_results.items() if info['inventory_reduction'] > 0])} materials reduced")
+        else:
+            # No cascading - use original requirements
+            cascaded_requirements = base_requirements
+        
+        # Second pass: build results using cascaded requirements
+        for profession, template in profession_templates.items():
+            profession_materials = {}
+            
+            for material_name, material_data in template.items():
+                # Handle both old format (just quantity) and new format (dict with quantity and tier)
+                if isinstance(material_data, dict):
+                    tier = material_data.get('tier', 1)
+                else:
                     tier = 1
                 
                 # Tier filtering: Only include materials with tier <= target_tier
@@ -481,8 +535,8 @@ class CodexService:
                     logging.debug(f"Filtering out {material_name} (tier {tier} > target {target_tier})")
                     continue
                 
-                # Apply adjustment factor for refined products
-                quantity_needed = int(base_quantity * adjustment_factor)
+                # Use cascaded requirement (already adjusted for refined products and cascading reductions)
+                quantity_needed = cascaded_requirements.get(material_name, 0)
                 
                 # Use batch-fetched supply data
                 current_supply = batch_supplies.get(material_name, 0)
