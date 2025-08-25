@@ -408,7 +408,7 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
                     # Update change for this specific item (overwrites previous change for same item)
                     self.quantity_changes[item_name] = change
                     self.change_timestamps[item_name] = current_time
-                    logging.debug(f"[ClaimInventoryTab] {item_name}: {previous_qty} → {current_qty} ({change:+d})")
+                    logging.debug(f"[ClaimInventoryTab] {item_name}: {previous_qty} -> {current_qty} ({change:+d})")
 
                     # Log to activity window if available
                     self._log_inventory_change(item_name, previous_qty, current_qty, change)
