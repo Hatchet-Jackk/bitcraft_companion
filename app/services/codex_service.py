@@ -360,7 +360,7 @@ class CodexService:
             logging.error(f"Error getting codex requirements for tier {tier}: {e}")
             return {'tier': tier, 'supplies_cost': 0, 'requirements': [], 'input': [], 'error': str(e)}
     
-    def calculate_tier_requirements(self, current_tier: int = None, target_tier: int = None) -> Dict[str, Dict[str, float]]:
+    def calculate_tier_requirements(self, current_tier: int = None, target_tier: int = None, codex_window=None) -> Dict[str, Dict[str, float]]:
         """
         Calculate material requirements for tier advancement with smart caching.
         
@@ -394,14 +394,14 @@ class CodexService:
                 return {}
         
         # Perform the calculation
-        results = self._calculate_requirements_internal(target_tier)
+        results = self._calculate_requirements_internal(target_tier, codex_window)
         
         # Cache the results
         self._cache_requirements(tier_key, inventory_hash, results)
         
         return results
     
-    def _calculate_requirements_internal(self, target_tier: int) -> Dict[str, Dict[str, float]]:
+    def _calculate_requirements_internal(self, target_tier: int, codex_window=None) -> Dict[str, Dict[str, float]]:
         """
         Internal method for calculating requirements with optimized batch inventory queries.
         
@@ -413,9 +413,19 @@ class CodexService:
         """
         results = {}
         
+        # Get codex requirements to determine total needed
+        codex_required = 30  # Default
+        if codex_window:
+            try:
+                codex_requirements = self.get_codex_requirements_for_tier(target_tier)
+                codex_required = codex_window._extract_codex_quantity_from_requirements(codex_requirements, target_tier)
+            except:
+                pass
+        
         # First pass: collect all required materials across all professions
         all_required_materials = set()
         profession_templates = {}
+        profession_adjustments = {}  
         
         for profession in ["cloth", "metal", "wood", "stone", "leather", "scholar"]:
             template = self.get_template_for_profession(profession, target_tier)
@@ -423,6 +433,18 @@ class CodexService:
                 continue
                 
             profession_templates[profession] = template
+            
+            # Calculate adjustment factor based on existing refined products
+            refined_count = 0
+            if codex_window:
+                refined_count = codex_window._get_refined_product_count(profession, target_tier)
+            
+            # Calculate how many we still need to make
+            remaining_needed = max(0, codex_required - refined_count)
+            adjustment_factor = remaining_needed / codex_required if codex_required > 0 else 0
+            profession_adjustments[profession] = adjustment_factor
+            
+            logging.debug(f"{profession}: {refined_count}/{codex_required} refined, need {remaining_needed} more (factor: {adjustment_factor:.2f})")
             
             # Collect material names for batch lookup
             for material_name, material_data in template.items():
@@ -439,24 +461,28 @@ class CodexService:
         # Batch inventory lookup: get all supplies at once
         batch_supplies = self._get_batch_supply(list(all_required_materials))
         
-        # Second pass: build results using cached supplies
+        # Second pass: build results using cached supplies and adjustments
         for profession, template in profession_templates.items():
             profession_materials = {}
+            adjustment_factor = profession_adjustments.get(profession, 1.0)
             
             for material_name, material_data in template.items():
                 # Handle both old format (just quantity) and new format (dict with quantity and tier)
                 if isinstance(material_data, dict):
-                    quantity_needed = material_data.get('quantity', 0)
+                    base_quantity = material_data.get('quantity', 0)
                     tier = material_data.get('tier', 1)
                 else:
                     # Legacy format compatibility
-                    quantity_needed = material_data
+                    base_quantity = material_data
                     tier = 1
                 
                 # Tier filtering: Only include materials with tier <= target_tier
                 if tier > target_tier:
                     logging.debug(f"Filtering out {material_name} (tier {tier} > target {target_tier})")
                     continue
+                
+                # Apply adjustment factor for refined products
+                quantity_needed = int(base_quantity * adjustment_factor)
                 
                 # Use batch-fetched supply data
                 current_supply = batch_supplies.get(material_name, 0)
