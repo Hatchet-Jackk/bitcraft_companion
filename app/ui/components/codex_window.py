@@ -94,6 +94,8 @@ class CodexProfessionTab(ctk.CTkFrame):
         # Configure treeview tags for color coding
         self.materials_tree.tag_configure("completed", foreground=get_color("STATUS_SUCCESS"))
         self.materials_tree.tag_configure("incomplete", foreground=get_color("TEXT_PRIMARY"))
+        self.materials_tree.tag_configure("completed_bold", foreground=get_color("STATUS_SUCCESS"), font=("Segoe UI", 9, "bold"))
+        self.materials_tree.tag_configure("incomplete_bold", foreground=get_color("TEXT_PRIMARY"), font=("Segoe UI", 9, "bold"))
 
         # Apply themed scrollbar styling
         style = ttk.Style()
@@ -142,6 +144,7 @@ class CodexProfessionTab(ctk.CTkFrame):
                     "need": material_info.get("need", 0),
                     "supply": material_info.get("supply", 0),
                     "progress": material_info.get("progress", 0),
+                    "is_direct_dependency": material_info.get("is_direct_dependency", False),
                 }
             )
 
@@ -167,14 +170,18 @@ class CodexProfessionTab(ctk.CTkFrame):
             progress = material["progress"]
             tier = material["tier"]
             material_name = material["material"]
+            is_direct_dependency = material.get("is_direct_dependency", False)
 
             # Format progress as percentage
             progress_percent = f"{int(progress * 100)}%"
 
-            # Determine color tag based on completion
-            tag = "completed" if progress >= 1.0 else "incomplete"
+            # Determine color and style tag based on completion and direct dependency status
+            if progress >= 1.0:
+                tag = "completed_bold" if is_direct_dependency else "completed"
+            else:
+                tag = "incomplete_bold" if is_direct_dependency else "incomplete"
 
-            # Insert the row with appropriate color tag
+            # Insert the row with appropriate style tag
             self.materials_tree.insert(
                 "", "end", values=(material_name, tier, f"{int(need):,}", f"{int(supply):,}", progress_percent), tags=(tag,)
             )
