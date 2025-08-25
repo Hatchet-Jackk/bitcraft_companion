@@ -7,13 +7,12 @@ from tkinter import Menu, ttk
 from app.ui.components.filter_popup import FilterPopup
 from app.ui.components.optimized_table_mixin import OptimizedTableMixin
 from app.ui.mixins.async_rendering_mixin import AsyncRenderingMixin
-from app.ui.mixins.loading_state_mixin import LoadingStateMixin
 from app.ui.styles import TreeviewStyles
 from app.ui.themes import get_color, register_theme_callback
 from app.services.search_parser import SearchParser
 
 
-class TravelerTasksTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin, LoadingStateMixin):
+class TravelerTasksTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
     """The tab for displaying traveler tasks with expandable traveler groups."""
 
     def __init__(self, master, app):
@@ -46,11 +45,8 @@ class TravelerTasksTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin, L
         # Initialize optimization features after UI is created
         self.__init_optimization__(max_workers=2, max_cache_size_mb=60)
         
-        # Initialize loading state management
-        self._setup_loading_state()
         
         # Note: TravelerTasksTab uses direct hierarchical rendering, not async rendering
-        # LoadingStateMixin is used only for data loading states, not rendering states
         
         # Tab identification for visibility checks
         self._tab_name = "Traveler Tasks"

@@ -9,13 +9,12 @@ from tkinter import Menu, ttk
 from app.ui.components.filter_popup import FilterPopup
 from app.ui.components.optimized_table_mixin import OptimizedTableMixin
 from app.ui.mixins.async_rendering_mixin import AsyncRenderingMixin
-from app.ui.mixins.loading_state_mixin import LoadingStateMixin
 from app.ui.styles import TreeviewStyles
 from app.ui.themes import get_color, register_theme_callback
 from app.services.search_parser import SearchParser
 
 
-class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin, LoadingStateMixin):
+class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
     """The tab for displaying claim inventory with expandable rows for multi-container items."""
 
     def __init__(self, master, app):
@@ -55,8 +54,6 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin, 
         # Initialize optimization features after UI is created
         self.__init_optimization__(max_workers=2, max_cache_size_mb=75)
         
-        # Initialize loading state management
-        self._setup_loading_state()
         
         # Initialize async rendering with inventory specific settings
         self._setup_async_rendering(
@@ -288,9 +285,8 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin, 
                 sample_items = list(new_data.keys())[:3]
                 logging.debug(f"[ClaimInventoryTab] Sample items in update: {sample_items}")
 
-            # Show loading state for large datasets
+            # Large datasets use background processing
             if isinstance(new_data, dict) and len(new_data) > 100:
-                self._show_loading("Processing inventory data...")
                 
                 self._submit_background_task(
                     "inventory_processing",
@@ -351,8 +347,6 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin, 
             self.all_data = table_data
             logging.info(f"[ClaimInventoryTab] Background processing completed - {len(table_data)} items (with hierarchy)")
             
-            # Hide loading state
-            self._hide_loading()
             
             # Notify MainWindow that data loading completed (for loading overlay detection)
             if hasattr(self.app, 'is_loading') and self.app.is_loading:
@@ -367,13 +361,10 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin, 
             
         except Exception as e:
             logging.error(f"Error handling background inventory processing result: {e}")
-            self._hide_loading()  # Hide loading even on error
 
     def _on_inventory_processing_error(self, error):
         """Callback when background inventory processing fails."""
         logging.error(f"Background inventory processing failed: {error}")
-        # Hide loading state
-        self._hide_loading()
         # Fallback to synchronous processing
         self._process_inventory_data_sync(self._last_raw_data if hasattr(self, '_last_raw_data') else {})
 
@@ -654,7 +645,18 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin, 
         """Callback when background filtering completes."""
         try:
             self.filtered_data = filtered_data
-            self.sort_by(self.sort_column, self.sort_reverse)
+            # Sort the data synchronously since it's already filtered
+            header_to_key = {"Item": "name"}
+            sort_key = header_to_key.get(self.sort_column, self.sort_column.lower())
+            is_numeric = sort_key in ["tier", "quantity"]
+            
+            self.filtered_data.sort(
+                key=lambda x: (float(x.get(sort_key, 0)) if is_numeric else str(x.get(sort_key, "")).lower()),
+                reverse=self.sort_reverse,
+            )
+            
+            self.render_table()
+            self.update_header_sort_indicators()
             logging.debug(f"[ClaimInventoryTab] Background filtering completed - {len(filtered_data)} items")
         except Exception as e:
             logging.error(f"Error handling background filter result: {e}")
