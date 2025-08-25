@@ -355,9 +355,12 @@ class ProgressIndicator:
         if self.visible:
             return
             
-        # Create progress container
+        # Create progress container using grid layout
         self.container = ctk.CTkFrame(self.parent_widget, fg_color="transparent")
-        self.container.pack(fill="x", padx=5, pady=2)
+        self.container.grid(row=999, column=0, columnspan=10, sticky="ew", padx=5, pady=2)
+        
+        # Configure grid weights for the container
+        self.container.grid_columnconfigure(1, weight=1)
         
         # Status label
         self.status_label = ctk.CTkLabel(
@@ -366,7 +369,7 @@ class ProgressIndicator:
             font=ctk.CTkFont(size=11),
             text_color=get_color("TEXT_SECONDARY")
         )
-        self.status_label.pack(side="left", padx=(5, 10))
+        self.status_label.grid(row=0, column=0, sticky="w", padx=(5, 10))
         
         # Progress bar
         self.progress_bar = ctk.CTkProgressBar(
@@ -375,7 +378,7 @@ class ProgressIndicator:
             height=16,
             progress_color=get_color("STATUS_IN_PROGRESS")
         )
-        self.progress_bar.pack(side="right", padx=(0, 5))
+        self.progress_bar.grid(row=0, column=2, sticky="e", padx=(0, 5))
         self.progress_bar.set(0)
         
         self.visible = True

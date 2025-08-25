@@ -15,7 +15,14 @@ from app.services.search_parser import SearchParser
 
 
 class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
-    """The tab for displaying claim inventory with expandable rows for multi-container items."""
+    """
+    The tab for displaying claim inventory with expandable rows for multi-container items.
+    
+    THREADING MODEL:
+    - Background processing: Data transformation, filtering, sorting (large datasets)
+    - Main thread: All UI operations, tree rendering, layout management
+    - Uses .grid() layout manager exclusively (never mix with .pack())
+    """
 
     def __init__(self, master, app):
         super().__init__(master, fg_color="transparent")
@@ -779,12 +786,7 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
         try:
             logging.debug(f"[ClaimInventoryTab] Starting table render - {len(self.filtered_data)} items")
 
-            # Use lazy loading for large datasets
-            if len(self.filtered_data) > self._lazy_load_threshold:
-                self._render_lazy_loading(self.filtered_data)
-            else:
-                # Direct rendering for smaller datasets
-                self._render_direct(self.filtered_data)
+            self._render_direct(self.filtered_data)
 
             logging.debug(f"[ClaimInventoryTab] Table render complete")
 
@@ -901,8 +903,6 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
             if hasattr(self, 'current_render_operation') and self.current_render_operation:
                 self._cancel_async_rendering(self.current_render_operation)
             
-            # Clean up loading state
-            self._cleanup_loading_state()
             
             # Clean up async rendering resources
             self._cleanup_async_rendering()

@@ -3,6 +3,11 @@ AsyncRenderingMixin for BitCraft Companion.
 
 Provides async rendering capabilities that can be mixed into any tab class.
 Eliminates UI blocking during large dataset operations through chunked processing.
+
+CRITICAL THREADING NOTE:
+- Data processing happens asynchronously in background threads
+- All UI operations (tree insertion, widget updates) happen synchronously on main thread
+- This mixin handles the async/sync boundary safely via completion callbacks
 """
 
 import time
@@ -17,11 +22,19 @@ class AsyncRenderingMixin:
     """
     Mixin class that provides async rendering capabilities for tab classes.
     
+    ASYNC/SYNC ARCHITECTURE:
+    - Background threads: Data formatting and preparation (NO UI operations)
+    - Main thread: All UI operations (tree insertion, widget updates, layout)
+    - Automatic threshold-based switching between sync and async processing
+    
     Classes that use this mixin should:
     1. Call _setup_async_rendering() during initialization
     2. Use _render_tree_async() instead of direct tree population
     3. Optionally override _should_use_async_rendering() for custom logic
     4. Implement _format_row_for_display() for row formatting
+    
+    THREAD SAFETY:
+    All UI operations are guaranteed to happen on the main thread via completion callbacks.
     """
     
     def _setup_async_rendering(self, chunk_size: int = 75, enable_progress: bool = True):
@@ -93,12 +106,17 @@ class AsyncRenderingMixin:
         """
         Render tree data using async rendering if appropriate.
         
+        THREAD SAFETY:
+        - Small datasets: Rendered synchronously on main thread
+        - Large datasets: Data formatted in background, UI updated on main thread
+        - All tree widget operations are guaranteed to happen on main thread
+        
         Args:
-            tree_widget: The treeview widget to populate
+            tree_widget: The treeview widget to populate (main thread only)
             data: List of data items to render
             columns: List of column identifiers
             format_row_func: Function to format each data row (uses _format_row_for_display if None)
-            completion_callback: Optional callback when rendering completes
+            completion_callback: Optional callback when rendering completes (main thread)
             operation_name: Name for this operation (for logging/debugging)
             
         Returns:

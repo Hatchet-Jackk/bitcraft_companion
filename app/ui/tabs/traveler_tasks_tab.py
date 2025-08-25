@@ -13,7 +13,15 @@ from app.services.search_parser import SearchParser
 
 
 class TravelerTasksTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
-    """The tab for displaying traveler tasks with expandable traveler groups."""
+    """
+    The tab for displaying traveler tasks with expandable traveler groups.
+    
+    THREADING MODEL:
+    - Background processing: Data transformation and filtering (large datasets)
+    - Main thread: Hierarchical tree insertion, UI updates, expansion management
+    - SPECIAL NOTE: Uses direct rendering for hierarchical data (parent-child relationships)
+    - Uses .grid() layout manager exclusively (never mix with .pack())
+    """
 
     def __init__(self, master, app):
         super().__init__(master, fg_color="transparent")
@@ -834,9 +842,6 @@ class TravelerTasksTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
     def destroy(self):
         """Clean up resources when tab is destroyed."""
         try:
-            # Clean up loading state
-            self._cleanup_loading_state()
-            
             # Clean up optimization resources
             self.optimization_shutdown()
         except Exception as e:

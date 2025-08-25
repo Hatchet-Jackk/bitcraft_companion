@@ -504,69 +504,88 @@ class PassiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin)
             self.has_had_first_load = True
 
     def _update_display(self):
-        """Update the TreeView display with async rendering support."""
+        """Update the TreeView display using direct hierarchical rendering."""
         # Cancel any existing render operation
         if self.current_render_operation:
             self._cancel_async_rendering(self.current_render_operation)
             self.current_render_operation = None
 
         if not self.filtered_data:
-            # Clear and show empty message
+            # Clear and show empty message only when no data
             self.tree.delete(*self.tree.get_children())
             empty_item = self.tree.insert("", "end", values=["No passive crafts active", "", "", "", "", "", "", ""])
             self.tree.item(empty_item, tags=("empty",))
             return
 
-        # Clear the UI cache for fresh rendering
-        if hasattr(self, '_ui_item_cache'):
-            self._ui_item_cache.clear()
-
-        # Use async rendering for datasets
-        def completion_callback(item_count: int):
-            """Called when async rendering completes."""
-            self.current_render_operation = None
-            
-            # Auto-expand on first load if enabled
-            if not self.has_had_first_load and self.auto_expand_on_first_load and item_count > 0:
-                self.has_had_first_load = True
-                self.after(100, self._expand_all_items)  # Small delay to ensure rendering is complete
-            elif not self.has_had_first_load:
-                self.has_had_first_load = True
-
-        # Use debounced rendering for frequent updates
-        self.current_render_operation = self._render_tree_debounced(
-            tree_widget=self.tree,
-            data=self.filtered_data,
-            columns=self.headers,
-            format_row_func=self._format_row_for_display,
-            completion_callback=completion_callback,
-            operation_name="passive_crafting"
-        )
-
-    def _format_row_for_display(self, item: Dict) -> Dict[str, str]:
-        """Format a passive crafting item for async display rendering."""
-        # Determine item-level tag based on time remaining (same logic as _add_item_to_tree)
-        item_tag = "ready" if "READY" in item.get("time_remaining", "") else "crafting"
+        # Use differential updates to preserve tree state and avoid hard refresh
+        self._render_hierarchical_data_differential()
         
-        # This is for the main parent rows - child operations are handled separately
-        return {
-            "Item": item.get("item", ""),
-            "Tier": item.get("tier", ""),
-            "Quantity": item.get("total_quantity", ""),
-            "Tag": item.get("tag", ""),
-            "Jobs": f"{item.get('completed_jobs', 0)}/{item.get('total_jobs', 0)}",
-            "Time Remaining": item.get("time_remaining", ""),
-            "Crafter": item.get("crafter", ""),
-            "Building": item.get("building_name", ""),
-            "_tags": (item_tag,)  # Special field for tree item tags
-        }
+        # Auto-expand on first load if enabled
+        if not self.has_had_first_load and self.auto_expand_on_first_load and self.filtered_data:
+            self.has_had_first_load = True
+            self.after(100, self._expand_all_items)  # Small delay to ensure rendering is complete
+        elif not self.has_had_first_load:
+            self.has_had_first_load = True
 
-    def _add_item_to_tree(self, item):
-        """Add a single item with its operations to the tree."""
+    def _render_hierarchical_data_differential(self):
+        """Render hierarchical data with differential updates to preserve tree state."""
+        # Initialize UI cache if it doesn't exist
+        if not hasattr(self, '_ui_item_cache'):
+            self._ui_item_cache = {}
+        
+        # Track existing tree items to preserve expansion states
+        existing_items = set(self.tree.get_children())
+        current_item_keys = set()
+        
+        # Store expansion states before any modifications
+        expansion_states = {}
+        for item_id in existing_items:
+            expansion_states[item_id] = self.tree.item(item_id, "open")
+        
+        # Process each filtered data item
+        for item in self.filtered_data:
+            # Create unique key for this item (same logic as _generate_item_key)
+            item_key = f"{item.get('item', 'Unknown')}|{item.get('tier', 0)}|{item.get('crafter', '')}|{item.get('building_name', '')}"
+            current_item_keys.add(item_key)
+            
+            # Check if item already exists in tree
+            if item_key in self._ui_item_cache:
+                existing_item_id = self._ui_item_cache[item_key]
+                # Update existing item if it still exists in tree
+                if existing_item_id in existing_items:
+                    self._update_existing_item(existing_item_id, item)
+                    existing_items.remove(existing_item_id)
+                else:
+                    # Item was removed, create new one
+                    self._create_new_item(item, item_key)
+            else:
+                # New item, create it
+                self._create_new_item(item, item_key)
+        
+        # Remove items that are no longer in filtered data
+        for obsolete_item_id in existing_items:
+            # Find the item key for this tree item to clean up cache
+            item_key_to_remove = None
+            for key, cached_id in self._ui_item_cache.items():
+                if cached_id == obsolete_item_id:
+                    item_key_to_remove = key
+                    break
+            
+            self.tree.delete(obsolete_item_id)
+            if item_key_to_remove:
+                del self._ui_item_cache[item_key_to_remove]
+        
+        # Restore expansion states for remaining items
+        for item_id, was_open in expansion_states.items():
+            if self.tree.exists(item_id) and was_open:
+                self.tree.item(item_id, open=True)
+
+    def _create_new_item(self, item: Dict, item_key: str):
+        """Create a new tree item with hierarchical children."""
         # Determine item-level tag based on time remaining
         item_tag = "ready" if "READY" in item.get("time_remaining", "") else "crafting"
         
-        # Create parent item
+        # Create parent item values
         item_values = [
             item.get("item", ""),
             item.get("tier", ""),
@@ -578,7 +597,9 @@ class PassiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin)
             item.get("building_name", ""),
         ]
         
+        # Insert parent item
         parent_id = self.tree.insert("", "end", values=item_values, tags=(item_tag,))
+        self._ui_item_cache[item_key] = parent_id
         
         # Add child operations if expandable
         if item.get("is_expandable", False):
@@ -595,6 +616,64 @@ class PassiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin)
                     operation.get("building_name", ""),
                 ]
                 self.tree.insert(parent_id, "end", values=child_values, tags=("child", child_tag))
+
+    def _update_existing_item(self, item_id: str, item: Dict):
+        """Update an existing tree item and its children."""
+        # Determine item-level tag based on time remaining
+        item_tag = "ready" if "READY" in item.get("time_remaining", "") else "crafting"
+        
+        # Update parent item values
+        item_values = [
+            item.get("item", ""),
+            item.get("tier", ""),
+            item.get("total_quantity", ""),
+            item.get("tag", ""),
+            f"{item.get('completed_jobs', 0)}/{item.get('total_jobs', 0)}",
+            item.get("time_remaining", ""),
+            item.get("crafter", ""),
+            item.get("building_name", ""),
+        ]
+        
+        # Update the parent item
+        self.tree.item(item_id, values=item_values, tags=(item_tag,))
+        
+        # Remove existing children and recreate them
+        for child_id in self.tree.get_children(item_id):
+            self.tree.delete(child_id)
+        
+        # Add child operations if expandable
+        if item.get("is_expandable", False):
+            for operation in item.get("operations", []):
+                child_tag = "ready" if operation.get("time_remaining", "") == "READY" else "crafting"
+                child_values = [
+                    "",  # Empty item name for child
+                    "",  # Empty tier for child
+                    operation.get("quantity", ""),
+                    "",  # Empty tag for child
+                    "",  # Empty jobs for child
+                    operation.get("time_remaining", ""),
+                    operation.get("crafter", ""),
+                    operation.get("building_name", ""),
+                ]
+                self.tree.insert(item_id, "end", values=child_values, tags=("child", child_tag))
+
+    def _format_row_for_display(self, item: Dict) -> Dict[str, str]:
+        """Format a passive crafting item for async display rendering (legacy method)."""
+        # Determine item-level tag based on time remaining
+        item_tag = "ready" if "READY" in item.get("time_remaining", "") else "crafting"
+        
+        # This is for the main parent rows - child operations are handled separately
+        return {
+            "Item": item.get("item", ""),
+            "Tier": item.get("tier", ""),
+            "Quantity": item.get("total_quantity", ""),
+            "Tag": item.get("tag", ""),
+            "Jobs": f"{item.get('completed_jobs', 0)}/{item.get('total_jobs', 0)}",
+            "Time Remaining": item.get("time_remaining", ""),
+            "Crafter": item.get("crafter", ""),
+            "Building": item.get("building_name", ""),
+            "_tags": (item_tag,)  # Special field for tree item tags
+        }
 
     def _expand_all_items(self):
         """Expand all parent items in the tree."""
