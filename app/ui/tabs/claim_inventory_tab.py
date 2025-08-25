@@ -275,17 +275,6 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
     def _process_data_update(self, new_data):
         """Process inventory data update with background processing for large datasets."""
         try:
-            data_size = len(new_data) if isinstance(new_data, (dict, list)) else 0
-            logging.debug(f"[ClaimInventoryTab] Updating data - type: {type(new_data)}, size: {data_size}")
-            
-            if hasattr(new_data, 'get') and new_data.get('transaction_update'):
-                logging.info(f"[ClaimInventoryTab] Received transaction update flag")
-            
-            if isinstance(new_data, dict) and new_data:
-                sample_items = list(new_data.keys())[:3]
-                logging.debug(f"[ClaimInventoryTab] Sample items in update: {sample_items}")
-
-            # Large datasets use background processing
             if isinstance(new_data, dict) and len(new_data) > 100:
                 
                 self._submit_background_task(
@@ -299,12 +288,10 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
                     previous_container_quantities=self.previous_container_quantities.copy()
                 )
             else:
-                # Synchronous processing for small datasets
                 self._process_inventory_data_sync(new_data)
 
         except Exception as e:
             logging.error(f"[ClaimInventoryTab] Error updating data: {e}")
-            logging.debug(traceback.format_exc())
 
     def _process_inventory_data_background(self, new_data, previous_quantities, previous_container_quantities):
         """Background processing for inventory data transformation."""
@@ -352,11 +339,9 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
             if hasattr(self.app, 'is_loading') and self.app.is_loading:
                 if hasattr(self.app, 'received_data_types'):
                     self.app.received_data_types.add("inventory")
-                    logging.info(f"[ClaimInventoryTab] Notified MainWindow of inventory data completion")
                     if hasattr(self.app, '_check_all_data_loaded'):
                         self.app._check_all_data_loaded()
             
-            # Apply filter and render table
             self.apply_filter()
             
         except Exception as e:
@@ -365,7 +350,6 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
     def _on_inventory_processing_error(self, error):
         """Callback when background inventory processing fails."""
         logging.error(f"Background inventory processing failed: {error}")
-        # Fallback to synchronous processing
         self._process_inventory_data_sync(self._last_raw_data if hasattr(self, '_last_raw_data') else {})
 
     def _process_inventory_data_sync(self, new_data):
@@ -664,7 +648,6 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
     def _on_filter_error(self, error):
         """Callback when background filtering fails."""
         logging.error(f"Background filtering failed: {error}")
-        # Fallback to synchronous filtering
         self._filter_data_sync(self.app.get_search_text())
 
     def _container_matches_filter(self, row, selected_values):
@@ -755,7 +738,6 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
     
     def _sort_data_sync(self):
         """Synchronous sorting operation."""
-        # Map header names to data keys
         header_to_key = {"Item": "name"}
         sort_key = header_to_key.get(self.sort_column, self.sort_column.lower())
         is_numeric = sort_key in ["tier", "quantity"]
@@ -773,14 +755,12 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
             self.filtered_data = sorted_data
             self.render_table()
             self.update_header_sort_indicators()
-            logging.debug(f"[ClaimInventoryTab] Background sorting completed - {len(sorted_data)} items")
         except Exception as e:
             logging.error(f"Error handling background sort result: {e}")
     
     def _on_sort_error(self, error):
         """Callback when background sorting fails."""
         logging.error(f"Background sorting failed: {error}")
-        # Fallback to synchronous sorting
         self._sort_data_sync()
 
     def update_header_sort_indicators(self):

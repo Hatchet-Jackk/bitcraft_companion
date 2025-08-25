@@ -35,36 +35,27 @@ class TravelerTasksTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
         # Initialize search parser
         self.search_parser = SearchParser()
 
-        # Track expansion state for better user experience
         self.has_had_first_load = False
-        self.expansion_state = set()  # Store traveler IDs that should be expanded
+        self.expansion_state = set()
 
         self._create_widgets()
         self._create_context_menu()
         
-        # Initialize optimization features after UI is created
         self.__init_optimization__(max_workers=2, max_cache_size_mb=60)
         
         
-        # Note: TravelerTasksTab uses direct hierarchical rendering, not async rendering
-        
-        # Tab identification for visibility checks
         self._tab_name = "Traveler Tasks"
 
     def _create_widgets(self):
         """Creates the styled Treeview and its scrollbars."""
         style = ttk.Style()
         
-        # Apply centralized Treeview styling
         TreeviewStyles.apply_treeview_style(style)
         
-        # Apply centralized scrollbar styling and get style names
         self.v_scrollbar_style, self.h_scrollbar_style = TreeviewStyles.apply_scrollbar_style(style, "TravelerTasks")
 
-        # Create the Treeview with support for child items
         self.tree = ttk.Treeview(self, columns=self.headers, show="tree headings", style="Treeview")
 
-        # Apply common tree tags using centralized styling
         TreeviewStyles.configure_tree_tags(self.tree)
         
         # Configure task status tags
@@ -202,10 +193,8 @@ class TravelerTasksTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
                 unique_travelers.add(traveler_name)
             return sorted(list(unique_travelers))
         elif header.lower() == "status":
-            # Special completion status values
             return ["✅", "❌"]
         elif header.lower() == "item":
-            # Extract unique required item names from all tasks
             unique_items = set()
             for row in self.all_data:
                 operations = row.get("operations", [])
@@ -215,7 +204,6 @@ class TravelerTasksTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
                         unique_items.add(required_item)
             return sorted(list(unique_items))
         elif header.lower() == "tier":
-            # Extract unique tier values from all tasks
             unique_tiers = set()
             for row in self.all_data:
                 operations = row.get("operations", [])
@@ -225,7 +213,6 @@ class TravelerTasksTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
                         unique_tiers.add(str(tier))
             return sorted(list(unique_tiers), key=lambda x: int(x) if x.isdigit() else 0)
         elif header.lower() == "quantity":
-            # Extract unique quantities
             unique_quantities = set()
             for row in self.all_data:
                 operations = row.get("operations", [])
@@ -235,7 +222,6 @@ class TravelerTasksTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
                         unique_quantities.add(str(quantity))
             return sorted(list(unique_quantities), key=lambda x: int(x) if x.isdigit() else 0)
         elif header.lower() == "tag":
-            # Extract unique item tags from all tasks
             unique_tags = set()
             for row in self.all_data:
                 operations = row.get("operations", [])
@@ -287,7 +273,6 @@ class TravelerTasksTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
         """Process traveler tasks data update with background processing for large datasets."""
         try:
             data_size = len(new_data) if new_data else 0
-            logging.debug(f"[TravelerTasksTab] Updating data - {data_size} traveler groups")
 
             # Use background processing for large datasets
             if isinstance(new_data, list) and len(new_data) > 20:
@@ -319,13 +304,11 @@ class TravelerTasksTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
         try:
             processed_data = result["processed_data"]
             self.all_data = processed_data
-            logging.info(f"[TravelerTasksTab] Background processing completed - {len(processed_data)} traveler groups")
             
             # Notify MainWindow that data loading completed (for loading overlay detection)
             if hasattr(self.app, 'is_loading') and self.app.is_loading:
                 if hasattr(self.app, 'received_data_types'):
                     self.app.received_data_types.add("tasks")
-                    logging.info(f"[TravelerTasksTab] Notified MainWindow of tasks data completion")
                     if hasattr(self.app, '_check_all_data_loaded'):
                         self.app._check_all_data_loaded()
             
@@ -767,7 +750,6 @@ class TravelerTasksTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
     def render_table(self):
         """Renders table using the working hierarchical insertion logic."""
         try:
-            logging.debug(f"[TravelerTasksTab] Starting table render - {len(self.filtered_data)} traveler groups")
 
             # Save current expansion state before clearing
             self._save_current_expansion_state()
@@ -775,7 +757,6 @@ class TravelerTasksTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
             # Always use direct rendering - it works with the hierarchical data structure
             self._render_direct(self.filtered_data)
 
-            logging.debug(f"[TravelerTasksTab] Table render complete")
 
         except Exception as e:
             logging.error(f"[TravelerTasksTab] Critical error during table render: {e}")
