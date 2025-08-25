@@ -541,17 +541,60 @@ class CodexService:
                 # Use batch-fetched supply data
                 current_supply = batch_supplies.get(material_name, 0)
                 
+                # Determine if this material is a direct dependency of a refined material
+                is_direct_dependency = self._is_direct_dependency_of_refined_material(material_name, profession)
+                
                 profession_materials[material_name] = {
                     'need': quantity_needed,
                     'supply': current_supply,
                     'progress': min(1.0, current_supply / quantity_needed) if quantity_needed > 0 else 1.0,
-                    'tier': tier
+                    'tier': tier,
+                    'is_direct_dependency': is_direct_dependency
                 }
             
             if profession_materials:
                 results[profession] = profession_materials
         
         return results
+    
+    def _is_direct_dependency_of_refined_material(self, material_name: str, profession: str) -> bool:
+        """
+        Check if a material is a direct dependency of a refined material for the profession.
+        
+        Args:
+            material_name: Name of the material to check
+            profession: Profession name (cloth, metal, wood, stone, leather)
+            
+        Returns:
+            True if the material is a direct input to a refined material
+        """
+        if not self._dependency_trees:
+            return False
+        
+        # Map profession to refined material name
+        refined_material_map = {
+            'cloth': 'Refined Cloth',
+            'metal': 'Refined Ingot', 
+            'wood': 'Refined Plank',
+            'stone': 'Refined Brick',
+            'leather': 'Refined Leather'
+        }
+        
+        refined_material_name = refined_material_map.get(profession)
+        if not refined_material_name:
+            return False
+        
+        # Get the dependency tree for the refined material
+        refined_material_info = self._dependency_trees.get(refined_material_name, {})
+        dependencies = refined_material_info.get('dependencies', {})
+        direct_deps = dependencies.get('direct', [])
+        
+        # Check if our material is in the direct dependencies
+        for dep_name, _ in direct_deps:
+            if dep_name == material_name:
+                return True
+        
+        return False
     
     def _get_batch_supply(self, material_names: list) -> Dict[str, int]:
         """
