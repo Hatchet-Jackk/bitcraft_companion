@@ -1,7 +1,7 @@
 import logging
 import time
 import traceback
-from typing import Dict, List
+from typing import Dict, List, Any
 
 import customtkinter as ctk
 from tkinter import Menu, ttk
@@ -42,6 +42,9 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
 
         # Initialize search parser
         self.search_parser = SearchParser()
+        
+        # Search text change detection to prevent unnecessary re-filtering
+        self._last_search_text = ""
 
         # Change tracking for inventory quantities
         self.previous_quantities: Dict[str, int] = {}
@@ -62,7 +65,7 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
         self.__init_optimization__(max_workers=2, max_cache_size_mb=75)
 
         # Initialize async rendering with inventory specific settings
-        self._setup_async_rendering(chunk_size=75, enable_progress=True)  # Larger chunks for simpler inventory data
+        self._setup_async_rendering(chunk_size=75, enable_progress=False)  # Larger chunks for simpler inventory data
 
         # Configure thresholds for claim inventory (typically 505+ items)
         self._configure_async_rendering(
@@ -564,6 +567,9 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
     def apply_filter(self):
         """Filters the master data list based on search and column filters."""
         search_text = self.app.get_search_text()
+        
+        # Track search text changes for future optimizations (don't return early)
+        self._last_search_text = search_text
 
         # Use background processing for large datasets
         background_processor = self._get_background_processor()
@@ -607,10 +613,10 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
                     data_key = header_to_key.get(header, header.lower())
                     temp_data = [row for row in temp_data if str(row.get(data_key, "")) in values]
 
-        # Apply keyword-based search (work with raw data)
+        # Apply advanced search using SearchParser (work with raw data)
         if search_text:
-            search_term = search_text.lower()
-            temp_data = [row for row in temp_data if self._row_matches_search(row, search_term)]
+            parsed_query = self.search_parser.parse_search_query(search_text)
+            temp_data = [row for row in temp_data if self.search_parser.match_row(row, parsed_query)]
 
         return temp_data
 
@@ -629,10 +635,10 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
                     data_key = header_to_key.get(header, header.lower())
                     temp_data = [row for row in temp_data if str(row.get(data_key, "")) in values]
 
-        # Apply keyword-based search (work with raw data)
+        # Apply advanced search using SearchParser (work with raw data)
         if search_text:
-            search_term = search_text.lower()
-            temp_data = [row for row in temp_data if self._row_matches_search(row, search_term)]
+            parsed_query = self.search_parser.parse_search_query(search_text)
+            temp_data = [row for row in temp_data if self.search_parser.match_row(row, parsed_query)]
 
         self.filtered_data = temp_data
         self.sort_by(self.sort_column, self.sort_reverse)
@@ -697,18 +703,6 @@ class ClaimInventoryTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
 
         return False
 
-    def _row_matches_search(self, row, search_term):
-        """Check if row matches search term, using base values for quantity filtering."""
-        for key, value in row.items():
-            # For quantity, search against base number only (ignore change indicators)
-            if key == "quantity":
-                base_quantity = str(value)
-                if search_term in base_quantity.lower():
-                    return True
-            else:
-                if search_term in str(value).lower():
-                    return True
-        return False
 
     def sort_by(self, header, reverse=None):
         """Sorts the filtered data and re-renders the table."""

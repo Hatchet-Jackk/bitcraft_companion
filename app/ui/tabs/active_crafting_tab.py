@@ -32,30 +32,29 @@ class ActiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
 
         self.search_parser = SearchParser()
         self.clicked_header = None
+        # Search text change detection to prevent unnecessary re-filtering
+        self._last_search_text = ""
 
         self._create_widgets()
         self._create_context_menu()
-        
+
         # Initialize optimization features after UI is created
         self.__init_optimization__(max_workers=2, max_cache_size_mb=50)
-        
+
         # Initialize async rendering with active crafting specific settings
-        self._setup_async_rendering(
-            chunk_size=60,  # Medium chunks for active crafting data
-            enable_progress=True
-        )
-        
+        self._setup_async_rendering(chunk_size=60, enable_progress=True)  # Medium chunks for active crafting data
+
         # Configure thresholds for active crafting (variable dataset size)
         self._configure_async_rendering(
             enabled=True,
             chunk_size=60,
             async_threshold=40,  # Use async for medium datasets
-            progress_threshold=100  # Show progress for larger datasets
+            progress_threshold=100,  # Show progress for larger datasets
         )
-        
+
         # Track current async operation for cancellation
         self.current_render_operation = None
-        
+
         # Tab identification for visibility checks
         self._tab_name = "Active Crafting"
 
@@ -257,12 +256,7 @@ class ActiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
         """Process the data update after debouncing."""
         if isinstance(new_data, list):
             self._submit_background_task(
-                "data_flattening",
-                self._flatten_active_crafting_data,
-                self._on_data_flattened,
-                self._on_data_error,
-                1,
-                new_data
+                "data_flattening", self._flatten_active_crafting_data, self._on_data_flattened, self._on_data_error, 1, new_data
             )
         else:
             if self.all_data:
@@ -272,19 +266,19 @@ class ActiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
     def _on_data_flattened(self, new_flattened_data):
         """Callback when data flattening is complete."""
         self._pending_tasks.pop("data_flattening", None)
-        
+
         if self._has_data_changed(new_flattened_data):
             self.all_data = new_flattened_data
             self._increment_data_version()
-            
+
             # Notify MainWindow that data loading completed (for loading overlay detection)
-            if hasattr(self.app, 'is_loading') and self.app.is_loading:
-                if hasattr(self.app, 'received_data_types'):
+            if hasattr(self.app, "is_loading") and self.app.is_loading:
+                if hasattr(self.app, "received_data_types"):
                     self.app.received_data_types.add("active_crafting")
                     logging.info(f"[ActiveCraftingTab] Notified MainWindow of active crafting data completion")
-                    if hasattr(self.app, '_check_all_data_loaded'):
+                    if hasattr(self.app, "_check_all_data_loaded"):
                         self.app._check_all_data_loaded()
-            
+
             self.apply_filter()
 
     def _on_data_error(self, error):
@@ -736,11 +730,11 @@ class ActiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
         # Clear the tree and cache
         self.tree.delete(*self.tree.get_children())
         self._ui_item_cache.clear()
-        
+
         # Use async rendering for better performance with large datasets
         def completion_callback(operation_id=None, stats=None):
             logging.debug(f"[ActiveCraftingTab] Completed async rendering of {len(self.filtered_data)} items")
-            
+
         # Start async rendering
         self.current_render_operation = self._render_tree_async(
             tree_widget=self.tree,
@@ -748,7 +742,7 @@ class ActiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
             columns=self.headers,
             format_row_func=self._format_row_for_display,
             completion_callback=completion_callback,
-            operation_name="active_crafting"
+            operation_name="active_crafting",
         )
 
     def _schedule_lazy_load(self, remaining_items, batch_size=25):
@@ -877,12 +871,12 @@ class ActiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
     def shutdown(self):
         """Clean shutdown of tab resources."""
         # Cancel any pending async operations
-        if hasattr(self, 'current_render_operation') and self.current_render_operation:
+        if hasattr(self, "current_render_operation") and self.current_render_operation:
             self._cancel_render_operation(self.current_render_operation)
-        
+
         # Clean up async rendering resources
         self._cleanup_async_rendering()
-        
+
         # Shutdown optimization features
         self.optimization_shutdown()
 
@@ -979,7 +973,6 @@ class ActiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
         """Estimate memory freed by removing cache entries."""
         return len(removed_keys) * 10  # Rough estimate: 10KB per entry
 
-
     def _on_scroll(self, event):
         """Handle scroll events for potential lazy loading expansion."""
         # Debounce scroll events to prevent excessive processing
@@ -1013,7 +1006,7 @@ class ActiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
         """Format active crafting data for display in the tree."""
         # Apply progress tag for styling
         progress_tag = self._get_progress_tag(item.get("remaining_effort", "Unknown"))
-        
+
         return {
             "Item": item.get("item", "Unknown Item"),
             "Tier": str(item.get("tier", 0)),
@@ -1023,23 +1016,23 @@ class ActiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin):
             "Accept Help": item.get("accept_help", "Unknown"),
             "Crafter": item.get("crafter", "Unknown"),
             "Building": item.get("building", "Unknown"),
-            "_tags": (progress_tag,)  # Special field for tree item tags
+            "_tags": (progress_tag,),  # Special field for tree item tags
         }
-    
+
     def _get_comparison_fields(self) -> List[str]:
         """Get fields to compare for change detection."""
         return ["item", "tier", "quantity", "remaining_effort", "accept_help", "crafter", "building"]
-    
+
     def destroy(self):
         """Clean up resources when tab is destroyed."""
         try:
             # Cancel any active async rendering operations
-            if hasattr(self, 'current_render_operation') and self.current_render_operation:
+            if hasattr(self, "current_render_operation") and self.current_render_operation:
                 self._cancel_async_rendering(self.current_render_operation)
-            
+
             # Clean up async rendering resources
             self._cleanup_async_rendering()
-            
+
             # Clean up optimization resources
             self.optimization_shutdown()
         except Exception as e:

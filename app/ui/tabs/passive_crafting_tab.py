@@ -36,6 +36,9 @@ class PassiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin)
         # Initialize search parser
         self.search_parser = SearchParser()
         self.clicked_header = None
+        
+        # Search text change detection to prevent unnecessary re-filtering
+        self._last_search_text = ""
 
         # Track expansion state for better user experience
         self.auto_expand_on_first_load = False
@@ -258,6 +261,9 @@ class PassiveCraftingTab(ctk.CTkFrame, OptimizedTableMixin, AsyncRenderingMixin)
     def apply_filter(self):
         """Filters the master data list based on search and column filters."""
         search_text = self.app.get_search_text()
+        
+        # Track search text changes for future optimizations (don't return early)
+        self._last_search_text = search_text
         temp_data = self.all_data[:]
 
         # Apply column filters first
