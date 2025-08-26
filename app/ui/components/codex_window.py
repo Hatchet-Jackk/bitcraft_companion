@@ -277,6 +277,10 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
         self.active_profession = None
         self.all_requirements = {}
         self.target_tier = None
+        self.cached_codex_requirements = None  # Cache to avoid duplicate calls
+        self.cached_codex_quantity = None  # Cache extracted quantity
+        self.cached_inventory = None  # Cache consolidated inventory
+        self.cached_inventory_timestamp = 0  # Track when inventory was cached
 
         # Window configuration - NOT modal, match main window background
         self.title("Codex")
@@ -606,7 +610,9 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
 
         except Exception as e:
             logging.error(f"Error calculating requirements: {e}")
-            self.after(10, lambda: self._show_error_and_hide_loading(f"Error calculating requirements: {e}"))
+            # Provide specific error message based on the failure type
+            error_message = self._get_user_friendly_error_message(str(e))
+            self.after(10, lambda: self._show_error_and_hide_loading(error_message))
 
     def _update_ui_with_requirements(self, requirements):
         """Update UI with calculated requirements (runs on main thread)."""
@@ -631,9 +637,7 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
 
                 # Update refined product status
                 refined_count = self._get_refined_product_count(profession, self.target_tier)
-                codex_required = self._extract_codex_quantity_from_requirements(
-                    self.data_service.codex_service.get_codex_requirements_for_tier(self.target_tier), self.target_tier
-                )
+                codex_required = self._get_cached_codex_quantity()
                 self.profession_tabs[profession].update_refined_status(refined_count, self.target_tier, codex_required)
 
             # Update progress summary
@@ -695,6 +699,9 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
 
             # Store target tier for use in other methods
             self.target_tier = target_tier
+            self.cached_codex_requirements = None  # Clear cache when tier changes
+            self.cached_codex_quantity = None  # Clear quantity cache when tier changes
+            # Inventory cache doesn't need clearing on tier change
 
             logging.debug(f"Codex calculation: current_tier={current_tier}, target_tier={target_tier}")
 
@@ -702,14 +709,14 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
             codex_requirements = {}
             try:
                 if hasattr(self.data_service, "codex_service") and self.data_service.codex_service:
-                    codex_requirements = self.data_service.codex_service.get_codex_requirements_for_tier(target_tier)
+                    codex_requirements = self._get_cached_codex_requirements()
             except Exception as e:
                 logging.debug(f"Error getting codex requirements: {e}")
 
             # Calculate codex count and progress
             supplies_cost = codex_requirements.get("supplies_cost", max(0, (target_tier - 2) * 5000))
             # Get actual codex count from input array (not calculated from supplies)
-            codex_required = self._extract_codex_quantity_from_requirements(codex_requirements, target_tier)
+            codex_required = self._get_cached_codex_quantity()
             codex_current = self._get_completed_codex_count(target_tier)
 
             # Update tier progress header (top)
@@ -723,27 +730,98 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
     def _extract_codex_quantity_from_requirements(self, requirements: Dict, target_tier: int) -> int:
         """
         Extract actual codex quantity from claim_tech_desc input array.
+        
+        Raises exceptions instead of returning fallback values to make failures explicit.
 
         Args:
             requirements: codex requirements dict containing input array
-            target_tier: target tier for fallback calculation
+            target_tier: target tier for calculation
 
         Returns:
             Actual codex quantity required
         """
-        try:
-            input_array = requirements.get("input", [])
-            logging.debug(f"DEBUG CODEX: tier {target_tier}, input_array: {input_array}")
-            logging.debug(f"DEBUG CODEX: requirements dict: {requirements}")
+        if 'error' in requirements:
+            logging.error(f"Requirements dict contains error: {requirements['error']}")
+            raise RuntimeError(f"Requirements dict contains error: {requirements['error']}")
+        
+        input_array = requirements.get("input", [])
+        
+        if not input_array or len(input_array) == 0:
+            logging.error(f"Empty or missing input array for tier {target_tier}")
+            raise RuntimeError(f"Empty or missing input array for tier {target_tier}")
+        
+        first_entry = input_array[0]
+        
+        if not isinstance(first_entry, (list, tuple)) or len(first_entry) < 2:
+            logging.error(f"Malformed input array entry for tier {target_tier}")
+            raise RuntimeError(f"First entry malformed - expected list/tuple with 2+ elements")
+        
+        codex_quantity = first_entry[1]
+        
+        if not isinstance(codex_quantity, int) or codex_quantity <= 0:
+            logging.error(f"Invalid codex quantity {codex_quantity} for tier {target_tier}")
+            raise RuntimeError(f"Invalid codex quantity {codex_quantity}")
+        
+        logging.debug(f"Tier {target_tier} requires {codex_quantity} codex items")
+        return codex_quantity
 
-            if input_array and len(input_array) > 0 and len(input_array[0]) >= 2:
-                codex_quantity = input_array[0][1]
-                return codex_quantity
-        except (IndexError, TypeError) as e:
-            logging.error(f"Failed to extract codex quantity from input array for tier {target_tier}: {e}")
+    def _get_cached_codex_requirements(self) -> Dict:
+        """Get cached codex requirements, fetching once if needed."""
+        if self.cached_codex_requirements is None:
+            logging.info(f"Fetching codex requirements for tier {self.target_tier}")
+            self.cached_codex_requirements = self.data_service.codex_service.get_codex_requirements_for_tier(self.target_tier)
+        return self.cached_codex_requirements
 
-        logging.error(f"NO CODEX DATA AVAILABLE FOR TIER {target_tier} - this should not happen")
-        return 0
+    def _get_cached_codex_quantity(self) -> int:
+        """Get cached codex quantity, extracting once if needed."""
+        if self.cached_codex_quantity is None:
+            logging.info(f"Extracting codex quantity for tier {self.target_tier}")
+            requirements = self._get_cached_codex_requirements()
+            self.cached_codex_quantity = self._extract_codex_quantity_from_requirements(requirements, self.target_tier)
+        return self.cached_codex_quantity
+
+    def _get_cached_inventory(self) -> Dict:
+        """Get cached consolidated inventory, refreshing if older than 30 seconds."""
+        import time
+        current_time = time.time()
+        
+        # Refresh cache if older than 30 seconds
+        if self.cached_inventory is None or (current_time - self.cached_inventory_timestamp) > 30:
+            self.cached_inventory = self.data_service.get_consolidated_inventory()
+            self.cached_inventory_timestamp = current_time
+            if self.cached_inventory:
+                logging.debug(f"Refreshed inventory cache: {len(self.cached_inventory)} items")
+        
+        return self.cached_inventory or {}
+
+    def _get_user_friendly_error_message(self, error_str: str) -> str:
+        """
+        Convert technical error messages to user-friendly messages.
+        
+        Args:
+            error_str: Technical error message from exception
+            
+        Returns:
+            User-friendly error message
+        """
+        if "No claim available for tier lookup" in error_str:
+            return "Error: No claim data available. Please ensure you're connected to a claim."
+        elif "ClaimsProcessor not found" in error_str:
+            return "Error: Claim data not synchronized. Please wait for data to load or reconnect."
+        elif "No claim tech data found for claim" in error_str:
+            return "Error: Claim tech data not available. You may not have access to this claim's tech data."
+        elif "ReferenceDataProcessor not found" in error_str:
+            return "Error: Reference data not loaded. Please wait for data synchronization to complete."
+        elif "Could not find tier" in error_str and "data" in error_str:
+            return "Error: Tier data not available. This may be a new tier that hasn't been synchronized yet."
+        elif "Empty or missing input array" in error_str:
+            return "Error: Codex data incomplete. Reference data may be corrupted or outdated."
+        elif "Invalid codex quantity" in error_str:
+            return "Error: Invalid codex requirements found. Reference data may be corrupted."
+        elif "No codex_window provided" in error_str:
+            return "Error: Internal calculation error. Please try reopening the codex window."
+        else:
+            return f"Error: {error_str}"
 
     def _get_completed_codex_count(self, target_tier: int) -> int:
         """
@@ -756,15 +834,15 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
             Number of completed codex items in inventory
         """
         try:
-            consolidated_inventory = self.data_service.get_consolidated_inventory()
-            if not isinstance(consolidated_inventory, dict):
+            consolidated_inventory = self._get_cached_inventory()
+            if not consolidated_inventory:
                 return 0
 
             codex_count = 0
 
             try:
                 # Get codex requirements to find the actual required codex ID
-                codex_requirements = self.data_service.codex_service.get_codex_requirements_for_tier(target_tier)
+                codex_requirements = self._get_cached_codex_requirements()
                 input_array = codex_requirements.get("input", [])
 
                 if input_array and len(input_array) > 0 and len(input_array[0]) >= 1:
@@ -822,8 +900,8 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
             Number of refined products available in inventory
         """
         try:
-            consolidated_inventory = self.data_service.get_consolidated_inventory()
-            if not isinstance(consolidated_inventory, dict):
+            consolidated_inventory = self._get_cached_inventory()
+            if not consolidated_inventory:
                 return 0
 
             # Get the actual refined item name using recursive chain
@@ -872,7 +950,7 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
                 return
 
             crafting_recipes = reference_processor.get_reference_items("crafting_recipe_desc")
-            codex_requirements = self.data_service.codex_service.get_codex_requirements_for_tier(target_tier)
+            codex_requirements = self._get_cached_codex_requirements()
             input_array = codex_requirements.get("input", [])
 
             # Find codex id

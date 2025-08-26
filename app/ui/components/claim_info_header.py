@@ -21,7 +21,13 @@ class ClaimInfoHeader(ctk.CTkFrame):
     """
 
     def __init__(self, master, app, reference_data=None):
-        super().__init__(master, fg_color=get_color("BACKGROUND_SECONDARY"), corner_radius=8, border_width=1, border_color=get_color("BORDER_DEFAULT"))
+        super().__init__(
+            master,
+            fg_color=get_color("BACKGROUND_SECONDARY"),
+            corner_radius=8,
+            border_width=1,
+            border_color=get_color("BORDER_DEFAULT"),
+        )
         self.app = app
 
         # Register for theme change notifications
@@ -182,7 +188,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
             corner_radius=8,
             border_width=0,
         )
-        self.activity_button.grid(row=0, column=1, sticky="w", padx=(10, 10))
+        self.activity_button.grid(row=0, column=1, sticky="w", padx=(0, 10))
 
         # Add tooltip to activity button
         self._add_tooltip(self.activity_button, "View recent inventory changes and activity log")
@@ -201,7 +207,7 @@ class ClaimInfoHeader(ctk.CTkFrame):
             corner_radius=8,
             border_width=0,
         )
-        self.codex_button.grid(row=0, column=2, sticky="w", padx=(10, 10))
+        self.codex_button.grid(row=0, column=2, sticky="w", padx=(0, 10))
 
         # Add tooltip to codex button
         self._add_tooltip(self.codex_button, "View material requirements for claim tier advancement")
@@ -402,13 +408,13 @@ class ClaimInfoHeader(ctk.CTkFrame):
 
             # Calculate and update supplies run out time
             self._update_supplies_runout()
-            
+
             # Notify MainWindow that claim info data loading completed (for loading overlay detection)
-            if hasattr(self.app, 'is_loading') and self.app.is_loading:
-                if hasattr(self.app, 'received_data_types'):
+            if hasattr(self.app, "is_loading") and self.app.is_loading:
+                if hasattr(self.app, "received_data_types"):
                     self.app.received_data_types.add("claim_info")
                     logging.info(f"[ClaimInfoHeader] Notified MainWindow of claim info data completion")
-                    if hasattr(self.app, '_check_all_data_loaded'):
+                    if hasattr(self.app, "_check_all_data_loaded"):
                         self.app._check_all_data_loaded()
 
         except Exception as e:
