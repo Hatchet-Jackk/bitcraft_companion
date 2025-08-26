@@ -24,19 +24,10 @@ from .cascading_inventory_service import CascadingInventoryCalculator, extract_d
 
 
 class CodexService:
-    """
-    Minimal codex service for material requirements tracking.
-    
-    Uses pre-calculated binary templates for fast material requirement lookups.
-    Avoids all the problematic patterns that caused previous implementation failures.
-    """
+    """Codex service for material requirements tracking using pre-calculated templates."""
     
     def __init__(self, data_service):
-        """
-        Initialize CodexService with lazy loading.
-        
-        CRITICAL: No expensive operations here - this was the key lesson learned.
-        """
+        """Initialize CodexService with lazy loading."""
         self.data_service = data_service
         
         # Template system
@@ -68,11 +59,7 @@ class CodexService:
             return self._templates_loaded
     
     def load_templates_sync(self) -> bool:
-        """
-        Load templates synchronously when needed.
-        
-        This is called when templates are actually needed, not during startup.
-        """
+        """Load templates synchronously when needed."""
         with self._template_lock:
             if self._templates_loaded:
                 return True
@@ -175,52 +162,28 @@ class CodexService:
         return supply
     
     def _get_inventory_hash(self) -> str:
-        """
-        Generate a hash of current inventory state for cache invalidation.
-        
-        Returns:
-            Hash string representing current inventory state
-        """
+        """Generate a hash of current inventory state for cache invalidation."""
         current_time = time.time()
         
         # Check if we need to refresh the hash (every 30 seconds)
         if current_time - self._last_inventory_check > 30:
-            try:
-                consolidated_inventory = self.data_service.get_consolidated_inventory()
+            consolidated_inventory = self.data_service.get_consolidated_inventory()
+            
+            if consolidated_inventory:
+                # Fast hash based on inventory size and sample items
+                inventory_size = len(consolidated_inventory)
+                sample_items = list(consolidated_inventory.items())[:5]  # Sample first 5 items
+                hash_data = f"{inventory_size}:{sample_items}"
+                self._inventory_hash_cache = hashlib.md5(hash_data.encode()).hexdigest()[:8]
+            else:
+                self._inventory_hash_cache = "empty"
                 
-                if isinstance(consolidated_inventory, dict):
-                    # Create a simplified version for hashing (item_name -> quantity)
-                    inventory_for_hash = {}
-                    for item_name, item_data in consolidated_inventory.items():
-                        if isinstance(item_data, dict):
-                            inventory_for_hash[item_name] = item_data.get('total_quantity', 0)
-                    
-                    # Generate hash from sorted inventory data
-                    inventory_json = json.dumps(inventory_for_hash, sort_keys=True)
-                    self._inventory_hash_cache = hashlib.md5(inventory_json.encode()).hexdigest()
-                else:
-                    self._inventory_hash_cache = "empty"
-                    
-                self._last_inventory_check = current_time
-                logging.debug(f"Updated inventory hash: {self._inventory_hash_cache}")
-                
-            except Exception as e:
-                logging.debug(f"Error generating inventory hash: {e}")
-                self._inventory_hash_cache = "error"
+            self._last_inventory_check = current_time
                 
         return self._inventory_hash_cache or "unknown"
     
     def _get_tier_cache_key(self, current_tier: int, target_tier: int) -> str:
-        """
-        Generate cache key for tier requirements.
-        
-        Args:
-            current_tier: Current claim tier
-            target_tier: Target claim tier
-            
-        Returns:
-            Cache key string
-        """
+        """Generate cache key for tier requirements."""
         return f"{current_tier}->{target_tier}"
     
     def _get_cached_requirements(self, tier_key: str, inventory_hash: str) -> Optional[Dict]:
@@ -274,48 +237,39 @@ class CodexService:
         logging.info(f"Cached requirements for {tier_key} (inventory: {inventory_hash[:8]}...)")
     
     def get_current_claim_tier(self) -> int:
-        """
-        Get the current tier of the player's claim from claim tech data.
+        """Get the current tier of the player's claim from claim tech data."""
+        # Get current claim ID
+        if not hasattr(self.data_service, 'claim') or not self.data_service.claim:
+            logging.error("No claim available for tier lookup")
+            raise RuntimeError("No claim available for tier lookup")
+            
+        claim_id = self.data_service.claim.claim_id
+        if not claim_id:
+            logging.error("No claim ID available")
+            raise RuntimeError("No claim ID available for tier lookup")
         
-        Uses subscription data via ClaimsProcessor and ClaimTechState methods for proper tier parsing.
-        """
-        try:
-            # Get current claim ID
-            if not hasattr(self.data_service, 'claim') or not self.data_service.claim:
-                logging.debug("No claim available for tier lookup")
-                return 4
-                
-            claim_id = self.data_service.claim.claim_id
-            if not claim_id:
-                logging.debug("No claim ID available for tier lookup")
-                return 4
-            
-            # Find ClaimsProcessor from processors list
-            claims_processor = None
-            if hasattr(self.data_service, 'processors') and self.data_service.processors:
-                for processor in self.data_service.processors:
-                    if hasattr(processor, 'get_claim_tech_state'):
-                        claims_processor = processor
-                        break
-            
-            if not claims_processor:
-                logging.debug("ClaimsProcessor not found")
-                return 4
-            
-            # Get claim tech state for current claim
-            logging.debug(f"Looking up claim tech state for claim {claim_id}")
-            claim_tech = claims_processor.get_claim_tech_state(int(claim_id))
-            if claim_tech:
-                current_tier = claim_tech.get_current_tier()
-                logging.info(f"Found claim tier: T{current_tier} for claim {claim_id}")
-                return current_tier
-            else:
-                logging.warning(f"No claim tech data found for claim {claim_id}")
-                return 4
-            
-        except Exception as e:
-            logging.debug(f"Error getting claim tier from subscription data: {e}")
-            return 4
+        # Find ClaimsProcessor from processors list
+        claims_processor = None
+        if hasattr(self.data_service, 'processors') and self.data_service.processors:
+            for processor in self.data_service.processors:
+                if hasattr(processor, 'get_claim_tech_state'):
+                    claims_processor = processor
+                    break
+        
+        if not claims_processor:
+            logging.error("ClaimsProcessor not found in processors list")
+            raise RuntimeError("ClaimsProcessor not found")
+        
+        # Get claim tech state for current claim
+        claim_tech = claims_processor.get_claim_tech_state(int(claim_id))
+        
+        if claim_tech:
+            current_tier = claim_tech.get_current_tier()
+            logging.info(f"Found claim tier T{current_tier} for claim {claim_id}")
+            return current_tier
+        else:
+            logging.error(f"No claim tech data found for claim {claim_id}")
+            raise RuntimeError(f"No claim tech data found for claim {claim_id}")
     
     def get_target_tier(self) -> int:
         """
@@ -324,54 +278,49 @@ class CodexService:
         return self.get_current_claim_tier() + 1
     
     def get_codex_requirements_for_tier(self, tier: int) -> Dict:
-        """
-        Get codex requirements for a specific tier from reference data.
+        """Get codex requirements for a specific tier from reference data."""
+        # Find ReferenceDataProcessor
+        reference_processor = None
+        if hasattr(self.data_service, 'processors'):
+            for processor in self.data_service.processors:
+                if type(processor).__name__ == 'ReferenceDataProcessor':
+                    reference_processor = processor
+                    break
         
-        Uses cached reference data from the reference processor.
-        """
-        try:
-            reference_processor = None
-            if hasattr(self.data_service, 'processors'):
-                for processor in self.data_service.processors:
-                    if type(processor).__name__ == 'ReferenceDataProcessor':
-                        reference_processor = processor
-                        break
-            
-            if reference_processor:
-                # Get claim_tech_desc items from the processor cache
-                tech_items = reference_processor.get_reference_items('claim_tech_desc')
-                
-                for tech_item in tech_items:
-                    if hasattr(tech_item, 'tier') and tech_item.tier == tier:
+        if not reference_processor:
+            logging.error("ReferenceDataProcessor not found")
+            raise RuntimeError("ReferenceDataProcessor not found")
+        
+        # Get claim_tech_desc items from the processor cache
+        tech_items = reference_processor.get_reference_items('claim_tech_desc')
+        
+        if tech_items:
+            for tech_item in tech_items:
+                if hasattr(tech_item, 'tier') and tech_item.tier == tier:
+                    logging.debug(f"Loaded tier {tier} codex requirements from cache")
+                    return {
+                        'tier': tier,
+                        'supplies_cost': tech_item.supplies_cost,
+                        'requirements': tech_item.requirements,
+                        'input': tech_item.input
+                    }
+        
+        # Check backward compatibility dict format
+        if hasattr(reference_processor, 'reference_data') and reference_processor.reference_data:
+            reference_data = reference_processor.reference_data
+            if 'claim_tech_desc' in reference_data:
+                for tech_desc in reference_data['claim_tech_desc']:
+                    if isinstance(tech_desc, dict) and tech_desc.get('tier') == tier:
+                        logging.debug(f"Loaded tier {tier} codex requirements from dict cache")
                         return {
                             'tier': tier,
-                            'supplies_cost': tech_item.supplies_cost,
-                            'requirements': tech_item.requirements,
-                            'input': tech_item.input
+                            'supplies_cost': tech_desc.get('supplies_cost', 0),
+                            'requirements': tech_desc.get('requirements', []),
+                            'input': tech_desc.get('input', [])
                         }
-                
-                # Also check the backward compatibility dict format
-                if hasattr(reference_processor, 'reference_data') and reference_processor.reference_data:
-                    reference_data = reference_processor.reference_data
-                    if 'claim_tech_desc' in reference_data:
-                        for tech_desc in reference_data['claim_tech_desc']:
-                            if isinstance(tech_desc, dict) and tech_desc.get('tier') == tier:
-                                return {
-                                    'tier': tier,
-                                    'supplies_cost': tech_desc.get('supplies_cost', 0),
-                                    'requirements': tech_desc.get('requirements', []),
-                                    'input': tech_desc.get('input', [])
-                                }
-                
-            else:
-                logging.error(f"No ReferenceDataProcessor found in processors list")
-            
-            logging.error(f"Could not find tier {tier} data - returning error")
-            return {'tier': tier, 'supplies_cost': 0, 'requirements': [], 'input': [], 'error': 'no_data'}
-            
-        except Exception as e:
-            logging.error(f"Error getting codex requirements for tier {tier}: {e}")
-            return {'tier': tier, 'supplies_cost': 0, 'requirements': [], 'input': [], 'error': str(e)}
+        
+        logging.error(f"Could not find tier {tier} codex requirements")
+        raise RuntimeError(f"Could not find tier {tier} data")
     
     def calculate_tier_requirements(self, current_tier: int = None, target_tier: int = None, codex_window=None) -> Dict[str, Dict[str, float]]:
         """
@@ -415,72 +364,48 @@ class CodexService:
         return results
     
     def _calculate_requirements_internal(self, target_tier: int, codex_window=None) -> Dict[str, Dict[str, float]]:
-        """
-        Internal method for calculating requirements with optimized batch inventory queries.
-        
-        Args:
-            target_tier: Target tier to calculate requirements for
-            
-        Returns:
-            Dictionary of profession requirements
-        """
+        """Internal method for calculating requirements with optimized batch inventory queries."""
         results = {}
         
         # Get codex requirements to determine total needed
-        codex_required = 30  # Default
-        if codex_window:
-            try:
-                codex_requirements = self.get_codex_requirements_for_tier(target_tier)
-                codex_required = codex_window._extract_codex_quantity_from_requirements(codex_requirements, target_tier)
-            except:
-                pass
+        if not codex_window:
+            logging.error("No codex_window provided for codex quantity extraction")
+            raise RuntimeError("No codex_window provided for codex quantity extraction")
         
-        # First pass: collect all required materials across all professions
+        codex_requirements = self.get_codex_requirements_for_tier(target_tier)
+        codex_required = codex_window._extract_codex_quantity_from_requirements(codex_requirements, target_tier)
+        
+        if codex_required <= 0:
+            logging.error(f"Invalid codex_required value: {codex_required}")
+            raise RuntimeError(f"Invalid codex_required value: {codex_required}")
+        
+        logging.info(f"Need {codex_required} codex items for tier {target_tier}")
+        
+        # Single pass: process templates and build requirements simultaneously
         all_required_materials = set()
-        profession_templates = {}
-        profession_adjustments = {}  
+        base_requirements = {}
+        profession_templates = {}  # Keep this for the second pass
         
         for profession in ["cloth", "metal", "wood", "stone", "leather", "scholar"]:
             template = self.get_template_for_profession(profession, target_tier)
             if not template:
                 continue
                 
-            profession_templates[profession] = template
+            profession_templates[profession] = template  # Store for second pass
             
             # Calculate adjustment factor based on existing refined products
             refined_count = 0
             if codex_window:
                 refined_count = codex_window._get_refined_product_count(profession, target_tier)
             
-            # Calculate how many we still need to make
             remaining_needed = max(0, codex_required - refined_count)
             adjustment_factor = remaining_needed / codex_required if codex_required > 0 else 0
-            profession_adjustments[profession] = adjustment_factor
             
             logging.debug(f"{profession}: {refined_count}/{codex_required} refined, need {remaining_needed} more (factor: {adjustment_factor:.2f})")
             
-            # Collect material names for batch lookup
+            # Process materials in single pass
             for material_name, material_data in template.items():
-                # Handle both old format (just quantity) and new format (dict with quantity and tier)
-                if isinstance(material_data, dict):
-                    tier = material_data.get('tier', 1)
-                else:
-                    tier = 1
-                
-                # Tier filtering: Only include materials with tier <= target_tier
-                if tier <= target_tier:
-                    all_required_materials.add(material_name)
-        
-        # Batch inventory lookup: get all supplies at once
-        batch_supplies = self._get_batch_supply(list(all_required_materials))
-        
-        # Prepare base requirements for cascading calculator
-        base_requirements = {}
-        for profession, template in profession_templates.items():
-            adjustment_factor = profession_adjustments.get(profession, 1.0)
-            
-            for material_name, material_data in template.items():
-                # Handle both old format (just quantity) and new format (dict with quantity and tier)
+                # Handle both old format and new format
                 if isinstance(material_data, dict):
                     base_quantity = material_data.get('quantity', 0)
                     tier = material_data.get('tier', 1)
@@ -490,21 +415,25 @@ class CodexService:
                 
                 # Tier filtering: Only include materials with tier <= target_tier
                 if tier <= target_tier:
-                    # Apply adjustment factor for refined products
-                    quantity_needed = int(base_quantity * adjustment_factor)
+                    all_required_materials.add(material_name)
                     
-                    # Accumulate requirements across professions (some materials appear in multiple)
+                    # Apply adjustment factor and accumulate requirements
+                    quantity_needed = int(base_quantity * adjustment_factor)
                     if material_name in base_requirements:
                         base_requirements[material_name] += quantity_needed
                     else:
                         base_requirements[material_name] = quantity_needed
         
+        # Batch inventory lookup: get all supplies at once
+        batch_supplies = self._get_batch_supply(list(all_required_materials))
+        
         # Apply cascading inventory reductions
         cascaded_requirements = {}
         if self._dependency_trees and base_requirements:
             # Debug: check what inventory we have
-            inventory_with_items = {k: v for k, v in batch_supplies.items() if v > 0}
-            logging.debug(f"Batch supplies with inventory: {len(inventory_with_items)} items: {list(inventory_with_items.keys())[:5]}...")
+            if logging.getLogger().isEnabledFor(logging.DEBUG):
+                inventory_with_items = {k: v for k, v in batch_supplies.items() if v > 0}
+                logging.debug(f"Batch supplies with inventory: {len(inventory_with_items)} items")
             
             cascaded_results = self._cascading_calculator.apply_cascading_reductions(
                 base_requirements, batch_supplies, self._dependency_trees
@@ -514,7 +443,9 @@ class CodexService:
             for material_name, info in cascaded_results.items():
                 cascaded_requirements[material_name] = info['final_need']
                 
-            logging.debug(f"Applied cascading reductions: {len([m for m, info in cascaded_results.items() if info['inventory_reduction'] > 0])} materials reduced")
+            if logging.getLogger().isEnabledFor(logging.DEBUG):
+                reduction_count = len([m for m, info in cascaded_results.items() if info['inventory_reduction'] > 0])
+                logging.debug(f"Applied cascading reductions: {reduction_count} materials reduced")
         else:
             # No cascading - use original requirements
             cascaded_requirements = base_requirements
@@ -558,97 +489,72 @@ class CodexService:
         return results
     
     def _is_direct_dependency_of_refined_material(self, material_name: str, profession: str) -> bool:
-        """
-        Check if a material is a direct dependency of a refined material for the profession.
-        
-        Args:
-            material_name: Name of the material to check
-            profession: Profession name (cloth, metal, wood, stone, leather)
-            
-        Returns:
-            True if the material is a direct input to a refined material
-        """
+        """Check if a material is a direct dependency of a refined material for the profession."""
         if not self._dependency_trees:
             return False
         
-        # Map profession to refined material name
-        refined_material_map = {
-            'cloth': 'Refined Cloth',
-            'metal': 'Refined Ingot', 
-            'wood': 'Refined Plank',
-            'stone': 'Refined Brick',
-            'leather': 'Refined Leather'
+        # Map profession to refined material suffixes
+        profession_suffix_map = {
+            'cloth': 'Cloth',
+            'metal': 'Ingot', 
+            'wood': 'Plank',
+            'stone': 'Brick',
+            'leather': 'Leather'
         }
         
-        refined_material_name = refined_material_map.get(profession)
-        if not refined_material_name:
+        suffix = profession_suffix_map.get(profession)
+        if not suffix:
             return False
         
-        # Get the dependency tree for the refined material
-        refined_material_info = self._dependency_trees.get(refined_material_name, {})
-        dependencies = refined_material_info.get('dependencies', {})
-        direct_deps = dependencies.get('direct', [])
-        
-        # Check if our material is in the direct dependencies
-        for dep_name, _ in direct_deps:
-            if dep_name == material_name:
-                return True
+        # Find all refined materials for this profession
+        # They follow pattern: "Refined [Tier] [Suffix]" like "Refined Ornate Cloth"
+        for refined_material_name, refined_material_info in self._dependency_trees.items():
+            if (refined_material_name.startswith("Refined ") and 
+                refined_material_name.endswith(suffix)):
+                
+                dependencies = refined_material_info.get('dependencies', {})
+                direct_deps = dependencies.get('direct', [])
+                
+                # Check if our material is in the direct dependencies
+                for dep_name, _ in direct_deps:
+                    if dep_name == material_name:
+                        return True
         
         return False
     
     def _get_batch_supply(self, material_names: list) -> Dict[str, int]:
-        """
-        Get supply data for multiple materials in a single batch operation.
-        
-        Args:
-            material_names: List of material names to get supplies for
-            
-        Returns:
-            Dictionary mapping material names to their supply quantities
-        """
+        """Get supply data for multiple materials in a single batch operation."""
         batch_supplies = {}
         current_time = time.time()
+        cache_expired = current_time - self._cache_timestamp > self._cache_ttl
         
-        # Check if we need to refresh the consolidated inventory cache
-        if current_time - self._cache_timestamp > self._cache_ttl:
-            self._supply_cache.clear()  # Clear individual cache
-            
-        try:
-            # Get consolidated inventory once
-            consolidated_inventory = self.data_service.get_consolidated_inventory()
-            
-            if isinstance(consolidated_inventory, dict):
-                # Process all requested materials at once
-                for material_name in material_names:
-                    supply = 0
-                    
-                    # Check individual cache first
-                    if material_name in self._supply_cache and current_time - self._cache_timestamp <= self._cache_ttl:
-                        supply = self._supply_cache[material_name]
-                    else:
-                        # Look up in consolidated inventory
-                        item_data = consolidated_inventory.get(material_name)
-                        if item_data and isinstance(item_data, dict):
-                            supply = item_data.get('total_quantity', 0)
-                        
-                        # Cache the result
-                        self._supply_cache[material_name] = supply
-                    
-                    batch_supplies[material_name] = supply
-                
-                # Update cache timestamp
-                self._cache_timestamp = current_time
-                
-                logging.debug(f"Batch fetched supplies for {len(material_names)} materials")
+        # Get consolidated inventory
+        consolidated_inventory = self.data_service.get_consolidated_inventory()
+        
+        if not consolidated_inventory:
+            logging.warning("No consolidated inventory available")
+            return {name: 0 for name in material_names}
+        
+        # Clear cache once if expired
+        if cache_expired:
+            self._supply_cache.clear()
+            self._cache_timestamp = current_time
+        
+        # Process all requested materials
+        for material_name in material_names:
+            # Check cache first (no individual TTL check needed)
+            if material_name in self._supply_cache and not cache_expired:
+                supply = self._supply_cache[material_name]
             else:
-                logging.debug(f"No consolidated inventory available for batch fetch")
-                # Fallback: all materials have 0 supply
-                batch_supplies = {name: 0 for name in material_names}
+                # Look up in consolidated inventory
+                item_data = consolidated_inventory.get(material_name)
+                supply = item_data.get('total_quantity', 0) if item_data and isinstance(item_data, dict) else 0
                 
-        except Exception as e:
-            logging.debug(f"Error in batch supply fetch: {e}")
-            # Fallback: all materials have 0 supply
-            batch_supplies = {name: 0 for name in material_names}
+                # Cache the result
+                self._supply_cache[material_name] = supply
+            
+            batch_supplies[material_name] = supply
+        logging.debug(f"Batch fetched supplies for {len(material_names)} materials")
         
         return batch_supplies
     
