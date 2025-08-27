@@ -1224,7 +1224,6 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
         try:
             # Check if search is already set up to prevent duplicate initialization
             if hasattr(self, 'search_bar') and self.search_bar:
-                logging.debug("Search already set up, skipping duplicate initialization")
                 return
                 
             # Configure search frame like main window

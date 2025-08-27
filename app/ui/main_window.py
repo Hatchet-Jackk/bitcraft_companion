@@ -1256,8 +1256,14 @@ class MainWindow(ctk.CTk, SearchableWindowMixin):
         self.is_shutting_down = True
 
         try:
-            # STEP 1: Immediately hide main window and show shutdown dialog
+            # STEP 1: Immediately hide main window and close child windows
             self.withdraw()  # Hide main window instantly
+
+            # Close child windows immediately
+            if self.codex_window and self.codex_window.winfo_exists():
+                self.codex_window.withdraw()
+            if self.activity_window and self.activity_window.winfo_exists():
+                self.activity_window.withdraw()
 
             # Show shutdown dialog
             self.shutdown_dialog = ShutdownDialog(self)
