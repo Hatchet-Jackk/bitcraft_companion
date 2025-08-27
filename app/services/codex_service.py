@@ -358,15 +358,15 @@ class CodexService:
             if not self.load_templates_sync():
                 return {}
 
-        # Perform the calculation
-        results = self._calculate_requirements_internal(target_tier, codex_window)
+        # Perform the calculation - calculate requirements for completing current tier
+        results = self._calculate_requirements_internal(current_tier, target_tier, codex_window)
 
         # Cache the results
         self._cache_requirements(tier_key, inventory_hash, results)
 
         return results
 
-    def _calculate_requirements_internal(self, target_tier: int, codex_window=None) -> Dict[str, Dict[str, float]]:
+    def _calculate_requirements_internal(self, calculation_tier: int, target_tier: int, codex_window=None) -> Dict[str, Dict[str, float]]:
         """Internal method for calculating requirements with optimized batch inventory queries."""
         results = {}
 
@@ -382,7 +382,7 @@ class CodexService:
             logging.error(f"Invalid codex_required value: {codex_required}")
             raise RuntimeError(f"Invalid codex_required value: {codex_required}")
 
-        logging.info(f"Need {codex_required} codex items for tier {target_tier}")
+        logging.info(f"Need {codex_required} codex items for tier {calculation_tier}")
 
         # Single pass: process templates and build requirements simultaneously
         all_required_materials = set()
@@ -390,16 +390,18 @@ class CodexService:
         profession_templates = {}  # Keep this for the second pass
 
         for profession in ["cloth", "metal", "wood", "stone", "leather", "scholar"]:
-            template = self.get_template_for_profession(profession, target_tier)
+            template = self.get_template_for_profession(profession, calculation_tier)
             if not template:
+                logging.warning(f"No template found for {profession} tier {calculation_tier}")
                 continue
+            
 
             profession_templates[profession] = template  # Store for second pass
 
             # Calculate adjustment factor based on existing refined products
             refined_count = 0
             if codex_window:
-                refined_count = codex_window._get_refined_product_count(profession, target_tier)
+                refined_count = codex_window._get_refined_product_count(profession, calculation_tier)
 
             remaining_needed = max(0, codex_required - refined_count)
             adjustment_factor = remaining_needed / codex_required if codex_required > 0 else 0
@@ -417,30 +419,36 @@ class CodexService:
                 else:
                     base_quantity = material_data
                     tier = 1
+                
 
-                if tier < target_tier:
+                if tier <= calculation_tier:
                     all_required_materials.add(material_name)
 
-                    # Apply adjustment factor and accumulate requirements
-                    quantity_needed = int(base_quantity * adjustment_factor)
+                    # Apply adjustment factor and accumulate requirements  
+                    # The base_quantity is per single codex, so multiply by total needed
+                    quantity_needed = int(base_quantity * codex_required * adjustment_factor)
+                    
                     if material_name in base_requirements:
                         base_requirements[material_name] += quantity_needed
                     else:
                         base_requirements[material_name] = quantity_needed
 
-        # Batch inventory lookup: get all supplies at once
-        batch_supplies = self._get_batch_supply(list(all_required_materials))
+        # Get consolidated inventory for cascading calculations
+        consolidated_inventory = self.data_service.get_consolidated_inventory()
+        if not consolidated_inventory:
+            logging.warning("No consolidated inventory available for cascading")
+            consolidated_inventory = {}
 
         # Apply cascading inventory reductions
         cascaded_requirements = {}
         if self._dependency_trees and base_requirements:
-            # Debug: check what inventory we have
             if logging.getLogger().isEnabledFor(logging.DEBUG):
-                inventory_with_items = {k: v for k, v in batch_supplies.items() if v > 0}
-                logging.debug(f"Batch supplies with inventory: {len(inventory_with_items)} items")
+                inventory_with_items = {k: v for k, v in consolidated_inventory.items() 
+                                      if isinstance(v, dict) and v.get('total_quantity', 0) > 0}
+                logging.debug(f"Consolidated inventory with items: {len(inventory_with_items)} materials")
 
             cascaded_results = self._cascading_calculator.apply_cascading_reductions(
-                base_requirements, batch_supplies, self._dependency_trees
+                base_requirements, consolidated_inventory, self._dependency_trees
             )
 
             # Convert cascaded results to simple requirement dict
@@ -465,16 +473,17 @@ class CodexService:
                 else:
                     tier = 1
 
-                # Tier filtering: Only include materials with tier < target_tier
-                if tier >= target_tier:
-                    logging.debug(f"Filtering out {material_name} (tier {tier} > target {target_tier})")
+                # Tier filtering: Only include materials with tier <= calculation_tier
+                if tier > calculation_tier:
+                    logging.debug(f"Filtering out {material_name} (tier {tier} > calculation {calculation_tier})")
                     continue
 
                 # Use cascaded requirement (already adjusted for refined products and cascading reductions)
                 quantity_needed = cascaded_requirements.get(material_name, 0)
 
-                # Use batch-fetched supply data
-                current_supply = batch_supplies.get(material_name, 0)
+                # Get current supply from consolidated inventory
+                item_data = consolidated_inventory.get(material_name, {})
+                current_supply = item_data.get('total_quantity', 0) if isinstance(item_data, dict) else 0
 
                 # Determine if this material is a direct dependency of a refined material
                 is_direct_dependency = self._is_direct_dependency_of_refined_material(material_name, profession)

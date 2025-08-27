@@ -284,6 +284,7 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
         self.cached_inventory = None  # Cache consolidated inventory
         self.cached_inventory_timestamp = 0  # Track when inventory was cached
         self.cached_codex_name = None  # Cache codex name
+        self.refined_mats = {}  # Actual refined material names mapped to professions
 
         # Window configuration - NOT modal, match main window background
         self.title("Codex")
@@ -370,6 +371,7 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
             text_color=get_color("TEXT_PRIMARY"),
         )
         self.tier_progress_label.pack(side="left")
+
 
         # Close button (top right, like main window quit button)
         close_button = ctk.CTkButton(
@@ -663,9 +665,14 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
         try:
             codex_service = self.data_service.codex_service if hasattr(self.data_service, "codex_service") else None
 
-            # Get real tier data from codex service
-            current_tier = codex_service.get_current_claim_tier() if codex_service else 4
-            target_tier = codex_service.get_target_tier() if codex_service else current_tier + 1
+            # Get real tier data from codex service with graceful degradation
+            if not codex_service:
+                logging.warning("No codex service available, using default tier values")
+                current_tier = 4
+                target_tier = 5
+            else:
+                current_tier = codex_service.get_current_claim_tier()
+                target_tier = codex_service.get_target_tier()
 
             # Get claim name
             claim_name = "Unknown Claim"
@@ -1245,7 +1252,7 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
         """Get window ID for current active profession."""
         if self.active_profession:
             return f"codex_{self.active_profession}"
-        return "codex_cloth"  # Default fallback
+        return "codex_cloth"  # Default to cloth tab during initialization
 
     def _get_profession_search_placeholder(self) -> str:
         """Get profession-specific search placeholder text."""
@@ -1475,3 +1482,4 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
 
             # Update label with x/y (%) format - this reflects TRUE progress
             self.profession_progress_labels[profession].configure(text=f"{completed}/{total} ({percentage}%)")
+
