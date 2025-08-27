@@ -512,16 +512,21 @@ class DataService:
             self.claim = Claim()
             self.claim.claim_id = claim_id
 
-            # Update processor services with new claim
-            services = {
-                "claim_manager": self.claim_manager,
-                "client": self.client,
-                "claim": self.claim,
-            }
+            # Update processor services with new claim (preserve all existing services)
+            if self.processors:
+                # Get the full services dict from the first processor to preserve all services
+                existing_services = self.processors[0].services.copy() if self.processors[0].services else {}
+                
+                # Update only the claim-related services
+                existing_services.update({
+                    "claim_manager": self.claim_manager,
+                    "client": self.client,
+                    "claim": self.claim,
+                })
 
-            for processor in self.processors:
-                processor.services = services
-                processor.claim = self.claim
+                for processor in self.processors:
+                    processor.services = existing_services
+                    processor.claim = self.claim
 
             # Restart subscriptions for new claim (this automatically replaces existing subscriptions)
             self._setup_subscriptions_for_current_claim(context="claim_switch")

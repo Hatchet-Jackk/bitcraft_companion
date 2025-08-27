@@ -1222,6 +1222,11 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
     def _setup_search_after_data_load(self):
         """Set up search functionality after data is loaded."""
         try:
+            # Check if search is already set up to prevent duplicate initialization
+            if hasattr(self, 'search_bar') and self.search_bar:
+                logging.debug("Search already set up, skipping duplicate initialization")
+                return
+                
             # Configure search frame like main window
             self.search_frame.grid_columnconfigure(0, weight=1)
 
@@ -1482,4 +1487,138 @@ class CodexWindow(ctk.CTkToplevel, SearchableWindowMixin):
 
             # Update label with x/y (%) format - this reflects TRUE progress
             self.profession_progress_labels[profession].configure(text=f"{completed}/{total} ({percentage}%)")
+
+    def clear_for_claim_switch(self):
+        """Clear codex window data during claim switching."""
+        try:
+            # Clear all profession tabs
+            for profession in self.professions:
+                tab = self.profession_tabs[profession]
+                tab.materials_data = {}
+                tab.materials_tree.delete(*tab.materials_tree.get_children())
+                display_name = self.profession_display_names.get(profession, profession.title())
+                tab.materials_tree.insert("", "end", values=(f"Switching claims...", "", "", "", ""))
+                
+            # Clear progress labels
+            for profession in self.professions:
+                self.profession_progress_labels[profession].configure(text="0/0 (0%)")
+            
+            # Clear cached data
+            self.all_requirements = {}
+            self.cached_inventory = None
+            self.last_inventory_check = 0
+            
+            logging.info("Codex window cleared for claim switch")
+            
+        except Exception as e:
+            logging.error(f"Error clearing codex window for claim switch: {e}")
+
+    def handle_claim_switch_complete(self, claim_id: str, claim_name: str):
+        """Handle successful claim switch completion."""
+        try:
+            # Invalidate codex service caches
+            if hasattr(self.data_service, 'codex_service'):
+                self.data_service.codex_service.invalidate_cache()
+                
+            # Clear cascading calculator cache
+            if hasattr(self.data_service.codex_service, '_cascading_calculator'):
+                self.data_service.codex_service._cascading_calculator.clear_cache()
+                
+            logging.info(f"Codex caches invalidated for claim switch to {claim_name}")
+            
+            # Force recalculation with new claim data
+            self._recalculate_all_requirements()
+            
+        except Exception as e:
+            logging.error(f"Error handling claim switch in codex window: {e}")
+
+    def _recalculate_all_requirements(self):
+        """Force complete recalculation of codex requirements."""
+        try:
+            # Clear all cached data
+            self.all_requirements = {}
+            self.cached_inventory = None
+            self.last_inventory_check = 0
+            
+            # Initialize retry counter
+            self._recalc_retry_count = 0
+            
+            # Schedule recalculation after a short delay to let services stabilize
+            self.after(500, self._delayed_recalculation)
+            
+            logging.info("Scheduled codex requirements recalculation after claim switch")
+            
+        except Exception as e:
+            logging.error(f"Error scheduling codex requirements recalculation: {e}")
+
+    def _delayed_recalculation(self):
+        """Perform the actual recalculation after services have stabilized."""
+        try:
+            # Limit retry attempts to prevent infinite loops
+            if not hasattr(self, '_recalc_retry_count'):
+                self._recalc_retry_count = 0
+                
+            if self._recalc_retry_count >= 5:
+                logging.warning("Max retry attempts reached for codex recalculation, proceeding anyway")
+                self._start_data_loading()
+                return
+            
+            # Check if we have the required services
+            if not hasattr(self.data_service, 'codex_service') or not self.data_service.codex_service:
+                logging.warning(f"CodexService not available for recalculation, retrying in 1s (attempt {self._recalc_retry_count + 1}/5)")
+                self._recalc_retry_count += 1
+                self.after(1000, self._delayed_recalculation)
+                return
+            
+            # All services ready, start data loading
+            self._start_data_loading()
+            
+            logging.info("Codex requirements recalculation started")
+            
+        except Exception as e:
+            logging.error(f"Error in delayed codex recalculation: {e}")
+            # If still failing, just clear the tabs to avoid hanging
+            for profession in self.professions:
+                tab = self.profession_tabs[profession]
+                tab.materials_data = {}
+                tab.materials_tree.delete(*tab.materials_tree.get_children())
+                display_name = self.profession_display_names.get(profession, profession.title())
+                tab.materials_tree.insert("", "end", values=(f"Error loading {display_name} data", "", "", "", ""))
+
+    def clear_for_claim_switch(self):
+        """Clear codex window data during claim switch."""
+        try:
+            logging.info("Clearing codex window for claim switch")
+            
+            # Clear all tab data
+            for profession in self.professions:
+                tab = self.profession_tabs[profession]
+                tab.materials_data = {}
+                tab.materials_tree.delete(*tab.materials_tree.get_children())
+                tab.materials_tree.insert("", "end", values=("Switching claims...", "", "", "", ""))
+            
+            # Clear cached data
+            self.all_requirements = {}
+            self.cached_codex_requirements = None
+            self.cached_codex_quantity = None
+            self.cached_codex_name = None
+            self.cached_inventory = None
+            self.cached_inventory_time = 0
+            
+        except Exception as e:
+            logging.error(f"Error clearing codex window for claim switch: {e}")
+
+    def handle_claim_switch_complete(self, claim_id, claim_name):
+        """Handle completion of claim switch."""
+        try:
+            logging.info(f"Codex window handling claim switch completion to {claim_name} (ID: {claim_id})")
+            
+            # Initialize retry counter
+            self._recalc_retry_count = 0
+            
+            # Schedule recalculation after brief delay for services to stabilize
+            self.after(500, self._delayed_recalculation)
+            
+        except Exception as e:
+            logging.error(f"Error handling claim switch completion in codex window: {e}")
 

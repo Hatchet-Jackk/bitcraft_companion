@@ -1411,6 +1411,10 @@ class MainWindow(ctk.CTk, SearchableWindowMixin):
             if "Traveler's Tasks" in self.tabs:
                 self.tabs["Traveler's Tasks"].update_data([])
 
+            # Clear codex window if it's open
+            if self.codex_window and self.codex_window.winfo_exists():
+                self.codex_window.clear_for_claim_switch()
+
         except Exception as e:
             logging.error(f"Error clearing tab data: {e}")
 
@@ -1432,6 +1436,10 @@ class MainWindow(ctk.CTk, SearchableWindowMixin):
 
                 # Update activity window with new claim info
                 self._update_activity_window_claim_info(claim_name)
+
+                # Update codex window if it's open
+                if self.codex_window and self.codex_window.winfo_exists():
+                    self.codex_window.handle_claim_switch_complete(claim_id, claim_name)
 
                 # Re-enable tab buttons
                 self._set_tab_buttons_state("normal")
