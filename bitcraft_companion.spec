@@ -33,8 +33,7 @@ a = Analysis(
         # UI assets
         ('app/ui/images', 'app/ui/images'),
         ('app/ui/sounds', 'app/ui/sounds'),
-        # Codex cache and templates
-        ('app/codex_cache', 'app/codex_cache'),
+        # Templates
         ('app/data/codex_templates', 'app/data/codex_templates'),
         # Models and core data
         ('app/models', 'app/models'),
